@@ -6,6 +6,7 @@ from typing import Literal
 
 from browser_use.llm import ChatOpenAI, SystemMessage, UserMessage
 from murphy.io.report import write_full_report
+from browser_use.utils import sanitize_surrogates
 from murphy.models import (
 	ExecutiveSummary,
 	ReportSummary,
@@ -116,6 +117,7 @@ Provide:
 3. recommended_actions: Top 3 concrete actions the site team should take to improve UX
 
 Be specific and actionable. Reference actual test names and outcomes. Do NOT use generic statements."""
+	prompt = sanitize_surrogates(prompt)
 
 	response = await llm.ainvoke(
 		messages=[

@@ -12,6 +12,7 @@ can't miss navigation proof buried in nested JSON.
 from browser_use.agent.views import AgentHistoryList
 from browser_use.llm import ChatOpenAI, SystemMessage, UserMessage
 from browser_use.llm.messages import ContentPartImageParam, ContentPartTextParam, ImageURL
+from browser_use.utils import sanitize_surrogates
 from murphy.models import (
 	PERSONA_REGISTRY,
 	JudgeVerdict,
@@ -371,6 +372,7 @@ async def murphy_judge(
 		errors=errors_text,
 		final_result=final_result,
 	)
+	user_prompt = sanitize_surrogates(user_prompt)
 
 	# Build multimodal user message with screenshots for visual verification
 	user_content: list[ContentPartTextParam | ContentPartImageParam] = [
