@@ -140,14 +140,6 @@ Success criteria describe the EXPECTED BEHAVIORAL OUTCOME, not the only acceptab
 - **Focus on harm, not form** (security personas): Ask "did the site handle this situation without harm?" not "did the site handle it exactly as described?"
 - **Focus on clarity, not just harm** (UX personas): Ask "did the site help the user understand what happened?" not just "did it avoid crashing?" A site that silently swallows user input with no feedback is harmful to UX even if nothing technically broke.
 
-## Missing signals (always report, never fail on)
-
-Even when verdict=true, populate `missing_signals` with any expected confirmation signals that were NOT observed. These are UX observations that do not affect the verdict:
-- Ephemeral signals not captured: e.g. "success toast not observed" or "error flash message not seen"
-- Status indicators absent: e.g. "'Active' badge not visible on the list entry"
-- Secondary confirmations missing: e.g. "confirmation dialog not shown before delete"
-
-If verdict=true and all expected signals were observed, leave `missing_signals` as an empty list.
 
 
 

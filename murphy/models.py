@@ -294,15 +294,6 @@ class JudgeVerdict(BaseModel):
 	usability_evaluation: str = ''
 	feedback_quality: FeedbackQualityScore | None = None
 	trait_evaluations: dict[str, str] | None = None
-	missing_signals: list[str] = Field(
-		default_factory=list,
-		description=(
-			'Confirmation signals that were expected but not observed '
-			'(e.g. "ephemeral toast not captured", "Active status badge not visible in list"). '
-			'The outcome still passed via another signal. '
-			'Report for UX improvement only — never used to fail the test.'
-		),
-	)
 
 
 # ─── Phase 3: Results ──────────────────────────────────────────────────────────
@@ -326,7 +317,6 @@ class TestResult(BaseModel):
 	validation_evidence: str = ''
 	feedback_quality: FeedbackQualityScore | None = None
 	trait_evaluations: dict[str, str] | None = None
-	missing_signals: list[str] = Field(default_factory=list)
 
 
 class ReportSummary(BaseModel):
