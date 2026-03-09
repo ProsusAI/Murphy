@@ -250,6 +250,7 @@ async def _async_main(args: argparse.Namespace) -> None:
 				save_callback=_on_test_complete,
 				max_concurrent=args.parallel,
 				judge_llm=judge_llm,
+				output_dir=output_dir,
 			)
 			if analysis:
 				write_reports_and_print(args.url, analysis, results, output_dir)
@@ -275,6 +276,7 @@ async def _async_main(args: argparse.Namespace) -> None:
 				save_callback=_on_test_complete,
 				max_concurrent=args.parallel,
 				judge_llm=judge_llm,
+				output_dir=output_dir,
 			)
 
 		state = ServerState(
