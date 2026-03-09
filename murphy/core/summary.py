@@ -5,8 +5,8 @@ from pathlib import Path
 from typing import Literal
 
 from browser_use.llm import ChatOpenAI, SystemMessage, UserMessage
-from murphy.io.report import write_full_report
 from browser_use.utils import sanitize_surrogates
+from murphy.io.report import write_full_report
 from murphy.models import (
 	ExecutiveSummary,
 	ReportSummary,
