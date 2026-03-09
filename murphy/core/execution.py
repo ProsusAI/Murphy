@@ -233,8 +233,7 @@ async def _execute_single_test(
 			reason=reason,
 			validation_evidence=validation_evidence,
 			feedback_quality=judgement.feedback_quality,
-			trait_evaluations=judgement.trait_evaluations,
-			missing_signals=judgement.missing_signals,
+			trait_evaluations=judgement.trait_evaluations
 		)
 		test_result.failure_category = classify_failure(test_result)
 	except Exception as exc:
