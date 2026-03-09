@@ -72,7 +72,7 @@ def format_path(result: TestResult) -> str:
 		elif 'click' in action:
 			el = action.get('interacted_element')
 			if el and isinstance(el, dict):
-				name = el.get('ax_name', '')
+				name = el.get('ax_name') or ''
 				name = name.replace('Link to', '').replace('page', '').replace('\n', ' ').strip()
 				if name:
 					steps.append(f'click "{name}"')

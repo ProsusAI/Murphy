@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import html as _html
+from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
-from murphy.io.report_helpers import format_path, suggest_fix
+from murphy.io.report_helpers import _slugify, format_path, suggest_fix
 from murphy.models import ReportSummary, TestPlan, TestResult, WebsiteAnalysis
 
 # ─── CSS ──────────────────────────────────────────────────────────────────────
@@ -91,6 +93,18 @@ h2 { font-family: Georgia, 'Times New Roman', serif; font-size: 1.3rem; font-wei
 .badge-impatient_user { background: #e11d48; color: #fff; }
 .badge-angry_user { background: #9f1239; color: #fff; }
 .persona-label { font-size: .7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: .06em; }
+.trace-link { color: var(--accent); font-size: .8rem; text-decoration: none; margin-left: .5rem; }
+.trace-link:hover { text-decoration: underline; }
+.trace-step { border-left: 4px solid var(--border); padding: 1rem; margin-bottom: .5rem; background: var(--surface); }
+.trace-step.pass { border-left-color: var(--green); }
+.trace-step.fail { border-left-color: var(--red); }
+.step-num { display: inline-block; width: 2rem; height: 2rem; line-height: 2rem; text-align: center; border-radius: 50%; background: var(--border); font-size: .75rem; font-weight: 600; margin-right: .75rem; }
+.step-goal { font-weight: 600; margin-bottom: .25rem; }
+.step-action { display: inline-block; padding: 2px 8px; border-radius: 2px; background: #e5e7eb; font-size: .75rem; margin-right: .25rem; margin-bottom: .25rem; }
+.step-url { font-size: .75rem; color: var(--text-muted); margin-bottom: .25rem; }
+.step-duration { font-size: .7rem; color: var(--text-muted); }
+.step-screenshot img { max-height: 120px; border: 1px solid var(--border); cursor: pointer; }
+.step-details { font-size: .8rem; color: var(--text-muted); margin-top: .5rem; }
 """
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -180,8 +194,8 @@ def _format_action_html(action: Any) -> str:
 		el = action.get('interacted_element')
 		el_html = ''
 		if el and isinstance(el, dict):
-			tag = el.get('tag_name', '')
-			name = el.get('ax_name', '').replace('\n', ' ').strip()
+			tag = el.get('tag_name') or ''
+			name = (el.get('ax_name') or '').replace('\n', ' ').strip()
 			if tag or name:
 				el_html = f' <span class="action-element">{_e(tag)} &ldquo;{_e(name)}&rdquo;</span>'
 
@@ -201,11 +215,11 @@ def _render_features_summary_html(analysis: WebsiteAnalysis) -> str:
 
 	html_parts = ['<h2>Features Discovered</h2>']
 	for cat, features in by_category.items():
-		html_parts.append(f'<div class="group-header">{_e(cat.replace("_", " ").title())} ({len(features)})</div>')
+		html_parts.append(f'<div class="group-header">{_e((cat or "").replace("_", " ").title())} ({len(features)})</div>')
 		for f in features:
-			testability_color = {'testable': 'var(--green)', 'partial': 'var(--orange)', 'untestable': 'var(--gray)'}[
-				f.testability
-			]
+			testability_color = {'testable': 'var(--green)', 'partial': 'var(--orange)', 'untestable': 'var(--gray)'}.get(
+				f.testability, 'var(--gray)'
+			)
 			importance_label = f.importance.upper()
 			html_parts.append(
 				f'<div class="card" style="padding:.75rem 1.25rem">'
@@ -409,12 +423,14 @@ def render_results_html(
 
 			body_html = '\n'.join(body_parts)
 
+			results_idx = results.index(r)
 			cards_html += f"""<div class="card">
 	<div class="card-header" onclick="toggle({card_idx})">
 		<span class="arrow" id="arrow-{card_idx}">&#9654;</span>
 		<span class="test-name">{_e(r.scenario.name)}</span>
 		<span class="badge badge-persona badge-{r.scenario.test_persona}">{_e(_PERSONA_LABELS.get(r.scenario.test_persona, r.scenario.test_persona))}</span>
 		<span class="badge {badge_cls}">{badge_text}</span>
+		<a href="/trace/{results_idx}" class="trace-link" onclick="event.stopPropagation()">View trace &rarr;</a>
 	</div>
 	<div class="card-body" id="body-{card_idx}">
 		{body_html}
@@ -442,3 +458,120 @@ function toggleExp(id) {{
 	else {{ s.style.display = 'none'; f.style.display = ''; }}
 }}
 </script></body></html>"""
+
+
+def _format_trace_action(action_item: dict) -> str:
+	"""Format a single action from history for the trace view."""
+	if not isinstance(action_item, dict):
+		return _e(str(action_item))
+	parts = []
+	for action_type, params in action_item.items():
+		if action_type == 'interacted_element':
+			continue
+		label = action_type.replace('_', ' ')
+		if isinstance(params, dict):
+			# Add key params (url, index, text) for brevity
+			brief = []
+			if 'url' in params:
+				brief.append(params['url'][:60] + ('...' if len(str(params.get('url', ''))) > 60 else ''))
+			if 'index' in params:
+				brief.append(f"#{params['index']}")
+			if 'text' in params:
+				t = str(params['text'])[:40]
+				brief.append(f'"{t}{"..." if len(str(params.get("text",""))) > 40 else ""}"')
+			if brief:
+				label += ' ' + ' '.join(str(b) for b in brief)
+		parts.append(f'<span class="step-action">{_e(label)}</span>')
+	return ''.join(parts) if parts else ''
+
+
+def render_trace_html(
+	result: TestResult,
+	history_steps: list,
+	test_idx: int,
+	output_dir: Path | None = None,
+) -> str:
+	"""Render a full-page step-by-step execution timeline for one test."""
+	slug = _slugify(result.scenario.name) if result.scenario else ''
+	screenshots_dir = (output_dir / 'screenshots' / f'test_{test_idx + 1:02d}_{slug}') if output_dir else None
+
+	steps_html = ''
+	for i, step in enumerate(history_steps):
+		mo = step.get('model_output') or {}
+		state = step.get('state') or {}
+		metadata = step.get('metadata') or {}
+		results_list = step.get('result') or []
+
+		goal = mo.get('next_goal') or ''
+		eval_prev = mo.get('evaluation_previous_goal') or ''
+		memory = mo.get('memory')
+		thinking = mo.get('thinking')
+
+		actions = mo.get('action') or []
+		action_pills = ''.join(_format_trace_action(a) for a in actions)
+
+		extracted = ''
+		if results_list:
+			ex = results_list[0].get('extracted_content') if isinstance(results_list[0], dict) else ''
+			if ex:
+				extracted = str(ex)[:200] + ('...' if len(str(ex)) > 200 else '')
+
+		is_done = False
+		step_success = None
+		for r in results_list:
+			if isinstance(r, dict) and r.get('is_done'):
+				is_done = True
+				step_success = r.get('success')
+				break
+
+		step_num = metadata.get('step_number', i)
+		dur = metadata.get('step_end_time') or 0
+		start = metadata.get('step_start_time') or 0
+		duration_s = f'{(dur - start):.1f}s' if dur and start else ''
+
+		url = state.get('url') or ''
+		screenshot_path = state.get('screenshot_path')
+		if screenshot_path and screenshots_dir:
+			basename = Path(screenshot_path).name if isinstance(screenshot_path, str) else ''
+			alt_path = screenshots_dir / basename if basename else screenshots_dir
+			if alt_path.exists() and alt_path.is_file():
+				screenshot_path = str(alt_path)
+
+		screenshot_html = ''
+		if screenshot_path and isinstance(screenshot_path, str):
+			path_param = quote(screenshot_path, safe='')
+			screenshot_html = f'<div class="step-screenshot"><a href="/screenshot?path={path_param}" target="_blank"><img src="/screenshot?path={path_param}" alt="Step {step_num}" /></a></div>'
+
+		step_cls = 'trace-step'
+		if is_done:
+			step_cls += ' pass' if step_success else ' fail'
+
+		memory_html = ''
+		if memory:
+			memory_html = f'<details class="step-details"><summary>Memory</summary><pre>{_e(str(memory))}</pre></details>'
+
+		thinking_html = ''
+		if thinking:
+			thinking_html = f'<details class="step-details"><summary>Show reasoning</summary><pre>{_e(str(thinking))}</pre></details>'
+
+		steps_html += f'''
+<div class="{step_cls}">
+	<div><span class="step-num">{step_num}</span><span class="step-duration">{_e(duration_s)}</span></div>
+	<div class="step-goal">{_e(goal)}</div>
+	{f'<div class="detail" style="margin-bottom:.5rem">{_e(eval_prev)}</div>' if eval_prev else ''}
+	{f'<div style="margin-bottom:.5rem">{action_pills}</div>' if action_pills else ''}
+	{f'<div class="detail">{_e(extracted)}</div>' if extracted else ''}
+	{f'<div class="step-url">{_e(url)}</div>' if url else ''}
+	{screenshot_html}
+	{memory_html}
+	{thinking_html}
+</div>'''
+
+	back_link = '<a href="/results" class="trace-link">&larr; Back to results</a>'
+	return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><title>Trace — {_e(result.scenario.name if result.scenario else 'Test')}</title>
+<style>{_CSS}</style></head><body>
+<h1>Execution Trace</h1>
+<div class="subtitle">{back_link} &middot; {_e(result.scenario.name if result.scenario else 'Test')}</div>
+<h2>Steps</h2>
+{steps_html if steps_html else '<p>No step data available.</p>'}
+</body></html>"""
