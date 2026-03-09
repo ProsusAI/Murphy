@@ -139,6 +139,15 @@ Success criteria describe the EXPECTED BEHAVIORAL OUTCOME, not the only acceptab
 - **Focus on harm, not form** (security personas): Ask "did the site handle this situation without harm?" not "did the site handle it exactly as described?"
 - **Focus on clarity, not just harm** (UX personas): Ask "did the site help the user understand what happened?" not just "did it avoid crashing?" A site that silently swallows user input with no feedback is harmful to UX even if nothing technically broke.
 
+## Missing signals (always report, never fail on)
+
+Even when verdict=true, populate `missing_signals` with any expected confirmation signals that were NOT observed. These are UX observations that do not affect the verdict:
+- Ephemeral signals not captured: e.g. "success toast not observed" or "error flash message not seen"
+- Status indicators absent: e.g. "'Active' badge not visible on the list entry"
+- Secondary confirmations missing: e.g. "confirmation dialog not shown before delete"
+
+If verdict=true and all expected signals were observed, leave `missing_signals` as an empty list.
+
 
 ## Failure classification
 
@@ -197,6 +206,15 @@ JUDGE_USER_TEMPLATE = """\
 - For delete flows: confirm entity is absent from list/search.
 - For edit flows: reopen and confirm updates persist.
 - If evidence is ambiguous, return verdict=false.
+
+## Signal gaps (for `missing_signals` — never affects verdict)
+
+After determining the verdict, check which expected confirmation signals were NOT observed and list each one in `missing_signals`. Examples:
+- "Ephemeral success toast not captured in screenshots or step trace"
+- "'Active' status badge not visible on the agent list entry"
+- "Confirmation dialog not shown before the destructive action"
+
+These are UX observations only. A non-empty `missing_signals` on a passing test means the site's feedback could be improved — it does NOT change the verdict.
 
 Based on the Navigation Evidence and Pages Reached, did the agent successfully complete this test?
 Evaluate each trait dimension independently and report per-trait assessments in trait_evaluations.
