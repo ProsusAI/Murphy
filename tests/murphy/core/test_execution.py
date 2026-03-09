@@ -2,7 +2,6 @@
 
 from murphy.core.execution import (
 	_extract_form_fills,
-	_extract_pages_visited,
 	_extract_urls_from_texts,
 )
 
@@ -89,69 +88,6 @@ def test_extract_form_fills_attributes_non_dict():
 	fills = _extract_form_fills(actions)
 	assert len(fills) == 1
 	assert fills[0]['field_name'] == 'Field'
-
-
-# ─── _extract_pages_visited ──────────────────────────────────────────────────
-
-
-def test_extract_pages_visited_empty():
-	result = _extract_pages_visited([], 'https://start.com')
-	assert result == ['https://start.com']
-
-
-def test_extract_pages_visited_navigate():
-	actions = [{'navigate': {'url': 'https://example.com/page1'}}]
-	result = _extract_pages_visited(actions, 'https://example.com')
-	assert result == ['https://example.com', 'https://example.com/page1']
-
-
-def test_extract_pages_visited_go_to_url():
-	actions = [{'go_to_url': {'url': 'https://example.com/page2'}}]
-	result = _extract_pages_visited(actions, 'https://example.com')
-	assert result == ['https://example.com', 'https://example.com/page2']
-
-
-def test_extract_pages_visited_deduplicates():
-	actions = [
-		{'navigate': {'url': 'https://example.com/page1'}},
-		{'navigate': {'url': 'https://example.com/page1'}},
-		{'navigate': {'url': 'https://example.com/page2'}},
-	]
-	result = _extract_pages_visited(actions, 'https://example.com')
-	assert result == ['https://example.com', 'https://example.com/page1', 'https://example.com/page2']
-
-
-def test_extract_pages_visited_preserves_order():
-	actions = [
-		{'navigate': {'url': 'https://example.com/c'}},
-		{'navigate': {'url': 'https://example.com/a'}},
-		{'navigate': {'url': 'https://example.com/b'}},
-	]
-	result = _extract_pages_visited(actions, 'https://example.com')
-	assert result == [
-		'https://example.com',
-		'https://example.com/c',
-		'https://example.com/a',
-		'https://example.com/b',
-	]
-
-
-def test_extract_pages_visited_skips_empty_url():
-	actions = [{'navigate': {'url': ''}}, {'navigate': {'url': 'https://example.com/ok'}}]
-	result = _extract_pages_visited(actions, 'https://example.com')
-	assert result == ['https://example.com', 'https://example.com/ok']
-
-
-def test_extract_pages_visited_skips_non_dict_val():
-	actions = [{'navigate': 'not a dict'}]
-	result = _extract_pages_visited(actions, 'https://start.com')
-	assert result == ['https://start.com']
-
-
-def test_extract_pages_visited_ignores_non_nav_actions():
-	actions = [{'click': {'index': 1}}, {'scroll': {'direction': 'down'}}]
-	result = _extract_pages_visited(actions, 'https://example.com')
-	assert result == ['https://example.com']
 
 
 # ─── _extract_urls_from_texts ────────────────────────────────────────────────
