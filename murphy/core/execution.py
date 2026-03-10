@@ -22,7 +22,6 @@ from murphy.models import (
 	TestResult,
 	TestScenario,
 )
-from murphy.io.report_helpers import _slugify
 from murphy.prompts import build_execution_prompt
 
 logger = logging.getLogger(__name__)
