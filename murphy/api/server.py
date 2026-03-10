@@ -13,7 +13,7 @@ from typing import Any
 
 from aiohttp import web
 
-from murphy.api.templates import render_plan_html, render_results_html, render_trace_html
+from murphy.api.templates import render_plan_html, render_results_html, render_trace_html, render_graph_html
 from murphy.io.report_helpers import _slugify
 from murphy.models import ReportSummary, TestPlan, TestResult, WebsiteAnalysis
 
@@ -132,6 +132,25 @@ async def handle_trace(request: web.Request) -> web.Response:
 	)
 
 
+async def handle_graph(request: web.Request) -> web.Response:
+	state: ServerState = request.app['state']
+	test_idx = int(request.match_info['test_idx'])
+	if test_idx < 0 or test_idx >= len(state.results):
+		raise web.HTTPNotFound()
+	result = state.results[test_idx]
+	history_steps: list = []
+	if state.output_dir:
+		slug = _slugify(result.scenario.name)
+		history_path = state.output_dir / 'agent_history' / f'test_{test_idx + 1:02d}_{slug}.json'
+		if history_path.exists():
+			data = json.loads(history_path.read_text())
+			history_steps = data.get('history', [])
+	return web.Response(
+		text=render_graph_html(result, history_steps, test_idx),
+		content_type='text/html',
+	)
+
+
 async def handle_screenshot(request: web.Request) -> web.Response:
 	path_str = request.query.get('path', '')
 	p = Path(path_str)
@@ -152,6 +171,7 @@ async def start_server(state: ServerState) -> tuple[web.AppRunner, int]:
 	app.router.add_get('/status', handle_status)
 	app.router.add_get('/results', handle_results)
 	app.router.add_get('/trace/{test_idx}', handle_trace)
+	app.router.add_get('/graph/{test_idx}', handle_graph)
 	app.router.add_get('/screenshot', handle_screenshot)
 
 	runner = web.AppRunner(app)

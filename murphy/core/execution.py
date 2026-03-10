@@ -409,6 +409,15 @@ async def execute_tests_with_session(
 	Uses BOTH structured agent verdict (ScenarioExecutionVerdict) AND murphy judge.
 	When max_concurrent > 1, runs tests in parallel using a session pool.
 	"""
+	import shutil
+
+	# Clean up agent_history and screenshots directories from previous runs
+	if output_dir is not None:
+		agent_history_dir = output_dir / 'agent_history'
+		if agent_history_dir.exists():
+			shutil.rmtree(agent_history_dir)
+		agent_history_dir.mkdir(parents=True, exist_ok=True)
+
 	total = len(test_plan.scenarios)
 	mode = 'parallel' if max_concurrent > 1 else 'sequential'
 	logger.info('\n%s', '=' * 60)
