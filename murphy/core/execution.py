@@ -15,13 +15,13 @@ from browser_use.browser.session import BrowserSession
 from browser_use.llm import ChatOpenAI
 from murphy.core.judge import murphy_judge
 from murphy.core.summary import classify_failure
+from murphy.io.report_helpers import _slugify
 from murphy.models import (
 	ScenarioExecutionVerdict,
 	TestPlan,
 	TestResult,
 	TestScenario,
 )
-from murphy.io.report_helpers import _slugify
 from murphy.prompts import build_execution_prompt
 
 logger = logging.getLogger(__name__)
