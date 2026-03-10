@@ -13,7 +13,7 @@ from typing import Any
 
 from aiohttp import web
 
-from murphy.api.templates import render_plan_html, render_results_html, render_trace_html, render_graph_html
+from murphy.api.templates import render_graph_html, render_plan_html, render_results_html, render_trace_html
 from murphy.io.report_helpers import _slugify
 from murphy.models import ReportSummary, TestPlan, TestResult, WebsiteAnalysis
 
@@ -86,11 +86,7 @@ async def handle_run(request: web.Request) -> web.Response:
 async def handle_status(request: web.Request) -> web.Response:
 	state: ServerState = request.app['state']
 	current_name = ''
-	if (
-		state.test_plan
-		and state.running
-		and 0 < state.current_test <= len(state.test_plan.scenarios)
-	):
+	if state.test_plan and state.running and 0 < state.current_test <= len(state.test_plan.scenarios):
 		current_name = state.test_plan.scenarios[state.current_test - 1].name
 	return web.json_response(
 		{
@@ -151,7 +147,7 @@ async def handle_graph(request: web.Request) -> web.Response:
 	)
 
 
-async def handle_screenshot(request: web.Request) -> web.Response:
+async def handle_screenshot(request: web.Request) -> web.StreamResponse:
 	path_str = request.query.get('path', '')
 	p = Path(path_str)
 	if not p.exists() or not p.is_file():

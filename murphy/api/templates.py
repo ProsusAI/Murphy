@@ -416,12 +416,6 @@ def render_results_html(
 				if suggestion:
 					body_parts.append(f'<div class="detail"><strong>Suggestion:</strong> {_e(suggestion)}</div>')
 
-			if r.actions:
-				action_rows = ''.join(_format_action_html(a) for a in r.actions[:30])
-				body_parts.append(
-					f'<div class="detail"><strong>Actions:</strong></div><div class="actions-list">{action_rows}</div>'
-				)
-
 			body_html = '\n'.join(body_parts)
 
 			results_idx = results.index(r)
@@ -477,10 +471,10 @@ def _format_trace_action(action_item: dict) -> str:
 			if 'url' in params:
 				brief.append(params['url'][:60] + ('...' if len(str(params.get('url', ''))) > 60 else ''))
 			if 'index' in params:
-				brief.append(f"#{params['index']}")
+				brief.append(f'#{params["index"]}')
 			if 'text' in params:
 				t = str(params['text'])[:40]
-				brief.append(f'"{t}{"..." if len(str(params.get("text",""))) > 40 else ""}"')
+				brief.append(f'"{t}{"..." if len(str(params.get("text", ""))) > 40 else ""}"')
 			if brief:
 				label += ' ' + ' '.join(str(b) for b in brief)
 		parts.append(f'<span class="step-action">{_e(label)}</span>')
@@ -554,7 +548,9 @@ def render_trace_html(
 
 		thinking_html = ''
 		if thinking:
-			thinking_html = f'<details class="step-details"><summary>Show reasoning</summary><pre>{_e(str(thinking))}</pre></details>'
+			thinking_html = (
+				f'<details class="step-details"><summary>Show reasoning</summary><pre>{_e(str(thinking))}</pre></details>'
+			)
 
 		steps_html += f'''
 <div class="{step_cls}">
@@ -581,7 +577,7 @@ def render_trace_html(
 
 def _build_graph_data(history_steps: list) -> tuple[list[dict], list[dict]]:
 	"""Extract nodes (goals) and edges (actions) from agent history.
-	
+
 	Structure: Each step creates ONE node (the goal), and multiple edges (the actions).
 	Flow: Node (goal) → Edge (action 1) → Edge (action 2) → Next Node (next goal)
 	"""
@@ -597,7 +593,7 @@ def _build_graph_data(history_steps: list) -> tuple[list[dict], list[dict]]:
 		title = state.get('title') or url
 		next_goal = mo.get('next_goal') or 'Start'
 		eval_prev = mo.get('evaluation_previous_goal') or ''
-		
+
 		# Determine if previous goal succeeded or failed from evaluation text
 		eval_lower = eval_prev.lower()
 		eval_success = None
@@ -605,7 +601,7 @@ def _build_graph_data(history_steps: list) -> tuple[list[dict], list[dict]]:
 			eval_success = True
 		elif 'fail' in eval_lower or 'failed' in eval_lower or 'did not' in eval_lower:
 			eval_success = False
-		
+
 		# Node label: step number + goal, with failed eval text shown beneath
 		goal_text = next_goal[:80] + ('...' if len(next_goal) > 80 else '')
 		label = f'Step {i + 1}\n{goal_text}'
@@ -614,7 +610,7 @@ def _build_graph_data(history_steps: list) -> tuple[list[dict], list[dict]]:
 			label += f'\n\n✗ {eval_short}'
 
 		# Tooltip: full goal + evaluation + URL
-		tooltip = f"Step {i + 1}\n\nGoal: {next_goal}\n\nEvaluation of previous: {eval_prev}\n\nPage: {title}\nURL: {url}"
+		tooltip = f'Step {i + 1}\n\nGoal: {next_goal}\n\nEvaluation of previous: {eval_prev}\n\nPage: {title}\nURL: {url}'
 
 		action_list = mo.get('action') or []
 
@@ -623,7 +619,16 @@ def _build_graph_data(history_steps: list) -> tuple[list[dict], list[dict]]:
 		for r in results_list:
 			if isinstance(r, dict) and r.get('is_done'):
 				is_done = True
-				success = r.get('success')
+				# extracted_content holds the ScenarioExecutionVerdict JSON — use its
+				# success field as the real verdict; fall back to the outer success flag.
+				raw = r.get('extracted_content') or ''
+				try:
+					verdict = json.loads(raw)
+					success = verdict.get('success')
+				except (ValueError, TypeError):
+					pass
+				if success is None:
+					success = r.get('success')
 				break
 
 		# Node color and border based on final result and evaluation
@@ -653,19 +658,16 @@ def _build_graph_data(history_steps: list) -> tuple[list[dict], list[dict]]:
 				dashes = False
 			border_width = 2
 
-		nodes.append({
-			'id': i,
-			'label': label,
-			'title': tooltip,
-			'color': {
-				'background': color,
-				'border': border_color
-			},
-			'borderWidth': border_width,
-			'shapeProperties': {
-				'borderDashes': dashes
+		nodes.append(
+			{
+				'id': i,
+				'label': label,
+				'title': tooltip,
+				'color': {'background': color, 'border': border_color},
+				'borderWidth': border_width,
+				'shapeProperties': {'borderDashes': dashes},
 			}
-		})
+		)
 
 		# Create edges: actions from THIS node to NEXT node
 		# All actions in a step become a single edge with newline-separated labels
@@ -690,13 +692,15 @@ def _build_graph_data(history_steps: list) -> tuple[list[dict], list[dict]]:
 						tooltip_parts.append(extracted)
 
 			if label_parts:
-				edges.append({
-					'from': i,
-					'to': i + 1,
-					'label': '\n'.join(label_parts),
-					'title': '\n'.join(tooltip_parts),
-					'smooth': {'enabled': True, 'type': 'cubicBezier', 'roundness': 0.2}
-				})
+				edges.append(
+					{
+						'from': i,
+						'to': i + 1,
+						'label': '\n'.join(label_parts),
+						'title': '\n'.join(tooltip_parts),
+						'smooth': {'enabled': True, 'type': 'cubicBezier', 'roundness': 0.2},
+					}
+				)
 
 	return nodes, edges
 
@@ -706,48 +710,48 @@ def _build_action_label(action_type: str, params: dict, interacted_elements: lis
 	# Get element details if available
 	element = interacted_elements[idx] if idx < len(interacted_elements) else None
 	element_name = ''
-	
+
 	if element and isinstance(element, dict):
 		# Try to get a human-readable name for the element
 		ax_name = element.get('ax_name') or ''
 		node_name = element.get('node_name') or ''
 		attributes = element.get('attributes') or {}
-		
+
 		if ax_name:
 			element_name = ax_name[:40]
 		elif attributes.get('aria-label'):
 			element_name = attributes['aria-label'][:40]
 		elif node_name:
-			element_name = f"{node_name.lower()}"
-	
+			element_name = f'{node_name.lower()}'
+
 	# Build label based on action type
 	if action_type == 'click':
 		if element_name:
 			return f"click '{element_name}'"
 		return 'click'
-	
+
 	elif action_type == 'input_text':
 		text = str(params.get('text', ''))[:30]
 		if element_name:
 			return f"type '{text}' into {element_name}"
 		return f"type '{text}'"
-	
+
 	elif action_type == 'navigate':
 		url = str(params.get('url', ''))
 		url_short = url.split('/')[-1] or url.split('//')[-1].split('/')[0]
-		return f"navigate → {url_short}"
-	
+		return f'navigate → {url_short}'
+
 	elif action_type == 'scroll':
 		direction = params.get('direction', 'down')
-		return f"scroll {direction}"
-	
+		return f'scroll {direction}'
+
 	elif action_type == 'select_option':
 		option = str(params.get('option', ''))[:30]
 		return f"select '{option}'"
-	
+
 	elif action_type == 'done':
 		return '✓ done'
-	
+
 	else:
 		return action_type
 
@@ -765,7 +769,8 @@ def render_graph_html(result: TestResult, history_steps: list, test_idx: int) ->
 	if not nodes:
 		graph_html = '<p>No step data available for graph.</p>'
 	else:
-		graph_html = '''
+		graph_html = (
+			"""
 <div style="display:flex; gap:1rem; align-items:flex-start;">
   <div id="graph" style="flex:1; height:80vh; min-height:600px; border:1px solid var(--border); border-radius:2px;"></div>
   <div id="step-detail" style="width:360px; min-height:600px; height:80vh; overflow-y:auto; border:1px solid var(--border); border-radius:2px; padding:1rem; background:var(--surface); display:none; flex-shrink:0;">
@@ -873,7 +878,10 @@ network.on('click', function(params) {
 	document.getElementById('detail-body').innerHTML = html;
 	document.getElementById('step-detail').style.display = 'block';
 });
-</script>'''.replace('NODES', nodes_json).replace('EDGES', edges_json).replace('STEPS', steps_json)
+</script>""".replace('NODES', nodes_json)
+			.replace('EDGES', edges_json)
+			.replace('STEPS', steps_json)
+		)
 
 	return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><title>Graph — {_e(test_name)}</title>
 <style>{_CSS}</style></head><body>

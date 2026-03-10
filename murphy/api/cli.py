@@ -345,9 +345,9 @@ async def _open_mode(output_dir: Path) -> None:
 
 	runner, _ = await start_server(state)
 	logger.info('  Press Ctrl+C to stop.\n')
+	stop_event = asyncio.Event()
 	try:
-		while True:
-			await asyncio.sleep(1)
+		await stop_event.wait()
 	except KeyboardInterrupt:
 		pass
 	finally:
