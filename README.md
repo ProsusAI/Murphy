@@ -86,6 +86,10 @@ uv run murphy --url https://example.com --no-auth
 # Resume from previously generated/edited files
 uv run murphy --url https://example.com --features murphy/output/example_com_features.md
 uv run murphy --url https://example.com --plan murphy/output/test_plan.yaml
+
+# Open the interactive UI for a previously completed run (no browser or LLM required)
+uv run murphy --open
+uv run murphy --open --output-dir ./murphy/output/my-run
 ```
 
 https://github.com/user-attachments/assets/7fbc441d-e02f-4321-aba7-3aec0cb17163
@@ -179,6 +183,7 @@ The full JSON report (`evaluation_report.json`) contains structured results, act
 | `--judge-model` | `gpt-5-mini` | LLM model for judging verdicts |
 | `--output-dir` | `./murphy/output` | Output directory for all generated files |
 | `--category` | | Site category hint (`ecommerce`, `saas`, `content`, `social`) |
+| `--open` | `false` | Open the interactive UI for a previously completed run (no browser or LLM required); `--url` is not needed |
 | `--ui` | `false` | Launch interactive web UI instead of terminal output |
 | `--no-highlights` | `false` | Disable bounding boxes on interactive elements in the browser |
 | `--max-steps` | `30` | Max agent steps per exploration/execution phase |
@@ -186,12 +191,18 @@ The full JSON report (`evaluation_report.json`) contains structured results, act
 
 ## Interactive UI
 
-Launch the web UI with:
+Launch the web UI during a run with:
 ```bash
 murphy --url https://example.com --ui
 ```
 
-The UI lets you review the generated test plan, run all tests with a live progress bar, and view detailed results with pass/fail verdicts, action traces, and failure analysis.
+Re-open the UI for a previously completed run (no browser or LLM required):
+```bash
+murphy --open
+murphy --open --output-dir ./murphy/output/my-run
+```
+
+The UI lets you review the generated test plan, run all tests with a live progress bar, and view detailed results with pass/fail verdicts, failure analysis, step-by-step execution traces, and an interactive agent path graph.
 
 ---
 
