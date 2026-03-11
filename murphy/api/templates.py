@@ -104,7 +104,7 @@ h2 { font-family: Georgia, 'Times New Roman', serif; font-size: 1.3rem; font-wei
 .step-action { display: inline-block; padding: 2px 8px; border-radius: 2px; background: #e5e7eb; font-size: .75rem; margin-right: .25rem; margin-bottom: .25rem; }
 .step-url { font-size: .75rem; color: var(--text-muted); margin-bottom: .25rem; }
 .step-duration { font-size: .7rem; color: var(--text-muted); }
-.step-screenshot img { max-height: 120px; border: 1px solid var(--border); cursor: pointer; }
+.step-screenshot img { max-height: 300px; border: 1px solid var(--border); cursor: pointer; }
 .step-details { font-size: .8rem; color: var(--text-muted); margin-top: .5rem; }
 """
 
