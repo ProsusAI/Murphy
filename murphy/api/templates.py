@@ -106,6 +106,7 @@ h2 { font-family: Georgia, 'Times New Roman', serif; font-size: 1.3rem; font-wei
 .step-duration { font-size: .7rem; color: var(--text-muted); }
 .step-screenshot img { max-height: 300px; border: 1px solid var(--border); cursor: pointer; }
 .step-details { font-size: .8rem; color: var(--text-muted); margin-top: .5rem; }
+.step-details pre { white-space: pre-wrap; word-wrap: break-word; overflow-wrap: break-word; }
 """
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
