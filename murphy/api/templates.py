@@ -782,11 +782,13 @@ def render_graph_html(result: TestResult, history_steps: list, test_idx: int) ->
 		graph_html = (
 			"""
 <div style="display:flex; gap:1rem; align-items:flex-start;">
-  <div id="graph" style="flex:1; height:80vh; min-height:600px; border:1px solid var(--border); border-radius:2px;"></div>
-  <div id="step-detail" style="width:360px; min-height:600px; height:80vh; overflow-y:auto; border:1px solid var(--border); border-radius:2px; padding:1rem; background:var(--surface); display:none; flex-shrink:0;">
+  <div id="graph-wrapper" style="flex:1; min-width:0; height:80vh; min-height:600px; overflow-y:auto; border:1px solid var(--border); border-radius:2px;">
+    <div id="graph"></div>
+  </div>
+  <div id="step-detail" style="width:360px; max-height:80vh; overflow-y:auto; border:1px solid var(--border); border-radius:2px; padding:1rem; background:var(--surface); display:none; flex-shrink:0;">
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
       <strong id="detail-title" style="font-size:.95rem;"></strong>
-      <button onclick="document.getElementById('step-detail').style.display='none'" style="background:none;border:none;cursor:pointer;font-size:1rem;color:var(--text-muted);">✕</button>
+      <button onclick="document.getElementById('step-detail').style.display='none'; setTimeout(fitToWidth,50)" style="background:none;border:none;cursor:pointer;font-size:1rem;color:var(--text-muted);">✕</button>
     </div>
     <div id="detail-body" style="font-size:.82rem; line-height:1.6;"></div>
   </div>
@@ -831,10 +833,49 @@ var options = {
 	physics: { enabled: false },
 	interaction: {
 		hover: true,
-		tooltipDelay: 100
+		tooltipDelay: 100,
+		zoomView: false,
+		dragView: false
 	}
 };
 var network = new vis.Network(container, data, options);
+
+function fitToWidth() {
+	var positions = network.getPositions();
+	var nodeIds = Object.keys(positions);
+	if (nodeIds.length === 0) return;
+	var minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+	nodeIds.forEach(function(id) {
+		var pos = positions[id];
+		if (pos.x < minX) minX = pos.x;
+		if (pos.x > maxX) maxX = pos.x;
+		if (pos.y < minY) minY = pos.y;
+		if (pos.y > maxY) maxY = pos.y;
+	});
+	var wrapper = document.getElementById('graph-wrapper');
+	var containerWidth = wrapper.clientWidth;
+	var graphWidth = maxX - minX + 300;
+	var scale = containerWidth / graphWidth;
+	if (scale > 1.5) scale = 1.5;
+	if (scale < 0.3) scale = 0.3;
+	// Set inner graph div tall enough for the full graph at this scale
+	var graphHeight = maxY - minY + 200;
+	var innerHeight = Math.max(graphHeight * scale + 100, 600);
+	container.style.height = innerHeight + 'px';
+	network.setSize(containerWidth + 'px', innerHeight + 'px');
+	network.redraw();
+	// Center the graph in the canvas
+	var centerX = (minX + maxX) / 2;
+	var centerY = (minY + maxY) / 2;
+	network.moveTo({
+		position: { x: centerX, y: centerY },
+		scale: scale,
+		animation: false
+	});
+}
+network.once('afterDrawing', function() {
+	setTimeout(fitToWidth, 50);
+});
 
 function esc(s) {
 	return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
@@ -887,6 +928,7 @@ network.on('click', function(params) {
 	document.getElementById('detail-title').textContent = 'Step ' + stepNum;
 	document.getElementById('detail-body').innerHTML = html;
 	document.getElementById('step-detail').style.display = 'block';
+	setTimeout(fitToWidth, 50);
 });
 </script>""".replace('/*NODES_JSON*/null', nodes_json)
 			.replace('/*EDGES_JSON*/null', edges_json)
