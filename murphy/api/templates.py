@@ -756,12 +756,22 @@ def _build_action_label(action_type: str, params: dict, interacted_elements: lis
 		return action_type
 
 
+def _safe_json_embed(obj: Any) -> str:
+	"""Serialize *obj* to JSON that is safe to embed inside an HTML <script> tag.
+
+	Escapes ``</`` → ``<\\/`` and ``<!--`` so the browser's HTML parser never
+	sees a closing ``</script>`` (or comment-open) inside the literal.
+	"""
+	raw = json.dumps(obj)
+	return raw.replace('</', r'<\/').replace('<!--', r'<\!--')
+
+
 def render_graph_html(result: TestResult, history_steps: list, test_idx: int) -> str:
 	"""Render an interactive graph of pages visited and actions taken."""
 	nodes, edges = _build_graph_data(history_steps)
-	nodes_json = json.dumps(nodes)
-	edges_json = json.dumps(edges)
-	steps_json = json.dumps(history_steps)
+	nodes_json = _safe_json_embed(nodes)
+	edges_json = _safe_json_embed(edges)
+	steps_json = _safe_json_embed(history_steps)
 
 	test_name = result.scenario.name if result.scenario else 'Test'
 	back_link = '<a href="/results" class="trace-link">&larr; Back to results</a>'
@@ -783,9 +793,9 @@ def render_graph_html(result: TestResult, history_steps: list, test_idx: int) ->
 </div>
 <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
 <script>
-var steps_data = STEPS;
-var nodes_data = new vis.DataSet(NODES);
-var edges_data = new vis.DataSet(EDGES);
+var steps_data = /*STEPS_JSON*/null;
+var nodes_data = new vis.DataSet(/*NODES_JSON*/null);
+var edges_data = new vis.DataSet(/*EDGES_JSON*/null);
 var container = document.getElementById('graph');
 var data = { nodes: nodes_data, edges: edges_data };
 var options = {
@@ -827,7 +837,7 @@ var options = {
 var network = new vis.Network(container, data, options);
 
 function esc(s) {
-	return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+	return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 function row(label, value) {
 	if (!value && value !== 0) return '';
@@ -878,9 +888,9 @@ network.on('click', function(params) {
 	document.getElementById('detail-body').innerHTML = html;
 	document.getElementById('step-detail').style.display = 'block';
 });
-</script>""".replace('NODES', nodes_json)
-			.replace('EDGES', edges_json)
-			.replace('STEPS', steps_json)
+</script>""".replace('/*NODES_JSON*/null', nodes_json)
+			.replace('/*EDGES_JSON*/null', edges_json)
+			.replace('/*STEPS_JSON*/null', steps_json)
 		)
 
 	return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><title>Graph — {_e(test_name)}</title>
