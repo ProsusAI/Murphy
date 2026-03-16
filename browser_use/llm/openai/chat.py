@@ -61,7 +61,7 @@ class ChatOpenAI(BaseChatModel):
 	default_query: Mapping[str, object] | None = None
 	http_client: httpx.AsyncClient | None = None
 	_strict_response_validation: bool = False
-	max_completion_tokens: int | None = 4096
+	max_completion_tokens: int | None = 8192
 	reasoning_models: list[ChatModel | str] | None = field(
 		default_factory=lambda: [
 			'o4-mini',
@@ -272,10 +272,10 @@ class ChatOpenAI(BaseChatModel):
 						model=self.name,
 					)
 
-				if choice.message.content is None:
+				if not choice.message.content:
 					raise ModelProviderError(
-						message='Failed to parse structured output from model response',
-						status_code=500,
+						message='Model returned empty or missing content in structured output response',
+						status_code=502,
 						model=self.name,
 					)
 
