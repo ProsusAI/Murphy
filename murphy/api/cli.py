@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import logging
 import os
 import sys
@@ -22,7 +23,6 @@ from typing import TYPE_CHECKING
 
 from dotenv import load_dotenv
 
-from browser_use.browser.events import SaveStorageStateEvent
 from browser_use.config import CONFIG
 from browser_use.tokens.service import TokenCost
 
@@ -227,10 +227,26 @@ async def _async_main(args: argparse.Namespace) -> None:
 		else:
 			headless = not args.auth
 
+		# CI mode: MURPHY_STORAGE_STATE env var provides auth cookies (no local profile needed).
+		# Local mode: user_data_dir gives Chrome a persistent profile (cookies persist natively).
+		env_storage_state = os.getenv('MURPHY_STORAGE_STATE')
+		if env_storage_state:
+			# CI: inject cookies from env var, no local profile
+			env_storage_state = env_storage_state.strip()
+			if env_storage_state.startswith('{'):
+				storage_state = json.loads(env_storage_state)
+			else:
+				storage_state = Path(env_storage_state)
+			user_data_dir = None
+		else:
+			# Local: Chrome profile handles cookie persistence
+			storage_state = None
+			user_data_dir = BROWSER_PROFILE_DIR
+
 		browser_session = BrowserSession(
 			browser_profile=BrowserProfile(
-				user_data_dir=BROWSER_PROFILE_DIR,
-				storage_state=BROWSER_PROFILE_DIR / 'storage_state.json',
+				user_data_dir=user_data_dir,
+				storage_state=storage_state,
 				keep_alive=True,
 				headless=headless,
 				dom_highlight_elements=not args.no_highlights,
@@ -245,15 +261,20 @@ async def _async_main(args: argparse.Namespace) -> None:
 		if args.auth:
 			# --auth flag: skip detection, go straight to login wait
 			await wait_for_manual_login(browser_session, llm, args.url)
-			# Save storage state immediately so credentials persist for future headless runs
-			await browser_session.event_bus.dispatch(SaveStorageStateEvent())
+			# Export decrypted cookies to storage_state.json for CI use
+			storage_state_path = BROWSER_PROFILE_DIR / 'storage_state.json'
+			await browser_session.export_storage_state(output_path=storage_state_path)
+			logger.info('Saved storage state to %s — use as MURPHY_STORAGE_STATE in CI', storage_state_path)
 			logger.info('Continuing with authenticated session...\n')
 		elif not args.no_auth:
 			# Auto-detect: navigate and let the LLM decide
 			auth_required = await detect_auth_required(browser_session, llm, args.url)
 			if auth_required:
 				await wait_for_manual_login(browser_session, llm, args.url, already_navigated=True)
-				await browser_session.event_bus.dispatch(SaveStorageStateEvent())
+				# Export decrypted cookies to storage_state.json for CI use
+				storage_state_path = BROWSER_PROFILE_DIR / 'storage_state.json'
+				await browser_session.export_storage_state(output_path=storage_state_path)
+				logger.info('Saved storage state to %s — use as MURPHY_STORAGE_STATE in CI', storage_state_path)
 				logger.info('Continuing with authenticated session...\n')
 
 		# ── Phase 1–2: Discover features & generate plan ──
