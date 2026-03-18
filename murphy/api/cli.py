@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING
 
 from dotenv import load_dotenv
 
+from browser_use.browser.events import SaveStorageStateEvent
 from browser_use.config import CONFIG
 from browser_use.tokens.service import TokenCost
 
@@ -229,6 +230,7 @@ async def _async_main(args: argparse.Namespace) -> None:
 		browser_session = BrowserSession(
 			browser_profile=BrowserProfile(
 				user_data_dir=BROWSER_PROFILE_DIR,
+				storage_state=BROWSER_PROFILE_DIR / 'storage_state.json',
 				keep_alive=True,
 				headless=headless,
 				dom_highlight_elements=not args.no_highlights,
@@ -243,12 +245,15 @@ async def _async_main(args: argparse.Namespace) -> None:
 		if args.auth:
 			# --auth flag: skip detection, go straight to login wait
 			await wait_for_manual_login(browser_session, llm, args.url)
+			# Save storage state immediately so credentials persist for future headless runs
+			await browser_session.event_bus.dispatch(SaveStorageStateEvent())
 			logger.info('Continuing with authenticated session...\n')
 		elif not args.no_auth:
 			# Auto-detect: navigate and let the LLM decide
 			auth_required = await detect_auth_required(browser_session, llm, args.url)
 			if auth_required:
 				await wait_for_manual_login(browser_session, llm, args.url, already_navigated=True)
+				await browser_session.event_bus.dispatch(SaveStorageStateEvent())
 				logger.info('Continuing with authenticated session...\n')
 
 		# ── Phase 1–2: Discover features & generate plan ──

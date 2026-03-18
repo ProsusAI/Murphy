@@ -31,6 +31,24 @@ logger = logging.getLogger(__name__)
 
 from murphy.config import MAX_PARALLEL_SESSIONS
 
+# Patterns that indicate browser/infra failure rather than a website or test logic issue
+_INFRA_CRASH_PATTERNS = (
+	'CDP client not initialized',
+	'CDP client not connected',
+	'Root CDP client not initialized',
+	'browser may not be connected',
+	'browser not connected',
+	'WebSocket',
+	'websocket',
+	'ConnectionClosed',
+	'ConnectionClosedError',
+	'InvalidStateError',
+	'BrowserNotStartedError',
+	'subprocess',
+)
+
+SESSION_START_MAX_RETRIES = 2
+
 # ─── Structured output parsing ────────────────────────────────────────────────
 
 
@@ -420,17 +438,21 @@ async def _execute_single_test(
 		test_result.failure_category = classify_failure(test_result)
 	except Exception as exc:
 		tb = traceback.format_exc()
-		logger.error('  CRASH: %s: %s', type(exc).__name__, exc)
+		exc_str = f'{type(exc).__name__}: {exc}'
+		is_infra = any(pat in str(exc) or pat in type(exc).__name__ for pat in _INFRA_CRASH_PATTERNS)
+		category = 'test_limitation' if is_infra else 'website_issue'
+		label = 'INFRA' if is_infra else 'CRASH'
+		logger.error('  %s: %s', label, exc_str)
 		test_result = TestResult(
 			scenario=scenario,
 			success=False,
 			judgement=None,
 			actions=[],
-			errors=[f'{type(exc).__name__}: {exc}', tb],
+			errors=[exc_str, tb],
 			duration=0.0,
-			reason=f'Test crashed: {type(exc).__name__}: {exc}',
+			reason=f'Browser/infrastructure failure: {exc_str}' if is_infra else f'Test crashed: {exc_str}',
 		)
-		test_result.failure_category = 'test_limitation'
+		test_result.failure_category = category
 
 	return test_result
 
@@ -483,13 +505,45 @@ async def _create_session_pool(
 	except Exception as exc:
 		logger.warning('Failed to extract web storage for auth transfer: %s', exc)
 
-	for _ in range(1, pool_size):
+	for slot in range(1, pool_size):
 		profile = BrowserProfile(
 			keep_alive=True,
 			dom_highlight_elements=highlight_elements,
 		)
 		session = BrowserSession(browser_profile=profile)
-		await session.start()
+
+		# Start with retry + health check to avoid CDP-not-initialized failures
+		started = False
+		for attempt in range(1, SESSION_START_MAX_RETRIES + 1):
+			try:
+				await session.start()
+				if session.is_cdp_connected:
+					started = True
+					break
+				logger.warning(
+					'Pool slot %d: CDP not connected after start (attempt %d/%d), retrying',
+					slot,
+					attempt,
+					SESSION_START_MAX_RETRIES,
+				)
+				try:
+					await session.kill()
+				except Exception:
+					pass
+				session = BrowserSession(browser_profile=profile)
+			except Exception as exc:
+				logger.warning(
+					'Pool slot %d: session.start() failed (attempt %d/%d): %s',
+					slot,
+					attempt,
+					SESSION_START_MAX_RETRIES,
+					exc,
+				)
+				session = BrowserSession(browser_profile=profile)
+
+		if not started:
+			logger.error('Pool slot %d: failed to start after %d attempts, skipping', slot, SESSION_START_MAX_RETRIES)
+			continue
 
 		# Inject auth cookies if available
 		if cookies:
