@@ -95,6 +95,72 @@ async def _llm_classify_page(llm: ChatOpenAI, url: str, title: str, body: str, *
 		return 'AUTHENTICATED' in answer
 
 
+async def auto_login(
+	browser_session: BrowserSession,
+	llm: ChatOpenAI,
+	url: str,
+	username: str,
+	password: str,
+	*,
+	already_navigated: bool = False,
+	max_steps: int = 15,
+) -> None:
+	"""Automatically log in using the provided credentials via the browser agent."""
+	from browser_use import Agent
+
+	logger.info('\n%s', '=' * 60)
+	logger.info('Auto-login with provided credentials')
+	logger.info('%s\n', '=' * 60)
+
+	if not already_navigated:
+		await browser_session.navigate_to(url)
+		await asyncio.sleep(2)
+
+	task = (
+		f'You are on a login page. Log in with these credentials:\n'
+		f'- Username/Email: {username}\n'
+		f'- Password: {password}\n\n'
+		f'Steps:\n'
+		f'1. Find the login/sign-in form\n'
+		f'2. Fill in the username/email field\n'
+		f'3. Fill in the password field — you MUST type the exact password shown above, character for character\n'
+		f'4. Click the login/sign-in/submit button\n'
+		f'5. Wait for the page to load after submission\n'
+		f'6. If there are any SSO redirects or intermediate pages, follow them\n'
+	)
+
+	# Add a logging filter to mask the password in all log output
+	class _PasswordFilter(logging.Filter):
+		def filter(self, record: logging.LogRecord) -> bool:
+			if isinstance(record.msg, str):
+				record.msg = record.msg.replace(password, '********')
+			return True
+
+	password_filter = _PasswordFilter()
+	logging.getLogger().addFilter(password_filter)
+
+	agent = Agent(
+		task=task,
+		llm=llm,
+		browser_session=browser_session,
+		max_actions_per_step=3,
+	)
+	await agent.run(max_steps=max_steps)
+
+	# Verify login succeeded
+	await asyncio.sleep(2)
+	current_url, title, body = await _get_page_text(browser_session)
+	is_authenticated = await _llm_classify_page(llm, current_url, title, body, mode='login_poll')
+
+	# Remove the password filter
+	logging.getLogger().removeFilter(password_filter)
+
+	if is_authenticated:
+		logger.info('Auto-login successful.')
+	else:
+		logger.warning('Auto-login may have failed — page does not appear authenticated. Continuing anyway.')
+
+
 async def wait_for_manual_login(
 	browser_session: BrowserSession,
 	llm: ChatOpenAI,

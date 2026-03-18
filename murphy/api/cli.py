@@ -84,7 +84,7 @@ async def _async_main(args: argparse.Namespace) -> None:
 	from browser_use.browser.profile import BrowserProfile
 	from browser_use.browser.session import BrowserSession
 	from browser_use.llm import ChatOpenAI
-	from murphy.api.auth import detect_auth_required, wait_for_manual_login
+	from murphy.api.auth import auto_login, detect_auth_required, wait_for_manual_login
 	from murphy.browser.patches import apply as apply_patches
 	from murphy.core.analysis import analyze_website
 	from murphy.core.execution import execute_tests_with_session
@@ -149,14 +149,26 @@ async def _async_main(args: argparse.Namespace) -> None:
 		)
 		await browser_session.start()
 
+		# Check for auto-login credentials (CI/cloud)
+		auth_username = os.getenv('MURPHY_AUTH_USERNAME')
+		auth_password = os.getenv('MURPHY_AUTH_PASSWORD')
+		# Skip interactive prompts when running in CI (no user to press Enter)
+		is_ci = bool(os.getenv('CI') or (auth_username and auth_password))
+
 		if args.auth:
-			# --auth flag: skip detection, go straight to login wait
+			# --auth flag: skip detection, go straight to manual login
 			await wait_for_manual_login(browser_session, llm, args.url)
 			# Export decrypted cookies to storage_state.json for CI use
 			storage_state_path = BROWSER_PROFILE_DIR / 'storage_state.json'
 			await browser_session.export_storage_state(output_path=storage_state_path)
 			logger.info('Saved storage state to %s — use as MURPHY_STORAGE_STATE in CI', storage_state_path)
 			logger.info('Continuing with authenticated session...\n')
+		elif auth_username and auth_password:
+			# Auto-login with credentials from env vars
+			auth_required = await detect_auth_required(browser_session, llm, args.url)
+			if auth_required:
+				await auto_login(browser_session, llm, args.url, auth_username, auth_password, already_navigated=True)
+				logger.info('Continuing with authenticated session...\n')
 		elif not args.no_auth:
 			# Auto-detect: navigate and let the LLM decide
 			auth_required = await detect_auth_required(browser_session, llm, args.url)
@@ -193,11 +205,11 @@ async def _async_main(args: argparse.Namespace) -> None:
 			# Save test plan to YAML
 			plan_path = save_test_plan(args.url, test_plan, output_dir)
 			logger.info('\n  Test plan saved: %s', plan_path)
-			print('  Review and edit the file, then press Enter to continue.')
-			print('  (Add, remove, or modify test scenarios as needed.)\n')
-
-			loop = asyncio.get_event_loop()
-			await loop.run_in_executor(None, lambda: input('  Press Enter to continue...  '))
+			if not is_ci:
+				print('  Review and edit the file, then press Enter to continue.')
+				print('  (Add, remove, or modify test scenarios as needed.)\n')
+				loop = asyncio.get_event_loop()
+				await loop.run_in_executor(None, lambda: input('  Press Enter to continue...  '))
 
 			# Re-read in case user edited
 			_, test_plan = load_test_plan(plan_path)
@@ -216,11 +228,11 @@ async def _async_main(args: argparse.Namespace) -> None:
 				# Save features markdown
 				features_path = write_features_markdown(analysis, output_dir)
 				logger.info('\n  Features saved: %s', features_path)
-				print('  Review and edit the file, then press Enter to continue.')
-				print('  (Add, remove, or modify features as needed.)\n')
-
-				loop = asyncio.get_event_loop()
-				await loop.run_in_executor(None, lambda: input('  Press Enter to continue...  '))
+				if not is_ci:
+					print('  Review and edit the file, then press Enter to continue.')
+					print('  (Add, remove, or modify features as needed.)\n')
+					loop = asyncio.get_event_loop()
+					await loop.run_in_executor(None, lambda: input('  Press Enter to continue...  '))
 
 				# Re-read in case user edited
 				analysis = read_features_markdown(features_path)
@@ -232,11 +244,11 @@ async def _async_main(args: argparse.Namespace) -> None:
 			# Save test plan to YAML
 			plan_path = save_test_plan(args.url, test_plan, output_dir)
 			logger.info('\n  Test plan saved: %s', plan_path)
-			print('  Review and edit the file, then press Enter to continue.')
-			print('  (Add, remove, or modify test scenarios as needed.)\n')
-
-			loop = asyncio.get_event_loop()
-			await loop.run_in_executor(None, lambda: input('  Press Enter to continue...  '))
+			if not is_ci:
+				print('  Review and edit the file, then press Enter to continue.')
+				print('  (Add, remove, or modify test scenarios as needed.)\n')
+				loop = asyncio.get_event_loop()
+				await loop.run_in_executor(None, lambda: input('  Press Enter to continue...  '))
 
 			# Re-read in case user edited
 			_, test_plan = load_test_plan(plan_path)
