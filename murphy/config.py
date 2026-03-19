@@ -42,3 +42,9 @@ MURPHY_REQUEST_TIMEOUT = int(os.environ.get('MURPHY_REQUEST_TIMEOUT', '1800'))
 MURPHY_API_HOST = os.environ.get('MURPHY_API_HOST', '0.0.0.0')
 MURPHY_API_PORT = int(os.environ.get('MURPHY_API_PORT', '8000'))
 SEMAPHORE_ACQUIRE_TIMEOUT = 30
+
+# ─── PostHog integration ─────────────────────────────────────────────────────
+
+POSTHOG_API_KEY = os.environ.get('POSTHOG_API_KEY', '')
+POSTHOG_PROJECT_ID = os.environ.get('POSTHOG_PROJECT_ID', '')
+POSTHOG_HOST = os.environ.get('POSTHOG_HOST', 'https://eu.posthog.com')
