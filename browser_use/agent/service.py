@@ -1952,16 +1952,12 @@ class Agent(Generic[Context, AgentStructuredOutput]):
 			except (ModelRateLimitError, ModelProviderError) as e:
 				last_error = e
 				if attempt < max_retries:
-					self.logger.warning(
-						f'⚠️ LLM error (attempt {attempt}/{max_retries}): {e.message}. Retrying...'
-					)
+					self.logger.warning(f'⚠️ LLM error (attempt {attempt}/{max_retries}): {e.message}. Retrying...')
 					await asyncio.sleep(1 * attempt)
 					continue
 
 				# Exhausted retries — try switching to fallback LLM
-				self.logger.warning(
-					f'⚠️ LLM error persisted after {max_retries} attempts: {e.message}'
-				)
+				self.logger.warning(f'⚠️ LLM error persisted after {max_retries} attempts: {e.message}')
 				if not self._try_switch_to_fallback_llm(e):
 					raise
 				return await self.get_model_output(input_messages)
