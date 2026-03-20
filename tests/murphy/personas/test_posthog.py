@@ -5,8 +5,7 @@ import json
 import pytest
 from pytest_httpserver import HTTPServer
 
-from murphy.personas.posthog import PostHogAPIError, PostHogClient
-
+from murphy.personas.posthog_client import PostHogAPIError, PostHogClient
 
 API_KEY = 'phx_test_key_123'
 PROJECT_ID = '12345'
@@ -67,14 +66,16 @@ async def test_fetch_events_returns_dicts(client: PostHogClient, posthog_server:
 	posthog_server.expect_request(
 		f'/api/projects/{PROJECT_ID}/query/',
 		method='POST',
-	).respond_with_json({
-		'columns': ['uuid', 'event', 'distinct_id', 'session_id', 'timestamp', 'properties'],
-		'results': [
-			['evt-1', '$pageview', 'user-a', 'sess-1', '2025-06-01T00:00:00Z', {'$current_url': '/home'}],
-			['evt-2', '$autocapture', 'user-b', 'sess-2', '2025-06-01T01:00:00Z', {'$element_tag': 'button'}],
-		],
-		'hasMore': False,
-	})
+	).respond_with_json(
+		{
+			'columns': ['uuid', 'event', 'distinct_id', 'session_id', 'timestamp', 'properties'],
+			'results': [
+				['evt-1', '$pageview', 'user-a', 'sess-1', '2025-06-01T00:00:00Z', {'$current_url': '/home'}],
+				['evt-2', '$autocapture', 'user-b', 'sess-2', '2025-06-01T01:00:00Z', {'$element_tag': 'button'}],
+			],
+			'hasMore': False,
+		}
+	)
 
 	events = await client.fetch_events(limit=100)
 
@@ -111,13 +112,15 @@ async def test_fetch_persons_returns_dicts(client: PostHogClient, posthog_server
 	posthog_server.expect_request(
 		f'/api/projects/{PROJECT_ID}/query/',
 		method='POST',
-	).respond_with_json({
-		'columns': ['id', 'properties', 'created_at'],
-		'results': [
-			['p-1', {'email': 'a@b.com'}, '2025-01-01T00:00:00Z'],
-		],
-		'hasMore': False,
-	})
+	).respond_with_json(
+		{
+			'columns': ['id', 'properties', 'created_at'],
+			'results': [
+				['p-1', {'email': 'a@b.com'}, '2025-01-01T00:00:00Z'],
+			],
+			'hasMore': False,
+		}
+	)
 
 	persons = await client.fetch_persons()
 
@@ -146,12 +149,14 @@ async def test_fetch_cohorts_returns_list(client: PostHogClient, posthog_server:
 	posthog_server.expect_request(
 		f'/api/projects/{PROJECT_ID}/cohorts/',
 		method='GET',
-	).respond_with_json({
-		'results': [
-			{'id': 1, 'name': 'Power Users', 'count': 42},
-			{'id': 2, 'name': 'Churned', 'count': 10},
-		],
-	})
+	).respond_with_json(
+		{
+			'results': [
+				{'id': 1, 'name': 'Power Users', 'count': 42},
+				{'id': 2, 'name': 'Churned', 'count': 10},
+			],
+		}
+	)
 
 	cohorts = await client.fetch_cohorts()
 
@@ -167,11 +172,13 @@ async def test_fetch_cohort_persons(client: PostHogClient, posthog_server: HTTPS
 	posthog_server.expect_request(
 		f'/api/projects/{PROJECT_ID}/cohorts/1/persons/',
 		method='GET',
-	).respond_with_json({
-		'results': [
-			{'id': 'p-1', 'distinct_ids': ['user-a'], 'properties': {}},
-		],
-	})
+	).respond_with_json(
+		{
+			'results': [
+				{'id': 'p-1', 'distinct_ids': ['user-a'], 'properties': {}},
+			],
+		}
+	)
 
 	persons = await client.fetch_cohort_persons(1)
 
@@ -185,40 +192,38 @@ async def test_fetch_cohort_persons(client: PostHogClient, posthog_server: HTTPS
 async def test_sample_user_sessions(client: PostHogClient, posthog_server: HTTPServer):
 	query_url = f'/api/projects/{PROJECT_ID}/query/'
 
-	# Query 1: random users
-	posthog_server.expect_ordered_request(query_url, method='POST').respond_with_json({
-		'columns': ['distinct_id'],
-		'results': [['user-a'], ['user-b']],
-		'hasMore': False,
-	})
-	# Query 2: sessions per user
-	posthog_server.expect_ordered_request(query_url, method='POST').respond_with_json({
-		'columns': ['distinct_id', 'session_id', 'session_start', 'session_end', 'event_count'],
-		'results': [
-			['user-a', 'sess-1', '2025-06-01T10:00:00Z', '2025-06-01T10:05:00Z', 3],
-			['user-a', 'sess-2', '2025-05-30T08:00:00Z', '2025-05-30T08:02:00Z', 2],
-			['user-b', 'sess-3', '2025-06-01T12:00:00Z', '2025-06-01T12:10:00Z', 4],
-		],
-		'hasMore': False,
-	})
-	# Query 3: events for sessions
-	posthog_server.expect_ordered_request(query_url, method='POST').respond_with_json({
-		'columns': ['session_id', 'event', 'distinct_id', 'timestamp', 'properties'],
-		'results': [
-			['sess-1', '$pageview', 'user-a', '2025-06-01T10:00:00Z', {}],
-			['sess-1', '$autocapture', 'user-a', '2025-06-01T10:01:00Z', {}],
-			['sess-1', '$pageview', 'user-a', '2025-06-01T10:03:00Z', {}],
-			['sess-2', '$pageview', 'user-a', '2025-05-30T08:00:00Z', {}],
-			['sess-2', '$autocapture', 'user-a', '2025-05-30T08:01:00Z', {}],
-			['sess-3', '$pageview', 'user-b', '2025-06-01T12:00:00Z', {}],
-			['sess-3', '$autocapture', 'user-b', '2025-06-01T12:05:00Z', {}],
-			['sess-3', '$pageview', 'user-b', '2025-06-01T12:08:00Z', {}],
-			['sess-3', '$autocapture', 'user-b', '2025-06-01T12:09:00Z', {}],
-		],
-		'hasMore': False,
-	})
+	# Query 1: sessions above event threshold
+	posthog_server.expect_ordered_request(query_url, method='POST').respond_with_json(
+		{
+			'columns': ['distinct_id', 'session_id', 'session_start', 'session_end', 'event_count'],
+			'results': [
+				['user-a', 'sess-1', '2025-06-01T10:00:00Z', '2025-06-01T10:05:00Z', 3],
+				['user-a', 'sess-2', '2025-05-30T08:00:00Z', '2025-05-30T08:02:00Z', 2],
+				['user-b', 'sess-3', '2025-06-01T12:00:00Z', '2025-06-01T12:10:00Z', 4],
+			],
+			'hasMore': False,
+		}
+	)
+	# Query 2: events for sessions
+	posthog_server.expect_ordered_request(query_url, method='POST').respond_with_json(
+		{
+			'columns': ['session_id', 'event', 'distinct_id', 'timestamp', 'properties'],
+			'results': [
+				['sess-1', '$pageview', 'user-a', '2025-06-01T10:00:00Z', {}],
+				['sess-1', '$autocapture', 'user-a', '2025-06-01T10:01:00Z', {}],
+				['sess-1', '$pageview', 'user-a', '2025-06-01T10:03:00Z', {}],
+				['sess-2', '$pageview', 'user-a', '2025-05-30T08:00:00Z', {}],
+				['sess-2', '$autocapture', 'user-a', '2025-05-30T08:01:00Z', {}],
+				['sess-3', '$pageview', 'user-b', '2025-06-01T12:00:00Z', {}],
+				['sess-3', '$autocapture', 'user-b', '2025-06-01T12:05:00Z', {}],
+				['sess-3', '$pageview', 'user-b', '2025-06-01T12:08:00Z', {}],
+				['sess-3', '$autocapture', 'user-b', '2025-06-01T12:09:00Z', {}],
+			],
+			'hasMore': False,
+		}
+	)
 
-	result = await client.sample_user_sessions(num_users=2, sessions_per_user=2)
+	result = await client.sample_user_sessions(num_sessions=5, min_events=1)
 
 	assert set(result.keys()) == {'user-a', 'user-b'}
 	assert len(result['user-a']) == 2
@@ -235,9 +240,15 @@ async def test_sample_user_sessions_empty(client: PostHogClient, posthog_server:
 	posthog_server.expect_request(
 		f'/api/projects/{PROJECT_ID}/query/',
 		method='POST',
-	).respond_with_json({'columns': ['distinct_id'], 'results': [], 'hasMore': False})
+	).respond_with_json(
+		{
+			'columns': ['distinct_id', 'session_id', 'session_start', 'session_end', 'event_count'],
+			'results': [],
+			'hasMore': False,
+		}
+	)
 
-	result = await client.sample_user_sessions(num_users=5)
+	result = await client.sample_user_sessions(num_sessions=5, min_events=1)
 
 	assert result == {}
 
@@ -280,12 +291,12 @@ async def test_client_requires_context_manager():
 
 
 def test_client_requires_api_key(monkeypatch):
-	monkeypatch.setattr('murphy.personas.posthog.POSTHOG_API_KEY', '')
+	monkeypatch.setattr('murphy.personas.posthog_client.POSTHOG_API_KEY', '')
 	with pytest.raises(ValueError, match='API key'):
 		PostHogClient(api_key='', project_id=PROJECT_ID)
 
 
 def test_client_requires_project_id(monkeypatch):
-	monkeypatch.setattr('murphy.personas.posthog.POSTHOG_PROJECT_ID', '')
+	monkeypatch.setattr('murphy.personas.posthog_client.POSTHOG_PROJECT_ID', '')
 	with pytest.raises(ValueError, match='project ID'):
 		PostHogClient(api_key=API_KEY, project_id='')

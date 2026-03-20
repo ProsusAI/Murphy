@@ -48,3 +48,15 @@ SEMAPHORE_ACQUIRE_TIMEOUT = 30
 POSTHOG_API_KEY = os.environ.get('POSTHOG_API_KEY', '')
 POSTHOG_PROJECT_ID = os.environ.get('POSTHOG_PROJECT_ID', '')
 POSTHOG_HOST = os.environ.get('POSTHOG_HOST', 'https://eu.posthog.com')
+
+# ─── Persona sampling defaults ───────────────────────────────────────────────
+
+PERSONA_SAMPLE_SESSIONS = int(os.environ.get('PERSONA_SAMPLE_SESSIONS', '30'))
+PERSONA_MIN_EVENTS_PER_SESSION = int(os.environ.get('PERSONA_MIN_EVENTS_PER_SESSION', '30'))
+
+# ─── Persona pipeline defaults ──────────────────────────────────────────────
+
+PERSONA_DISCOVERY_SESSIONS = int(os.environ.get('PERSONA_DISCOVERY_SESSIONS', '100'))
+PERSONA_SCORING_SESSIONS = int(os.environ.get('PERSONA_SCORING_SESSIONS', '200'))
+PERSONA_LLM_CONCURRENCY = int(os.environ.get('PERSONA_LLM_CONCURRENCY', '15'))
+PERSONA_MONTHS_BACK = int(os.environ.get('PERSONA_MONTHS_BACK', '2'))

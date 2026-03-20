@@ -1,7 +1,8 @@
-"""PostHog API client for ingesting events, persons, and cohorts.
+"""PostHog API client for ingesting events, persons, cohorts, and metadata.
 
 Uses the HogQL Query API (POST /api/projects/:project_id/query/) for events
-and persons, and the REST API for cohorts. Returns raw JSON — no Pydantic
+and persons. Uses the REST API for cohorts, event definitions, property
+definitions, and session recordings. Returns raw JSON — no Pydantic
 wrapping — so downstream consumers (e.g. trait mapping) decide their own schema.
 """
 
@@ -14,7 +15,13 @@ from typing import Any
 
 import httpx
 
-from murphy.config import POSTHOG_API_KEY, POSTHOG_HOST, POSTHOG_PROJECT_ID
+from murphy.config import (
+	PERSONA_MIN_EVENTS_PER_SESSION,
+	PERSONA_SAMPLE_SESSIONS,
+	POSTHOG_API_KEY,
+	POSTHOG_HOST,
+	POSTHOG_PROJECT_ID,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -33,8 +40,8 @@ class PostHogClient:
 
 	Usage::
 
-		async with PostHogClient() as client:
-			events = await client.fetch_events(after='2025-01-01')
+	        async with PostHogClient() as client:
+	            events = await client.fetch_events(after='2025-01-01')
 	"""
 
 	def __init__(
@@ -139,32 +146,39 @@ class PostHogClient:
 		applied to person properties, e.g. ``"properties.email IS NOT NULL"``.
 		"""
 		where = f' WHERE {properties_filter}' if properties_filter else ''
-		hogql = (
-			f'SELECT id, properties, created_at'
-			f' FROM persons{where}'
-			f' ORDER BY created_at DESC'
-			f' LIMIT {limit}'
-		)
+		hogql = f'SELECT id, properties, created_at FROM persons{where} ORDER BY created_at DESC LIMIT {limit}'
 		result = await self.query(hogql)
 		return _rows_to_dicts(result)
 
-	# ─── User session sampling ────────────────────────────────────────────────
+	# ─── Session sampling ─────────────────────────────────────────────────────
 
 	async def sample_user_sessions(
 		self,
 		*,
-		num_users: int = 10,
-		sessions_per_user: int = 3,
+		num_sessions: int | None = None,
+		min_events: int | None = None,
 		after: str | datetime | None = None,
 		before: str | datetime | None = None,
+		offset: int = 0,
 	) -> dict[str, list[dict[str, Any]]]:
-		"""Sample random users and return their most recent sessions with events.
+		"""Sample random sessions that meet the event-count threshold.
+
+		Parameters fall back to the values in ``murphy.config`` when not supplied:
+		``PERSONA_SAMPLE_SESSIONS`` and ``PERSONA_MIN_EVENTS_PER_SESSION``.
+
+		The ``offset`` parameter skips the first N qualifying sessions in the
+		deterministic hash order, allowing callers to fetch distinct batches
+		(e.g. offset=0 for discovery, offset=100 for scoring).
 
 		Returns a dict keyed by ``distinct_id``, where each value is a list of
-		session dicts (most recent first, up to ``sessions_per_user``). Each
-		session dict has ``session_id``, ``session_start``, ``session_end``,
-		``event_count``, and ``events`` (chronological list of event dicts).
+		session dicts. Each session dict has ``session_id``, ``session_start``,
+		``session_end``, ``event_count``, and ``events`` (chronological list of
+		event dicts). Only sessions with at least ``min_events`` events are
+		included.
 		"""
+		num_sessions = num_sessions if num_sessions is not None else PERSONA_SAMPLE_SESSIONS
+		min_events = min_events if min_events is not None else PERSONA_MIN_EVENTS_PER_SESSION
+
 		time_filter = ''
 		time_conditions: list[str] = []
 		if after:
@@ -174,48 +188,30 @@ class PostHogClient:
 		if time_conditions:
 			time_filter = f' AND {" AND ".join(time_conditions)}'
 
-		# 1. Pick random users that have session data
-		users_q = (
-			f'SELECT DISTINCT distinct_id FROM events'
-			f" WHERE properties.$session_id IS NOT NULL{time_filter}"
-			f' ORDER BY cityHash64(distinct_id) LIMIT {num_users}'
-		)
-		users_result = await self.query(users_q)
-		user_ids = [row[0] for row in users_result.get('results', [])]
-		if not user_ids:
-			logger.info('PostHog: no users found with session data')
-			return {}
-
-		# 2. Get sessions for these users (most recent first)
-		escaped_ids = ', '.join(f"'{uid}'" for uid in user_ids)
-		max_sessions = num_users * sessions_per_user
+		# 1. Pick random sessions above the event threshold
+		offset_clause = f' OFFSET {offset}' if offset else ''
 		sessions_q = (
 			f'SELECT distinct_id, properties.$session_id as session_id,'
 			f' min(timestamp) as session_start, max(timestamp) as session_end,'
 			f' count() as event_count'
 			f' FROM events'
-			f' WHERE distinct_id IN ({escaped_ids})'
-			f" AND properties.$session_id IS NOT NULL{time_filter}"
+			f' WHERE properties.$session_id IS NOT NULL{time_filter}'
 			f' GROUP BY distinct_id, session_id'
-			f' ORDER BY distinct_id, session_start DESC'
-			f' LIMIT {max_sessions}'
+			f' HAVING event_count >= {min_events}'
+			f' ORDER BY cityHash64(session_id)'
+			f' LIMIT {num_sessions}'
+			f'{offset_clause}'
 		)
 		sessions_result = await self.query(sessions_q)
 		sessions_rows = _rows_to_dicts(sessions_result)
 
-		# Keep only the N most recent sessions per user
-		user_sessions: dict[str, list[dict[str, Any]]] = defaultdict(list)
-		for row in sessions_rows:
-			uid = row['distinct_id']
-			if len(user_sessions[uid]) < sessions_per_user:
-				user_sessions[uid].append(row)
-
-		all_session_ids = [s['session_id'] for slist in user_sessions.values() for s in slist]
-		if not all_session_ids:
-			logger.info('PostHog: no sessions found for sampled users')
+		if not sessions_rows:
+			logger.info('PostHog: no sessions found above threshold (%d events)', min_events)
 			return {}
 
-		# 3. Fetch events for all selected sessions
+		all_session_ids = [s['session_id'] for s in sessions_rows]
+
+		# 2. Fetch events for all selected sessions
 		escaped_sids = ', '.join(f"'{sid}'" for sid in all_session_ids)
 		events_q = (
 			f'SELECT properties.$session_id as session_id, event, distinct_id, timestamp, properties'
@@ -227,35 +223,111 @@ class PostHogClient:
 		events_result = await self.query(events_q)
 		event_rows = _rows_to_dicts(events_result)
 
-		# Group events by session
 		events_by_session: dict[str, list[dict[str, Any]]] = defaultdict(list)
 		for evt in event_rows:
 			events_by_session[evt['session_id']].append(evt)
 
-		# Assemble final structure
-		result: dict[str, list[dict[str, Any]]] = {}
-		total_sessions = 0
+		# Group sessions by user
+		result: dict[str, list[dict[str, Any]]] = defaultdict(list)
 		total_events = 0
-		for uid, sessions in user_sessions.items():
-			result[uid] = []
-			for s in sessions:
-				sid = s['session_id']
-				session_events = events_by_session.get(sid, [])
-				result[uid].append({
+		for s in sessions_rows:
+			sid = s['session_id']
+			session_events = events_by_session.get(sid, [])
+			result[s['distinct_id']].append(
+				{
 					'session_id': sid,
 					'session_start': s['session_start'],
 					'session_end': s['session_end'],
 					'event_count': s['event_count'],
 					'events': session_events,
-				})
-				total_sessions += 1
-				total_events += len(session_events)
+				}
+			)
+			total_events += len(session_events)
 
 		logger.info(
 			'PostHog: sampled %d users, %d sessions, %d events',
-			len(result), total_sessions, total_events,
+			len(result),
+			len(sessions_rows),
+			total_events,
 		)
-		return result
+		return dict(result)
+
+	# ─── Event definitions (REST) ─────────────────────────────────────────────
+
+	async def fetch_event_definitions(
+		self,
+		*,
+		event_type: str | None = None,
+		limit: int = 500,
+	) -> list[dict[str, Any]]:
+		"""List event definitions (name + description) via the REST API.
+
+		``event_type`` can be ``'custom'`` to return only app-defined events or
+		``'posthog'`` for PostHog built-in events. Omit to return all.
+
+		Each result dict contains at minimum: ``name``, ``description``,
+		``event_type`` (``'custom'`` | ``'posthog'``), ``volume_30_day``.
+		"""
+		params: dict[str, Any] = {'limit': min(limit, 500)}
+		if event_type:
+			params['event_type'] = event_type
+		return await self._get_paginated(
+			f'/api/projects/{self._project_id}/event_definitions/',
+			params=params,
+			max_results=limit,
+		)
+
+	# ─── Property definitions (REST) ──────────────────────────────────────────
+
+	async def fetch_property_definitions(
+		self,
+		*,
+		property_type: str = 'person',
+		limit: int = 500,
+	) -> list[dict[str, Any]]:
+		"""List property definitions via the REST API.
+
+		``property_type`` controls which property namespace is returned:
+		``'person'`` (default) for person-level traits, ``'event'`` for
+		event properties, ``'group'`` for group properties.
+
+		Each result dict contains at minimum: ``name``, ``description``,
+		``property_type`` (data type), ``is_numerical``.
+		"""
+		params: dict[str, Any] = {'type': property_type, 'limit': min(limit, 500)}
+		return await self._get_paginated(
+			f'/api/projects/{self._project_id}/property_definitions/',
+			params=params,
+			max_results=limit,
+		)
+
+	# ─── Session recordings (REST) ────────────────────────────────────────────
+
+	async def fetch_session_recordings(
+		self,
+		*,
+		after: str | datetime | None = None,
+		before: str | datetime | None = None,
+		limit: int = 100,
+	) -> list[dict[str, Any]]:
+		"""List session recording metadata via the REST API.
+
+		Returns pre-computed engagement signals per session without re-aggregating
+		from raw events. Each result dict contains: ``id`` (session_id),
+		``distinct_id``, ``start_time``, ``end_time``, ``duration``,
+		``active_seconds``, ``click_count``, ``keypress_count``,
+		``mouse_activity_count``, ``recording_duration``.
+		"""
+		params: dict[str, Any] = {'limit': min(limit, 100)}
+		if after:
+			params['date_from'] = _to_iso(after)
+		if before:
+			params['date_to'] = _to_iso(before)
+		return await self._get_paginated(
+			f'/api/projects/{self._project_id}/session_recordings/',
+			params=params,
+			max_results=limit,
+		)
 
 	# ─── Cohorts (REST) ───────────────────────────────────────────────────────
 
@@ -285,13 +357,44 @@ class PostHogClient:
 		data = resp.json()
 		return data.get('results', data) if isinstance(data, dict) else data
 
+	# ─── Pagination helper ────────────────────────────────────────────────────
+
+	async def _get_paginated(
+		self,
+		path: str,
+		*,
+		params: dict[str, Any] | None = None,
+		max_results: int = 500,
+	) -> list[dict[str, Any]]:
+		"""Follow PostHog ``next`` cursor links until ``max_results`` are collected."""
+		client = self._ensure_client()
+		results: list[dict[str, Any]] = []
+		next_url: str | None = path
+		req_params = dict(params or {})
+
+		while next_url and len(results) < max_results:
+			resp = await client.get(next_url, params=req_params)
+			if resp.status_code >= 400:
+				raise PostHogAPIError(resp.status_code, resp.text)
+			data = resp.json()
+			page = data.get('results', []) if isinstance(data, dict) else data
+			results.extend(page)
+			next_url = data.get('next') if isinstance(data, dict) else None
+			req_params = {}  # params are encoded in the next URL already
+
+		return results[:max_results]
+
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
 
 def _to_iso(value: str | datetime) -> str:
+	"""Format a datetime for use in HogQL string comparisons.
+
+	HogQL expects ``YYYY-MM-DD HH:MM:SS`` (no microseconds, no tz offset).
+	"""
 	if isinstance(value, datetime):
-		return value.isoformat()
+		return value.strftime('%Y-%m-%d %H:%M:%S')
 	return value
 
 
