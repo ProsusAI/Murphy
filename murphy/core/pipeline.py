@@ -72,6 +72,7 @@ async def run_execute(
 	fixture_paths: list[Path] | None = None,
 	save_callback: Any = None,
 	progress_state: Any = None,
+	output_dir: Path | None = None,
 ) -> tuple[list[TestResult], ReportSummary]:
 	"""Execute tests and return results + summary."""
 	apply_patches()
@@ -94,6 +95,7 @@ async def run_execute(
 			max_steps=max_steps,
 			max_concurrent=max_concurrent,
 			judge_llm=judge_llm,
+			output_dir=output_dir,
 		)
 		summary = build_summary(results)
 		return results, summary

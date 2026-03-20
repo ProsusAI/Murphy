@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import html as _html
+import json
+from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
-from murphy.io.report_helpers import format_path, suggest_fix
+from murphy.io.report_helpers import _slugify, format_path, suggest_fix
 from murphy.models import ReportSummary, TestPlan, TestResult, WebsiteAnalysis
 
 # ─── CSS ──────────────────────────────────────────────────────────────────────
@@ -91,6 +94,19 @@ h2 { font-family: Georgia, 'Times New Roman', serif; font-size: 1.3rem; font-wei
 .badge-impatient_user { background: #e11d48; color: #fff; }
 .badge-angry_user { background: #9f1239; color: #fff; }
 .persona-label { font-size: .7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: .06em; }
+.trace-link { color: var(--accent); font-size: .8rem; text-decoration: none; margin-left: .5rem; }
+.trace-link:hover { text-decoration: underline; }
+.trace-step { border-left: 4px solid var(--border); padding: 1rem; margin-bottom: .5rem; background: var(--surface); }
+.trace-step.pass { border-left-color: var(--green); }
+.trace-step.fail { border-left-color: var(--red); }
+.step-num { display: inline-block; width: 2rem; height: 2rem; line-height: 2rem; text-align: center; border-radius: 50%; background: var(--border); font-size: .75rem; font-weight: 600; margin-right: .75rem; }
+.step-goal { font-weight: 600; margin-bottom: .25rem; }
+.step-action { display: inline-block; padding: 2px 8px; border-radius: 2px; background: #e5e7eb; font-size: .75rem; margin-right: .25rem; margin-bottom: .25rem; }
+.step-url { font-size: .75rem; color: var(--text-muted); margin-bottom: .25rem; }
+.step-duration { font-size: .7rem; color: var(--text-muted); }
+.step-screenshot img { max-height: 300px; border: 1px solid var(--border); cursor: pointer; }
+.step-details { font-size: .8rem; color: var(--text-muted); margin-top: .5rem; }
+.step-details pre { white-space: pre-wrap; word-wrap: break-word; overflow-wrap: break-word; }
 """
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -180,8 +196,8 @@ def _format_action_html(action: Any) -> str:
 		el = action.get('interacted_element')
 		el_html = ''
 		if el and isinstance(el, dict):
-			tag = el.get('tag_name', '')
-			name = el.get('ax_name', '').replace('\n', ' ').strip()
+			tag = el.get('tag_name') or ''
+			name = (el.get('ax_name') or '').replace('\n', ' ').strip()
 			if tag or name:
 				el_html = f' <span class="action-element">{_e(tag)} &ldquo;{_e(name)}&rdquo;</span>'
 
@@ -201,11 +217,11 @@ def _render_features_summary_html(analysis: WebsiteAnalysis) -> str:
 
 	html_parts = ['<h2>Features Discovered</h2>']
 	for cat, features in by_category.items():
-		html_parts.append(f'<div class="group-header">{_e(cat.replace("_", " ").title())} ({len(features)})</div>')
+		html_parts.append(f'<div class="group-header">{_e((cat or "").replace("_", " ").title())} ({len(features)})</div>')
 		for f in features:
-			testability_color = {'testable': 'var(--green)', 'partial': 'var(--orange)', 'untestable': 'var(--gray)'}[
-				f.testability
-			]
+			testability_color = {'testable': 'var(--green)', 'partial': 'var(--orange)', 'untestable': 'var(--gray)'}.get(
+				f.testability, 'var(--gray)'
+			)
 			importance_label = f.importance.upper()
 			html_parts.append(
 				f'<div class="card" style="padding:.75rem 1.25rem">'
@@ -401,20 +417,17 @@ def render_results_html(
 				if suggestion:
 					body_parts.append(f'<div class="detail"><strong>Suggestion:</strong> {_e(suggestion)}</div>')
 
-			if r.actions:
-				action_rows = ''.join(_format_action_html(a) for a in r.actions[:30])
-				body_parts.append(
-					f'<div class="detail"><strong>Actions:</strong></div><div class="actions-list">{action_rows}</div>'
-				)
-
 			body_html = '\n'.join(body_parts)
 
+			results_idx = results.index(r)
 			cards_html += f"""<div class="card">
 	<div class="card-header" onclick="toggle({card_idx})">
 		<span class="arrow" id="arrow-{card_idx}">&#9654;</span>
 		<span class="test-name">{_e(r.scenario.name)}</span>
 		<span class="badge badge-persona badge-{r.scenario.test_persona}">{_e(_PERSONA_LABELS.get(r.scenario.test_persona, r.scenario.test_persona))}</span>
 		<span class="badge {badge_cls}">{badge_text}</span>
+		<a href="/trace/{results_idx}" class="trace-link" onclick="event.stopPropagation()">View trace &rarr;</a>
+		<a href="/graph/{results_idx}" class="trace-link" onclick="event.stopPropagation()">View graph &rarr;</a>
 	</div>
 	<div class="card-body" id="body-{card_idx}">
 		{body_html}
@@ -442,3 +455,498 @@ function toggleExp(id) {{
 	else {{ s.style.display = 'none'; f.style.display = ''; }}
 }}
 </script></body></html>"""
+
+
+def _format_trace_action(action_item: dict) -> str:
+	"""Format a single action from history for the trace view."""
+	if not isinstance(action_item, dict):
+		return _e(str(action_item))
+	parts = []
+	for action_type, params in action_item.items():
+		if action_type == 'interacted_element':
+			continue
+		label = action_type.replace('_', ' ')
+		if isinstance(params, dict):
+			# Add key params (url, index, text) for brevity
+			brief = []
+			if 'url' in params:
+				brief.append(params['url'][:60] + ('...' if len(str(params.get('url', ''))) > 60 else ''))
+			if 'index' in params:
+				brief.append(f'#{params["index"]}')
+			if 'text' in params:
+				t = str(params['text'])[:40]
+				brief.append(f'"{t}{"..." if len(str(params.get("text", ""))) > 40 else ""}"')
+			if brief:
+				label += ' ' + ' '.join(str(b) for b in brief)
+		parts.append(f'<span class="step-action">{_e(label)}</span>')
+	return ''.join(parts) if parts else ''
+
+
+def render_trace_html(
+	result: TestResult,
+	history_steps: list,
+	test_idx: int,
+	output_dir: Path | None = None,
+) -> str:
+	"""Render a full-page step-by-step execution timeline for one test."""
+	slug = _slugify(result.scenario.name) if result.scenario else ''
+	screenshots_dir = (output_dir / 'screenshots' / f'test_{test_idx + 1:02d}_{slug}') if output_dir else None
+
+	steps_html = ''
+	for i, step in enumerate(history_steps):
+		mo = step.get('model_output') or {}
+		state = step.get('state') or {}
+		metadata = step.get('metadata') or {}
+		results_list = step.get('result') or []
+
+		goal = mo.get('next_goal') or ''
+		eval_prev = mo.get('evaluation_previous_goal') or ''
+		memory = mo.get('memory')
+		thinking = mo.get('thinking')
+
+		actions = mo.get('action') or []
+		action_pills = ''.join(_format_trace_action(a) for a in actions)
+
+		extracted = ''
+		if results_list:
+			ex = results_list[0].get('extracted_content') if isinstance(results_list[0], dict) else ''
+			if ex:
+				extracted = str(ex)[:200] + ('...' if len(str(ex)) > 200 else '')
+
+		is_done = False
+		step_success = None
+		for r in results_list:
+			if isinstance(r, dict) and r.get('is_done'):
+				is_done = True
+				step_success = r.get('success')
+				break
+
+		step_num = metadata.get('step_number', i)
+		dur = metadata.get('step_end_time') or 0
+		start = metadata.get('step_start_time') or 0
+		duration_s = f'{(dur - start):.1f}s' if dur and start else ''
+
+		url = state.get('url') or ''
+		screenshot_path = state.get('screenshot_path')
+		if screenshot_path and screenshots_dir:
+			basename = Path(screenshot_path).name if isinstance(screenshot_path, str) else ''
+			alt_path = screenshots_dir / basename if basename else screenshots_dir
+			if alt_path.exists() and alt_path.is_file():
+				screenshot_path = str(alt_path)
+
+		screenshot_html = ''
+		if screenshot_path and isinstance(screenshot_path, str):
+			path_param = quote(screenshot_path, safe='')
+			screenshot_html = f'<div class="step-screenshot"><a href="/screenshot?path={path_param}" target="_blank"><img src="/screenshot?path={path_param}" alt="Step {step_num}" /></a></div>'
+
+		step_cls = 'trace-step'
+		if is_done:
+			step_cls += ' pass' if step_success else ' fail'
+
+		memory_html = ''
+		if memory:
+			memory_html = f'<details class="step-details"><summary>Memory</summary><pre>{_e(str(memory))}</pre></details>'
+
+		thinking_html = ''
+		if thinking:
+			thinking_html = (
+				f'<details class="step-details"><summary>Show reasoning</summary><pre>{_e(str(thinking))}</pre></details>'
+			)
+
+		steps_html += f'''
+<div class="{step_cls}">
+	<div><span class="step-num">{step_num}</span><span class="step-duration">{_e(duration_s)}</span></div>
+	<div class="step-goal">{_e(goal)}</div>
+	{f'<div class="detail" style="margin-bottom:.5rem">{_e(eval_prev)}</div>' if eval_prev else ''}
+	{f'<div style="margin-bottom:.5rem">{action_pills}</div>' if action_pills else ''}
+	{f'<div class="detail">{_e(extracted)}</div>' if extracted else ''}
+	{f'<div class="step-url">{_e(url)}</div>' if url else ''}
+	{screenshot_html}
+	{memory_html}
+	{thinking_html}
+</div>'''
+
+	back_link = '<a href="/results" class="trace-link">&larr; Back to results</a>'
+	return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><title>Trace — {_e(result.scenario.name if result.scenario else 'Test')}</title>
+<style>{_CSS}</style></head><body>
+<h1>Execution Trace</h1>
+<div class="subtitle">{back_link} &middot; {_e(result.scenario.name if result.scenario else 'Test')}</div>
+<h2>Steps</h2>
+{steps_html if steps_html else '<p>No step data available.</p>'}
+</body></html>"""
+
+
+def _build_graph_data(history_steps: list) -> tuple[list[dict], list[dict]]:
+	"""Extract nodes (goals) and edges (actions) from agent history.
+
+	Structure: Each step creates ONE node (the goal), and multiple edges (the actions).
+	Flow: Node (goal) → Edge (action 1) → Edge (action 2) → Next Node (next goal)
+	"""
+	nodes: list[dict] = []
+	edges: list[dict] = []
+
+	for i, step in enumerate(history_steps):
+		mo = step.get('model_output') or {}
+		state = step.get('state') or {}
+		results_list = step.get('result') or []
+
+		url = state.get('url') or ''
+		title = state.get('title') or url
+		next_goal = mo.get('next_goal') or 'Start'
+		eval_prev = mo.get('evaluation_previous_goal') or ''
+
+		# Determine if previous goal succeeded or failed from evaluation text
+		eval_lower = eval_prev.lower()
+		eval_success = None
+		if 'success' in eval_lower or 'succeeded' in eval_lower:
+			eval_success = True
+		elif 'fail' in eval_lower or 'failed' in eval_lower or 'did not' in eval_lower:
+			eval_success = False
+
+		# Node label: step number + goal, with failed eval text shown beneath
+		goal_text = next_goal[:80] + ('...' if len(next_goal) > 80 else '')
+		label = f'Step {i + 1}\n{goal_text}'
+		if eval_success is False and eval_prev:
+			eval_short = eval_prev[:100] + ('...' if len(eval_prev) > 100 else '')
+			label += f'\n\n✗ {eval_short}'
+
+		# Tooltip: full goal + evaluation + URL
+		tooltip = f'Step {i + 1}\n\nGoal: {next_goal}\n\nEvaluation of previous: {eval_prev}\n\nPage: {title}\nURL: {url}'
+
+		action_list = mo.get('action') or []
+
+		is_done = False
+		success = None
+		for r in results_list:
+			if isinstance(r, dict) and r.get('is_done'):
+				is_done = True
+				# extracted_content holds the ScenarioExecutionVerdict JSON — use its
+				# success field as the real verdict; fall back to the outer success flag.
+				raw = r.get('extracted_content') or ''
+				try:
+					verdict = json.loads(raw)
+					success = verdict.get('success')
+				except (ValueError, TypeError):
+					pass
+				if success is None:
+					success = r.get('success')
+				break
+
+		# Node color and border based on final result and evaluation
+		if i == 0:
+			color = '#3b82f6'  # blue - start
+			border_color = '#2563eb'
+			border_width = 2
+			dashes = False
+		elif is_done:
+			color = '#16a34a' if success else '#dc2626'  # green/red - final
+			border_color = color
+			border_width = 3
+			dashes = False
+		else:
+			# Intermediate node - color by evaluation
+			if eval_success is True:
+				color = '#dbeafe'  # light blue - success eval
+				border_color = '#16a34a'  # green border
+				dashes = False
+			elif eval_success is False:
+				color = '#fee2e2'  # light red - failed eval
+				border_color = '#dc2626'  # red border
+				dashes = [5, 5]  # dashed
+			else:
+				color = '#f3f4f6'  # gray - neutral
+				border_color = '#9ca3af'
+				dashes = False
+			border_width = 2
+
+		nodes.append(
+			{
+				'id': i,
+				'label': label,
+				'title': tooltip,
+				'color': {'background': color, 'border': border_color},
+				'borderWidth': border_width,
+				'shapeProperties': {'borderDashes': dashes},
+			}
+		)
+
+		# Create edges: actions from THIS node to NEXT node
+		# All actions in a step become a single edge with newline-separated labels
+		if action_list and i < len(history_steps) - 1:
+			# Get interacted element info from state for richer labels
+			interacted_elements = state.get('interacted_element') or []
+
+			label_parts = []
+			tooltip_parts = []
+			for action_idx, action in enumerate(action_list):
+				if not isinstance(action, dict):
+					continue
+
+				action_type = list(action.keys())[0] if action else 'unknown'
+				action_params = action.get(action_type, {})
+
+				label_parts.append(_build_action_label(action_type, action_params, interacted_elements, action_idx))
+
+				if action_idx < len(results_list) and isinstance(results_list[action_idx], dict):
+					extracted = str(results_list[action_idx].get('extracted_content') or '')[:150]
+					if extracted:
+						tooltip_parts.append(extracted)
+
+			if label_parts:
+				edges.append(
+					{
+						'from': i,
+						'to': i + 1,
+						'label': '\n'.join(label_parts),
+						'title': '\n'.join(tooltip_parts),
+						'smooth': {'enabled': True, 'type': 'cubicBezier', 'roundness': 0.2},
+					}
+				)
+
+	return nodes, edges
+
+
+def _build_action_label(action_type: str, params: dict, interacted_elements: list, idx: int) -> str:
+	"""Build a descriptive label for an action edge."""
+	# Get element details if available
+	element = interacted_elements[idx] if idx < len(interacted_elements) else None
+	element_name = ''
+
+	if element and isinstance(element, dict):
+		# Try to get a human-readable name for the element
+		ax_name = element.get('ax_name') or ''
+		node_name = element.get('node_name') or ''
+		attributes = element.get('attributes') or {}
+
+		if ax_name:
+			element_name = ax_name[:40]
+		elif attributes.get('aria-label'):
+			element_name = attributes['aria-label'][:40]
+		elif node_name:
+			element_name = f'{node_name.lower()}'
+
+	# Build label based on action type
+	if action_type == 'click':
+		if element_name:
+			return f"click '{element_name}'"
+		return 'click'
+
+	elif action_type == 'input_text':
+		text = str(params.get('text', ''))[:30]
+		if element_name:
+			return f"type '{text}' into {element_name}"
+		return f"type '{text}'"
+
+	elif action_type == 'navigate':
+		url = str(params.get('url', ''))
+		url_short = url.split('/')[-1] or url.split('//')[-1].split('/')[0]
+		return f'navigate → {url_short}'
+
+	elif action_type == 'scroll':
+		direction = params.get('direction', 'down')
+		return f'scroll {direction}'
+
+	elif action_type == 'select_option':
+		option = str(params.get('option', ''))[:30]
+		return f"select '{option}'"
+
+	elif action_type == 'done':
+		return '✓ done'
+
+	else:
+		return action_type
+
+
+def _safe_json_embed(obj: Any) -> str:
+	"""Serialize *obj* to JSON that is safe to embed inside an HTML <script> tag.
+
+	Escapes ``</`` → ``<\\/`` and ``<!--`` so the browser's HTML parser never
+	sees a closing ``</script>`` (or comment-open) inside the literal.
+	"""
+	raw = json.dumps(obj)
+	return raw.replace('</', r'<\/').replace('<!--', r'<\!--')
+
+
+def render_graph_html(result: TestResult, history_steps: list, test_idx: int) -> str:
+	"""Render an interactive graph of pages visited and actions taken."""
+	nodes, edges = _build_graph_data(history_steps)
+	nodes_json = _safe_json_embed(nodes)
+	edges_json = _safe_json_embed(edges)
+	steps_json = _safe_json_embed(history_steps)
+
+	test_name = result.scenario.name if result.scenario else 'Test'
+	back_link = '<a href="/results" class="trace-link">&larr; Back to results</a>'
+
+	if not nodes:
+		graph_html = '<p>No step data available for graph.</p>'
+	else:
+		graph_html = (
+			"""
+<div style="display:flex; gap:1rem; align-items:flex-start;">
+  <div id="graph-wrapper" style="flex:1; min-width:0; height:80vh; min-height:600px; overflow-y:auto; border:1px solid var(--border); border-radius:2px;">
+    <div id="graph"></div>
+  </div>
+  <div id="step-detail" style="width:360px; max-height:80vh; overflow-y:auto; border:1px solid var(--border); border-radius:2px; padding:1rem; background:var(--surface); display:none; flex-shrink:0;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+      <strong id="detail-title" style="font-size:.95rem;"></strong>
+      <button onclick="document.getElementById('step-detail').style.display='none'; setTimeout(fitToWidth,50)" style="background:none;border:none;cursor:pointer;font-size:1rem;color:var(--text-muted);">✕</button>
+    </div>
+    <div id="detail-body" style="font-size:.82rem; line-height:1.6;"></div>
+  </div>
+</div>
+<script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+<script>
+var steps_data = /*STEPS_JSON*/null;
+var nodes_data = new vis.DataSet(/*NODES_JSON*/null);
+var edges_data = new vis.DataSet(/*EDGES_JSON*/null);
+var container = document.getElementById('graph');
+var data = { nodes: nodes_data, edges: edges_data };
+var options = {
+	edges: { 
+		arrows: 'to', 
+		font: { 
+			size: 14, 
+			align: 'horizontal',
+			background: 'white', 
+			strokeWidth: 0
+		},
+		smooth: { type: 'cubicBezier', roundness: 0.2 },
+		width: 2,
+		labelHighlightBold: false
+	},
+	nodes: { 
+		font: { size: 12, multi: true, face: 'Open Sans' },
+		shape: 'box',
+		margin: { top: 10, bottom: 10, left: 10, right: 10 },
+		borderWidth: 2,
+		widthConstraint: { minimum: 200, maximum: 280 }
+	},
+	layout: {
+		hierarchical: {
+			enabled: true,
+			direction: 'UD',
+			sortMethod: 'directed',
+			levelSeparation: 150,
+			nodeSpacing: 100,
+			treeSpacing: 200
+		}
+	},
+	physics: { enabled: false },
+	interaction: {
+		hover: true,
+		tooltipDelay: 100,
+		zoomView: false,
+		dragView: false
+	}
+};
+var network = new vis.Network(container, data, options);
+
+function fitToWidth() {
+	var positions = network.getPositions();
+	var nodeIds = Object.keys(positions);
+	if (nodeIds.length === 0) return;
+	var minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+	nodeIds.forEach(function(id) {
+		var pos = positions[id];
+		if (pos.x < minX) minX = pos.x;
+		if (pos.x > maxX) maxX = pos.x;
+		if (pos.y < minY) minY = pos.y;
+		if (pos.y > maxY) maxY = pos.y;
+	});
+	var wrapper = document.getElementById('graph-wrapper');
+	var containerWidth = wrapper.clientWidth;
+	var graphWidth = maxX - minX + 300;
+	var scale = containerWidth / graphWidth;
+	if (scale > 1.5) scale = 1.5;
+	if (scale < 0.3) scale = 0.3;
+	// Set inner graph div tall enough for the full graph at this scale
+	var graphHeight = maxY - minY + 200;
+	var innerHeight = Math.max(graphHeight * scale + 100, 600);
+	container.style.height = innerHeight + 'px';
+	network.setSize(containerWidth + 'px', innerHeight + 'px');
+	network.redraw();
+	// Center the graph in the canvas
+	var centerX = (minX + maxX) / 2;
+	var centerY = (minY + maxY) / 2;
+	network.moveTo({
+		position: { x: centerX, y: centerY },
+		scale: scale,
+		animation: false
+	});
+}
+network.once('afterDrawing', function() {
+	setTimeout(fitToWidth, 50);
+});
+
+function esc(s) {
+	return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+function row(label, value) {
+	if (!value && value !== 0) return '';
+	return '<div style="margin-bottom:.75rem"><div style="font-weight:600;color:var(--text-muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;margin-bottom:.2rem">' + label + '</div><div style="color:var(--text)">' + esc(value) + '</div></div>';
+}
+
+network.on('click', function(params) {
+	if (!params.nodes.length) return;
+	var idx = params.nodes[0];
+	var step = steps_data[idx];
+	if (!step) return;
+
+	var mo = step.model_output || {};
+	var state = step.state || {};
+	var results = step.result || [];
+	var meta = step.metadata || {};
+
+	var actions = (mo.action || []).map(function(a) {
+		var type = Object.keys(a)[0] || 'unknown';
+		var params = a[type] || {};
+		var detail = Object.entries(params).map(function(kv){ return kv[0] + ': ' + kv[1]; }).join(', ');
+		return type + (detail ? ' (' + detail + ')' : '');
+	}).join('\\n');
+
+	var extracted = results.map(function(r) {
+		return r.extracted_content || '';
+	}).filter(Boolean).join('\\n');
+
+	var duration = (meta.step_end_time && meta.step_start_time)
+		? ((meta.step_end_time - meta.step_start_time).toFixed(1) + 's')
+		: '';
+
+	var url = state.url || '';
+	var title = state.title || '';
+
+	var html = '';
+	html += row('Goal', mo.next_goal);
+	html += row('Evaluation of previous', mo.evaluation_previous_goal);
+	html += row('Actions', actions);
+	html += row('Result', extracted);
+	html += row('Page', title || url);
+	if (url && url !== title) html += row('URL', url);
+	if (duration) html += row('Duration', duration);
+	if (mo.memory) html += row('Memory', mo.memory);
+
+	var stepNum = (meta.step_number || (idx + 1));
+	document.getElementById('detail-title').textContent = 'Step ' + stepNum;
+	document.getElementById('detail-body').innerHTML = html;
+	document.getElementById('step-detail').style.display = 'block';
+	setTimeout(fitToWidth, 50);
+});
+</script>""".replace('/*NODES_JSON*/null', nodes_json)
+			.replace('/*EDGES_JSON*/null', edges_json)
+			.replace('/*STEPS_JSON*/null', steps_json)
+		)
+
+	return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><title>Graph — {_e(test_name)}</title>
+<style>{_CSS}</style></head><body>
+<h1>Agent Path Graph</h1>
+<div class="subtitle">{back_link} &middot; {_e(test_name)}</div>
+<p class="detail" style="margin-bottom:1rem">
+	<strong>Flow:</strong> Goal → Actions → Next Goal (top to bottom). 
+	<strong>Nodes:</strong> What the agent plans to do (next_goal). 
+	<strong>Edges:</strong> Actions taken (one edge per action, curved if multiple). 
+	<strong>Colors:</strong> Light blue bg = previous succeeded, light red bg = previous failed, dashed red border = failed evaluation. 
+	Blue = start, green = final success, red = final failure.
+	Click any node to see step details.
+</p>
+{graph_html}
+</body></html>"""

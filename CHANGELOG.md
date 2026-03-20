@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- `--open` flag to re-open the interactive web UI for a previously completed run without re-running any tests (no browser or LLM required)
+- Step-by-step execution trace view in the UI (`View trace →`) showing each agent step with goal, evaluation, actions, screenshots, memory, and reasoning
+- Interactive agent path graph in the UI (`View graph →`) visualising the full decision tree with colour-coded nodes (success/failure evaluations) and labelled action edges; click any node to inspect step details
+
 ## [1.0.0] - 2026-03-05
 
 ### Added
