@@ -51,12 +51,14 @@ SCHEMA = TraitSchema(
 		TraitDimension(
 			name='engagement_depth',
 			description='How deeply the user engages.',
+			why_chosen='Multiple sessions showed different depth of product use.',
 			low_description='Passive browsing',
 			high_description='Deep multi-feature usage',
 		),
 		TraitDimension(
 			name='exploration_breadth',
 			description='How many features the user explores.',
+			why_chosen='Some users stayed in one area; others sampled many routes.',
 			low_description='Single feature focus',
 			high_description='Wide exploration across features',
 		),
@@ -108,6 +110,8 @@ async def test_score_session_includes_schema_in_prompt():
 	user_msg = messages[-1]
 	assert 'engagement_depth' in user_msg.content
 	assert 'exploration_breadth' in user_msg.content
+	assert 'Why this dimension:' in user_msg.content
+	assert 'Multiple sessions showed different depth' in user_msg.content
 
 
 @pytest.mark.asyncio

@@ -19,6 +19,7 @@ from murphy.config import (
 	POSTHOG_HOST,
 	POSTHOG_PROJECT_ID,
 )
+from murphy.personas.compressor import compress_session
 from murphy.personas.discovery import run_discovery
 from murphy.personas.models import AnalyticsSession
 from murphy.personas.pipeline_models import SessionScore, TraitSchema
@@ -126,7 +127,7 @@ async def run_persona_pipeline(
 	min_events: int = 20,
 	months_back: int = PERSONA_MONTHS_BACK,
 	max_concurrent: int = PERSONA_LLM_CONCURRENCY,
-) -> tuple[TraitSchema, list[SessionScore]]:
+) -> tuple[TraitSchema, list[SessionScore], str | None]:
 	"""Run the full persona discovery and scoring pipeline.
 
 	1. Fetch discovery sessions from PostHog.
@@ -135,6 +136,11 @@ async def run_persona_pipeline(
 	4. Fetch scoring sessions (distinct from discovery via offset).
 	5. Enrich scoring sessions with person properties.
 	6. Run Phase 2 scoring -> list[SessionScore].
+
+	Returns ``(schema, scores, discovery_timeline_sample)``. The third value is
+	the compressed session text passed into the per-session discovery LLM as
+	``{timeline}`` in :data:`murphy.personas.discovery.OBSERVE_USER` for the
+	first discovery session, or ``None`` if there were no discovery sessions.
 	"""
 	async with PostHogClient(
 		api_key=POSTHOG_API_KEY,
@@ -161,6 +167,14 @@ async def run_persona_pipeline(
 		person_contexts = await fetch_person_contexts(client, disc_user_ids)
 
 		population_paths = await fetch_population_paths(client, after_iso)
+
+		discovery_timeline_sample: str | None = None
+		if disc_sessions:
+			first = disc_sessions[0]
+			discovery_timeline_sample = compress_session(
+				first,
+				person_contexts.get(first.user_id),
+			)
 
 		schema = await run_discovery(
 			llm,
@@ -194,4 +208,4 @@ async def run_persona_pipeline(
 			max_concurrent=max_concurrent,
 		)
 
-		return schema, scores
+		return schema, scores, discovery_timeline_sample

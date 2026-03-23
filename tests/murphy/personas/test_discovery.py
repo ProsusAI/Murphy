@@ -60,12 +60,14 @@ MOCK_SCHEMA = TraitSchema(
 		TraitDimension(
 			name='engagement_depth',
 			description='How deeply the user engages.',
+			why_chosen='Observations emphasized depth of interaction.',
 			low_description='Passive browsing',
 			high_description='Deep multi-feature usage',
 		),
 		TraitDimension(
 			name='exploration_breadth',
 			description='How many features the user explores.',
+			why_chosen='Breadth of navigation varied across sessions.',
 			low_description='Single feature focus',
 			high_description='Wide exploration across features',
 		),

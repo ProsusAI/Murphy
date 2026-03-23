@@ -12,7 +12,7 @@ breaks dynamic-key objects in OpenAI strict mode.
 
 from __future__ import annotations
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class SessionObservation(BaseModel):
@@ -28,6 +28,12 @@ class TraitDimension(BaseModel):
 
 	name: str
 	description: str
+	why_chosen: str = Field(
+		description=(
+			'Why this dimension was included: cite patterns from the session observations '
+			'(recurring traits, contrasts between users, or population flows) that motivated this axis.'
+		),
+	)
 	low_description: str
 	high_description: str
 

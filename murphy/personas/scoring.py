@@ -45,6 +45,7 @@ def _format_schema(schema: TraitSchema) -> str:
 	lines: list[str] = []
 	for dim in schema.dimensions:
 		lines.append(f'**{dim.name}**: {dim.description}')
+		lines.append(f'  Why this dimension: {dim.why_chosen}')
 		lines.append(f'  1 (low) = {dim.low_description}')
 		lines.append(f'  5 (high) = {dim.high_description}')
 	return '\n'.join(lines)
