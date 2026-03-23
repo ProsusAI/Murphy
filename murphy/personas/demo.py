@@ -2,9 +2,11 @@
 
 Usage::
 
-    python -m murphy.personas.demo [--discovery N] [--scoring N] [--min-events N] [--months-back N] [--model MODEL] [--examples N]
+    python -m murphy.personas.demo [--discovery N] [--scoring N] [--min-events N] [--months-back N] [--model MODEL] [--examples N] [--context-max-chars N] [--no-context]
 
 Defaults to 10 discovery sessions and 20 scoring sessions for a quick demo run.
+After the run, prints a sample of the compressed session text inserted as {timeline} in the
+per-session discovery user message (OBSERVE_USER in murphy.personas.discovery).
 Set higher values (100/200) for production-quality results.
 """
 
@@ -15,8 +17,37 @@ import asyncio
 import logging
 import sys
 
+from murphy.personas.discovery import OBSERVE_USER
 from murphy.personas.pipeline import run_persona_pipeline
 from murphy.personas.pipeline_models import SessionScore, TraitSchema
+
+
+def _print_discovery_session_context(timeline: str | None, max_chars: int) -> None:
+	"""Show what one discovery session looks like after :func:`compress_session` (LLM user body)."""
+	print('\n' + '=' * 80)
+	print('  DISCOVERY LLM — SESSION CONTEXT (sample)')
+	print('=' * 80)
+	print(
+		'\nPhase 1 calls the model once per discovery session. The system prompt is '
+		'OBSERVE_SYSTEM (behavioral analyst instructions); the user message is '
+		'OBSERVE_USER: a short instruction plus the compressed session timeline below '
+		'(from compress_session in murphy.personas.compressor).\n'
+	)
+	print('--- User message prefix (fixed) ---')
+	prefix, _, _ = OBSERVE_USER.partition('{timeline}')
+	print(prefix.rstrip())
+	print('\n--- {timeline} sample (first discovery session) ---')
+	if timeline is None:
+		print('(No discovery sessions were returned; nothing to show.)')
+		print()
+		return
+	if max_chars > 0 and len(timeline) > max_chars:
+		shown = timeline[:max_chars]
+		print(shown)
+		print(f'\n... [{len(timeline) - max_chars} more characters truncated; use --context-max-chars 0 for full text]')
+	else:
+		print(timeline)
+	print()
 
 
 def _print_schema(schema: TraitSchema) -> None:
@@ -29,6 +60,7 @@ def _print_schema(schema: TraitSchema) -> None:
 	for i, dim in enumerate(schema.dimensions, 1):
 		print(f'  {i}. {dim.name}')
 		print(f'     {dim.description}')
+		print(f'     Why chosen: {dim.why_chosen}')
 		print(f'     1 (low)  = {dim.low_description}')
 		print(f'     5 (high) = {dim.high_description}')
 		print()
@@ -79,6 +111,13 @@ async def main() -> None:
 	parser.add_argument('--model', type=str, default='gpt-4.1-mini', help='LLM model (default: gpt-4.1-mini)')
 	parser.add_argument('--examples', type=int, default=5, help='Number of score examples to display (default: 5)')
 	parser.add_argument('--concurrency', type=int, default=15, help='Max concurrent LLM calls (default: 15)')
+	parser.add_argument(
+		'--context-max-chars',
+		type=int,
+		default=12000,
+		help='Max characters of discovery timeline sample to print (default: 12000; 0 = no limit)',
+	)
+	parser.add_argument('--no-context', action='store_true', help='Skip printing the discovery session context sample')
 	args = parser.parse_args()
 
 	logging.basicConfig(
@@ -90,7 +129,7 @@ async def main() -> None:
 	print(f'\nRunning persona pipeline: {args.discovery} discovery + {args.scoring} scoring sessions')
 	print(f'Model: {args.model}  |  Min events: {args.min_events}  |  Months back: {args.months_back}\n')
 
-	schema, scores = await run_persona_pipeline(
+	schema, scores, discovery_timeline_sample = await run_persona_pipeline(
 		model=args.model,
 		discovery_sessions=args.discovery,
 		scoring_sessions=args.scoring,
@@ -98,6 +137,9 @@ async def main() -> None:
 		months_back=args.months_back,
 		max_concurrent=args.concurrency,
 	)
+
+	if not args.no_context:
+		_print_discovery_session_context(discovery_timeline_sample, max_chars=args.context_max_chars)
 
 	_print_schema(schema)
 	_print_scores(scores, schema, num_examples=args.examples)

@@ -28,6 +28,7 @@ def test_dimension_roundtrip():
 	dim = TraitDimension(
 		name='engagement_depth',
 		description='How deeply the user engages with product features.',
+		why_chosen='Observations repeatedly contrasted shallow vs deep feature use.',
 		low_description='Passive browser, minimal interaction',
 		high_description='Power user, deep multi-feature engagement',
 	)
@@ -44,6 +45,7 @@ def test_schema_roundtrip():
 			TraitDimension(
 				name='engagement',
 				description='Engagement level',
+				why_chosen='Summaries varied on interaction depth.',
 				low_description='Low engagement',
 				high_description='High engagement',
 			),

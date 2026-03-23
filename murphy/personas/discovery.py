@@ -64,12 +64,17 @@ orthogonal behavioral dimensions. Each dimension should:
 - Be observable from session event data (not speculative)
 - Have clear low (1) and high (5) anchors
 - Be useful for distinguishing different user personas
+- Include a "why_chosen" field: 1-3 sentences explaining why you included this
+  dimension, grounded in specific patterns from the observations (e.g. which
+  traits recurred, how users differed, or what navigation flows suggested the axis)
 
 Aim for dimensions that separate user archetypes meaningfully."""
 
 AGGREGATE_USER = """\
 Below are behavioral observations from {num_sessions} user sessions.
 Synthesize them into a canonical trait schema of 5-8 orthogonal dimensions.
+For every dimension, explain in why_chosen how the observations (and population
+flows, if present) motivated that axis.
 
 {observations_block}
 {paths_block}"""

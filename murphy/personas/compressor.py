@@ -1,8 +1,10 @@
 """Session compressor — converts AnalyticsSession into a token-efficient text timeline.
 
-Produces three sections: metadata header, navigation summary, and compressed
-event timeline.  Designed for LLM consumption in the persona discovery and
-scoring pipeline.
+Produces sections: metadata header, optional cognitive summary, navigation
+summary, and compressed event timeline. Each timeline row is a short label
+plus selective PostHog properties (allowlisted per event type, or a small
+set of safe custom properties for unknown events)—not full property JSON.
+Designed for LLM consumption in the persona discovery and scoring pipeline.
 """
 
 from __future__ import annotations
@@ -10,7 +12,7 @@ from __future__ import annotations
 import re
 from collections import Counter
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Sequence
 from urllib.parse import urlparse
 
 from murphy.personas.models import AnalyticsEvent, AnalyticsSession
@@ -33,6 +35,172 @@ def _is_noise(event_name: str) -> bool:
 	if event_name in NOISE_EVENTS:
 		return True
 	return any(event_name.startswith(p) for p in NOISE_PREFIXES)
+
+
+# ── Per-event property snippets (allowlists + safe generic fallback) ───────
+
+_SENSITIVE_KEY_SUBSTRINGS = (
+	'token',
+	'secret',
+	'password',
+	'passwd',
+	'credential',
+	'api_key',
+	'authorization',
+	'bearer',
+	'cookie',
+	'email',
+)
+
+_GENERIC_PROP_KEY_BLOCKLIST = frozenset(
+	{
+		'message',
+		'text',
+		'body',
+		'content',
+		'query',
+		'input',
+		'prompt',
+		'answer',
+		'response',
+	}
+)
+
+# Ordered keys to try per event name; first present values win (up to per-row cap).
+_EVENT_EXTRA_PROP_KEYS: dict[str, tuple[str, ...]] = {
+	'$pageview': ('$title', 'tab', 'utm_source', 'utm_medium', 'utm_campaign', '$search'),
+	'$autocapture': ('$event_type', '$el_tag_name', '$el_href', '$target_text'),
+	'conversation_started': (
+		'conversation_id',
+		'conversationId',
+		'space_id',
+		'spaceId',
+		'template_id',
+		'templateId',
+	),
+	'conversation_continued': ('has_attachment', 'attachment_count', 'continued_from'),
+	'file_uploaded': ('file_type', 'mime_type', 'extension', 'size_bucket', 'file_name'),
+	'file_pasted': ('file_type', 'mime_type', 'extension', 'size_bucket'),
+	'file_dropped': ('file_type', 'mime_type', 'extension', 'size_bucket'),
+	'message_feedback': ('rating', 'reason'),
+	'memory_added': ('source', 'scope'),
+	'memory_updated': ('source', 'scope'),
+	'memory_deleted': ('source', 'scope'),
+	'knowledge_added': ('source', 'scope'),
+	'knowledge_deleted': ('source', 'scope'),
+	'prompt_created': ('prompt_id', 'promptId', 'title'),
+	'prompt_selected': ('prompt_id', 'promptId', 'title'),
+	'stored_prompt_used': ('prompt_id', 'promptId', 'title'),
+	'model_select_changed': ('reason', 'previous_model_id', 'source'),
+	'$rageclick': ('$rageclick_url',),
+}
+
+
+def _prop_key_is_sensitive(key: str) -> bool:
+	kl = key.lower()
+	return any(s in kl for s in _SENSITIVE_KEY_SUBSTRINGS)
+
+
+def _generic_prop_key_allowed(key: str) -> bool:
+	if key.startswith('$'):
+		return False
+	if _prop_key_is_sensitive(key):
+		return False
+	if key in _GENERIC_PROP_KEY_BLOCKLIST:
+		return False
+	kl = key.lower()
+	if any(kl.endswith(s) for s in ('_message', '_content', '_text', '_body', '_prompt')):
+		return False
+	return True
+
+
+def _timeline_prop_key_label(key: str) -> str:
+	if key.startswith('$') and len(key) > 1:
+		return key[1:]
+	return key
+
+
+def _scalar_to_timeline_value(value: Any, max_len: int) -> str | None:
+	if value is None:
+		return None
+	if isinstance(value, bool):
+		return 'true' if value else 'false'
+	if isinstance(value, int):
+		return str(value)
+	if isinstance(value, float):
+		if value.is_integer():
+			return str(int(value))
+		return f'{value:.4g}'
+	if isinstance(value, str):
+		s = value.replace('\n', ' ').replace('\r', '').strip()
+		if not s:
+			return None
+		if len(s) > max_len:
+			return s[: max_len - 1] + '…'
+		return s
+	return None
+
+
+def _format_props_suffix(
+	props: dict[str, Any],
+	keys: Sequence[str],
+	*,
+	max_pairs: int = 5,
+	max_val_len: int = 48,
+) -> str:
+	parts: list[str] = []
+	for key in keys:
+		if len(parts) >= max_pairs:
+			break
+		if key not in props:
+			continue
+		val = _scalar_to_timeline_value(props[key], max_val_len)
+		if val is None:
+			continue
+		parts.append(f'{_timeline_prop_key_label(key)}={val}')
+	if not parts:
+		return ''
+	return ' | ' + ', '.join(parts)
+
+
+def _format_generic_custom_props_suffix(props: dict[str, Any], *, max_pairs: int = 5, max_val_len: int = 40) -> str:
+	keys_sorted = sorted(k for k in props if _generic_prop_key_allowed(k))
+	parts: list[str] = []
+	for key in keys_sorted:
+		if len(parts) >= max_pairs:
+			break
+		val = _scalar_to_timeline_value(props[key], max_val_len)
+		if val is None:
+			continue
+		parts.append(f'{key}={val}')
+	if not parts:
+		return ''
+	return ' | ' + ', '.join(parts)
+
+
+def _extras(name: str, props: dict[str, Any]) -> str:
+	keys = _EVENT_EXTRA_PROP_KEYS.get(name)
+	if not keys:
+		return ''
+	return _format_props_suffix(props, keys)
+
+
+def _exception_type_and_message(props: dict[str, Any]) -> tuple[Any, Any]:
+	typ = props.get('$exception_type') or props.get('exception_type')
+	msg = props.get('$exception_message') or props.get('exception_message')
+	exc_list = props.get('$exception_list')
+	if isinstance(exc_list, list) and exc_list:
+		first = exc_list[0]
+		if isinstance(first, dict):
+			if typ is None:
+				typ = first.get('type')
+			if msg is None:
+				msg = first.get('message') or first.get('value')
+	if typ is None:
+		typ = props.get('type')
+	if msg is None:
+		msg = props.get('message')
+	return typ, msg
 
 
 def _fmt_duration(seconds: float) -> str:
@@ -64,51 +232,71 @@ def _timestamp_label(ts: datetime) -> str:
 
 
 def _compress_event_label(event: AnalyticsEvent) -> str:
-	"""Return a human-readable one-line label for an event."""
+	"""Return a human-readable one-line label for an event.
+
+	Includes allowlisted property snippets where useful; unknown custom events
+	append a small set of non-sensitive scalar properties (never full JSON).
+	"""
 	name = event.event_name
 	props = event.properties
 
 	if name == '$pageview':
 		pathname = props.get('$pathname') or props.get('$current_url', '')
-		return f'Navigated to {_extract_pathname(pathname)}'
+		base = f'Navigated to {_extract_pathname(pathname)}'
+		return base + _extras(name, props)
 
 	if name == '$autocapture':
 		el_text = props.get('$el_text', '').strip()
 		if el_text:
-			return f'Clicked "{el_text[:60]}"'
-		return 'Interacted with element'
+			base = f'Clicked "{el_text[:60]}"'
+		else:
+			base = 'Interacted with element'
+		return base + _extras(name, props)
 
 	if name == 'conversation_started':
 		model = props.get('model', '?')
 		space = props.get('withinSpace', False)
-		return f'Started conversation (model={model}, space={space})'
+		base = f'Started conversation (model={model}, space={space})'
+		return base + _extras(name, props)
 
 	if name == 'conversation_continued':
-		return 'Sent follow-up message'
+		return 'Sent follow-up message' + _extras(name, props)
 
 	if name in ('file_uploaded', 'file_pasted', 'file_dropped'):
-		return 'Uploaded file'
+		return 'Uploaded file' + _extras(name, props)
 
 	if name == 'message_feedback':
 		feedback = props.get('feedback', '?')
-		return f'Gave {feedback} feedback'
+		base = f'Gave {feedback} feedback'
+		return base + _extras(name, props)
 
 	if name == '$rageclick':
-		return 'Rage-clicked'
+		return 'Rage-clicked' + _extras(name, props)
 
 	if name == '$exception':
-		return 'Error encountered'
+		typ, msg = _exception_type_and_message(props)
+		base = 'Error encountered'
+		if typ or msg:
+			t_s = _scalar_to_timeline_value(typ, 40) if typ is not None else None
+			m_s = _scalar_to_timeline_value(msg, 72) if msg is not None else None
+			if t_s and m_s:
+				base = f'Error encountered ({t_s}: {m_s})'
+			elif t_s:
+				base = f'Error encountered ({t_s})'
+			elif m_s:
+				base = f'Error encountered ({m_s})'
+		return base
 
 	if name == 'scroll_down_clicked':
 		return 'Scrolled down'
 
 	# ── Knowledge management ──────────────────────────────────────────────
 	if name == 'memory_added':
-		return 'Added a memory'
+		return 'Added a memory' + _extras(name, props)
 	if name == 'memory_updated':
-		return 'Updated a memory'
+		return 'Updated a memory' + _extras(name, props)
 	if name == 'memory_deleted':
-		return 'Deleted a memory'
+		return 'Deleted a memory' + _extras(name, props)
 	if name == 'all_memories_deleted':
 		return 'Deleted all memories'
 	if name == 'memory_preferences_updated':
@@ -116,19 +304,19 @@ def _compress_event_label(event: AnalyticsEvent) -> str:
 	if name == 'learning_preferences_updated':
 		return 'Updated learning preferences'
 	if name == 'knowledge_added':
-		return 'Added knowledge'
+		return 'Added knowledge' + _extras(name, props)
 	if name == 'knowledge_deleted':
-		return 'Deleted knowledge'
+		return 'Deleted knowledge' + _extras(name, props)
 
 	# ── Prompt engineering ────────────────────────────────────────────────
 	if name == 'prompt_created':
-		return 'Created a saved prompt'
+		return 'Created a saved prompt' + _extras(name, props)
 	if name == 'prompt_selected':
-		return 'Selected a saved prompt'
+		return 'Selected a saved prompt' + _extras(name, props)
 	if name == 'stored_prompt_used':
 		source = props.get('source', '')
-		suffix = f' (from {source})' if source else ''
-		return f'Used a stored prompt{suffix}'
+		inner = f' (from {source})' if source else ''
+		return f'Used a stored prompt{inner}' + _extras(name, props)
 	if name == 'prompts_library_opened':
 		return 'Opened prompts library'
 	if name == 'prompts_library_loaded':
@@ -145,9 +333,10 @@ def _compress_event_label(event: AnalyticsEvent) -> str:
 	# ── Model selection ───────────────────────────────────────────────────
 	if name == 'model_select_changed':
 		model_id = props.get('model_id', '?')
-		return f'Switched model to {model_id}'
+		return f'Switched model to {model_id}' + _extras(name, props)
 
-	return name.replace('_', ' ')
+	base = name.replace('_', ' ')
+	return base + _format_generic_custom_props_suffix(props)
 
 
 # ── Metadata header ──────────────────────────────────────────────────────────

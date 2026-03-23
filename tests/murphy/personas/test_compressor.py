@@ -449,3 +449,75 @@ def test_combined_cognitive_signals():
 	assert 'Feedback given:' in result
 	assert 'Detailed feedback: 1 sent' in result
 	assert 'Model switches: 1' in result
+
+
+# ─── Per-event property snippets ────────────────────────────────────────────
+
+
+def test_pageview_includes_allowlisted_properties():
+	events = [
+		_make_event(
+			'$pageview',
+			_ts(0),
+			{'$pathname': '/dash', '$title': 'Dashboard — App', 'utm_source': 'newsletter'},
+		),
+	]
+	session = _make_session(events)
+	result = compress_session(session)
+	assert 'Navigated to /dash' in result
+	assert 'title=Dashboard' in result or 'title=Dashboard — App' in result
+	assert 'utm_source=newsletter' in result
+
+
+def test_exception_includes_type_and_truncated_message():
+	events = [
+		_make_event(
+			'$exception',
+			_ts(0),
+			{
+				'$exception_type': 'TypeError',
+				'$exception_message': 'Cannot read properties of undefined (reading x)',
+			},
+		),
+	]
+	session = _make_session(events)
+	result = compress_session(session)
+	assert 'Error encountered (TypeError:' in result or 'Error encountered (TypeError)' in result
+	assert 'undefined' in result
+
+
+def test_unknown_custom_event_includes_safe_scalar_properties():
+	events = [
+		_make_event(
+			'workspace_settings_saved',
+			_ts(0),
+			{
+				'section': 'notifications',
+				'enabled_count': 3,
+				'message': 'should be omitted',
+				'api_secret': 'hidden',
+			},
+		),
+	]
+	session = _make_session(events)
+	result = compress_session(session)
+	timeline = result.split('=== Event Timeline ===', 1)[1]
+	assert 'workspace settings saved' in timeline
+	assert 'section=notifications' in timeline
+	assert 'enabled_count=3' in timeline
+	assert 'should be omitted' not in timeline
+	assert 'hidden' not in timeline
+
+
+def test_conversation_started_includes_allowlisted_ids():
+	events = [
+		_make_event(
+			'conversation_started',
+			_ts(0),
+			{'model': 'gpt-4', 'withinSpace': True, 'conversationId': 'conv-abc'},
+		),
+	]
+	session = _make_session(events)
+	result = compress_session(session)
+	assert 'Started conversation (model=gpt-4, space=True)' in result
+	assert 'conversationId=conv-abc' in result
