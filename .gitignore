@@ -54,6 +54,20 @@ screenshot.png
 # Output directories
 output/
 */output/
-murphy/output/
+# Allow a frozen eval plan under murphy/output/ while ignoring generated runs
+!murphy/output/
+# Ignore generated Murphy output; keep frozen eval plan versioned
+murphy/output/*
+!murphy/output/eval_test_1.yaml
+# Explicit: prepare_logs / batch eval artifacts (also matched by murphy/output/*)
+murphy/output/eval_run_rows.jsonl
+murphy/output/eval_run_rows.csv
+murphy/output/eval_run_summary.jsonl
+murphy/output/evaluation_report.json
+murphy/output/evaluation_report.md
 murphy/browser_profile/
 browser_profile/
+
+# Batch runs (also matched by murphy/output/*)
+murphy/output/run_*/
+

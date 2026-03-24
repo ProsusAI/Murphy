@@ -92,6 +92,30 @@ uv run murphy --open
 uv run murphy --open --output-dir ./murphy/output/my-run
 ```
 
+### Running experiments
+
+A frozen plan lives at `murphy/output/eval_test_1.yaml` (copy of a generated `test_plan.yaml`). Run Murphy **10 times** with isolated outputs under `murphy/output/run_1/` … `run_10/`. Each folder gets a **snapshot** of the plan (`eval_test_1.yaml`), plus `agent_history/`, `screenshots/`, `evaluation_report.json`, and `evaluation_report.md`.
+
+```bash
+uv run python scripts/run_eval_batches.py
+# Custom count / pass extra murphy flags after --
+uv run python scripts/run_eval_batches.py --runs 10 -- --no-auth --parallel 2
+```
+
+Use `--continue-on-fail` to run all batches even when one exits non-zero.
+
+**Export a flat eval dataset** from all `run_*/evaluation_report.json` files (single JSONL/CSV — one line per **run × scenario**):
+
+```bash
+uv run python -m murphy.io.prepare_logs --output-root murphy/output --eval-id eval_test_1
+```
+
+Default output: `murphy/output/eval_run_rows.jsonl`. Each row includes **identity** (`eval_id`, `run_id`, `scenario_index`, …), **scenario definition** (`success_criteria`, `steps_description`, `test_persona`, …), **execution** (`step_count`, `duration_s`, `pages_visited`, `form_fills`, `errors`), **agent self-assessment** (from the structured `done` action: `agent_self_verdict`, `agent_reason`, …), **judge verdict** (`judge_verdict`, `judge_reasoning`, `failure_category`, `feedback_quality`, `missing_signals`), **derived** `verdict_agreement`, and **provenance** (`report_timestamp`, `agent_history_path`, `screenshot_paths` relative to the output root). Run-level rollups (`pass_rate`, etc.) are computed downstream from this file.
+
+Use `--format csv`, `--out <path>`, `--max-narrative-chars` (truncate long judge/agent text; `0` clears those narrative fields), `--redact-term` (repeatable) and `--redact-terms-file` to mask emails (`[REDACTED_EMAIL]`) and custom terms (`[REDACTED_ORG]`). Murphy may emit `feedback_type` values beyond a minimal enum (e.g. `none`, `modal_dialog`, `error_page`); they are passed through as stored.
+
+**Analysis tips:** group by `scenario_index` or `scenario_name` across runs for **per-scenario flakiness**; group by `test_persona` for **persona-level** metrics; aggregate by `run_id` for **batch-level** drift.
+
 https://github.com/user-attachments/assets/7fbc441d-e02f-4321-aba7-3aec0cb17163
 
 

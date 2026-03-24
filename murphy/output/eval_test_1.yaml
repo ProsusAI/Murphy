@@ -1,0 +1,170 @@
+# Murphy Test Plan — https://work.toqan.ai
+# Generated: 2026-03-10T13:51:46.312760+00:00
+# Edit freely: add/remove/modify scenarios, then re-run with --plan flag.
+
+url: https://work.toqan.ai
+generated_at: '2026-03-10T13:51:46.312760+00:00'
+scenarios:
+- name: Create agent — happy path via primary creation flow
+  description: A standard user attempts to create a new agent starting from the homepage
+    and expects visible confirmation. The tester explores the homepage to find the
+    creation entry point, tries the primary route, and documents alternatives considered.
+  priority: critical
+  feature_category: other
+  target_feature: agent creation flow from homepage
+  test_persona: happy_path
+  steps_description: Locate and follow the primary path to create an agent from the
+    homepage (use any visible 'Create', 'New Agent', 'Start', or navigational link/button
+    on the homepage; alternatively check header, footer, or main content for creation
+    affordance). If no explicit creation UI is present, attempt to infer creation
+    entry points from any available controls (use any visible buttons or links, or
+    refresh/inspect the homepage for hidden affordances). Complete the creation process
+    intent by providing required details or using any available guided flow (enter
+    details via visible form controls, upload controls if present, or use a guided
+    wizard; alternatively abort or use keyboard-driven submit). Observe for and capture
+    visible confirmation feedback upon completion (look for banners, toasts, page
+    changes, or redirects; alternatively look for email confirmations or dashboard
+    updates).
+  success_criteria: The site visibly confirms agent creation to the user (a confirmation
+    banner/toast appears OR the UI navigates to an agent details or listing page showing
+    the new agent OR the homepage or dashboard updates to include the new agent OR
+    an explicit success state is shown in place of the creation form).
+- name: Create agent — confused novice who can't find creation controls
+  description: A novice user who is unfamiliar with the site looks for the agent creation
+    controls on the homepage, misclicks, and backtracks. The test verifies that the
+    site provides visible guidance and remedial help rather than silently failing.
+  priority: high
+  feature_category: navigation
+  target_feature: help/guidance for creation flow
+  test_persona: confused_novice
+  steps_description: Search the homepage for any creation affordance or guidance (scan
+    visible buttons, links, or headings; alternatively open any menus or check header/footer).
+    If nothing obvious is found, attempt to use contextual actions (try clicking prominent
+    images or cards, or use keyboard navigation to reveal focusable controls). When
+    encountering unclear controls or no response, pause and try to access help or
+    hints (look for tooltips, help links, or inline hints; alternatively reload the
+    page or open the browser console to check for guidance).
+  success_criteria: The user receives visible guidance to complete creation (the site
+    displays contextual hints or tooltips OR an inline help panel or link to instructions
+    appears OR the UI surfaces an obvious next step like a highlighted control or
+    stepper OR the site provides links to documentation or support). Silent failures
+    (no guidance and no visible change) are considered a fail.
+- name: Create agent — adversarial probes for injection or admin paths
+  description: An adversarial tester probes the homepage for paths or inputs that
+    could accept malicious payloads (XSS/SQL probe or hidden admin endpoints). Because
+    the exploration only observed the homepage, the tester searches for input surfaces
+    and probes gracefully.
+  priority: high
+  feature_category: authentication
+  target_feature: resilience to malicious inputs and unexpected endpoints
+  test_persona: adversarial
+  steps_description: Look for any input surfaces or links on the homepage that could
+    accept user-controlled values (inspect visible links, forms, query parameters
+    in navigation, or any URL fragments; alternatively try appending common admin
+    or creation paths to the homepage URL). If input fields are absent, note their
+    absence and try to trigger behavior via clickable elements (click available links
+    or buttons, or modify query parameters on the homepage URL). When an input surface
+    is found, submit typical malicious payloads to test handling (submit payloads
+    via any available input control, via URL parameters, or via any file upload control
+    if present).
+  success_criteria: The site handles malicious probes without unsafe exposure (payloads
+    are sanitized/neutralized or not executed OR the site rejects the input gracefully
+    with visible indication OR requests to admin paths are denied or redirected without
+    leaking sensitive info OR the app remains operational with no crashes or data
+    corruption).
+- name: Create agent — edge case with empty, extremely long, or unusual values
+  description: Test how the system handles missing inputs, extremely long strings,
+    and unusual unicode characters when attempting to create an agent starting from
+    the homepage. If form fields are not present, the tester documents absence and
+    uses available elements.
+  priority: medium
+  feature_category: forms
+  target_feature: input validation and resilience
+  test_persona: edge_case
+  steps_description: From the homepage, attempt to locate the creation form or any
+    input controls (scan for visible forms or controls; alternatively inspect source/DOM
+    for hidden inputs). If found, try submitting with empty required fields, very
+    long values, and unusual unicode or emoji characters (enter empty values or paste
+    very long strings, or insert special unicode characters via any input mechanism).
+    If no input controls exist, note the missing element, try to trigger creation
+    via other controls, and recommend adding explicit input validation UI.
+  success_criteria: The application degrades gracefully when given edge inputs (the
+    system rejects or sanitizes problematic input without crashing OR truncates or
+    normalizes data while preserving integrity OR provides clear validation feedback
+    to the user OR silently ignores unsupported values but continues to function).
+- name: Discover create flow — explorer wandering from homepage
+  description: An explorer user wanders through the homepage looking for discovery
+    cues and alternative creation routes (e.g., menus, contextual links). The test
+    checks whether the site orients users when navigation is non-linear.
+  priority: medium
+  feature_category: navigation
+  target_feature: discovery and orientation from homepage
+  test_persona: explorer
+  steps_description: From the homepage, systematically probe visible areas to discover
+    creation routes or orientation cues (click visible sections, check the header/footer,
+    explore any interactive elements; alternatively use keyboard navigation to reach
+    hidden elements). If every attempt yields no clear path, try looking for page-level
+    indicators (titles, headings, or breadcrumb-like elements) to regain orientation.
+    Record whether each navigation step presents feedback that orients the user.
+  success_criteria: The site provides orientation and discovery feedback (page titles
+    or headings update to reflect location OR breadcrumbs or visible navigation highlights
+    appear OR explicit 'no results' or 'no creation found' messages guide next steps
+    OR help links are surfaced). Dead ends with no feedback are fails.
+- name: Create agent — impatient user with rapid interactions
+  description: An impatient user rapidly attempts to start creation from the homepage,
+    clicks repeatedly, or submits multiple times. The test verifies that the app shows
+    visible state feedback (loading indicators, disabled states) rather than silently
+    dropping actions.
+  priority: medium
+  feature_category: other
+  target_feature: responsiveness and feedback under rapid interaction
+  test_persona: impatient_user
+  steps_description: From the homepage, attempt the creation action multiple times
+    quickly if any control is found (click the same visible control repeatedly or
+    press Enter repeatedly if a form is present; alternatively try multiple different
+    visible links to start creation). Observe whether the UI provides real-time feedback
+    during processing (look for loading indicators, disabled controls, or progress
+    states; alternatively check for any change in the page title or status area).
+  success_criteria: The UI visibly communicates processing state under rapid interactions
+    (loading indicator or disabled controls appear OR additional submit attempts are
+    ignored with feedback OR the app queues/debounces actions and shows status). Silent
+    deduplication with no visible state is a fail.
+- name: Create agent — angry user rage-clicking and force navigation
+  description: An angry user repeatedly tries to force the creation flow by rage-clicking,
+    using back/forward navigation aggressively, or forcibly reloading the homepage.
+    The test ensures the app remains stable and handles aggressive behavior gracefully.
+  priority: low
+  feature_category: other
+  target_feature: robustness to abusive navigation and rapid repeated actions
+  test_persona: angry_user
+  steps_description: From the homepage, perform aggressive interactions to reach or
+    break the creation flow intent (rapidly click visible UI elements, spam navigation
+    controls like back/forward, and forcibly reload the page; alternatively open multiple
+    tabs to perform the same actions). Attempt to submit or trigger creation repeatedly
+    if controls appear (submit multiple times or try to interrupt navigation mid-flow).
+  success_criteria: The site remains stable and handles aggressive interactions without
+    crashing or exposing data (the app continues to respond normally OR displays recovery
+    UI such as reload prompts or error state with remediation options OR silently
+    throttles/rejects excess requests while preserving app integrity). A crash or
+    data corruption is a fail.
+- name: Create agent — missing creation UI (UX recommendation)
+  description: A UX-focused test that documents absence of explicit creation controls
+    on the homepage, attempts to achieve the creation intent using existing elements,
+    and recommends a missing element for improved usability.
+  priority: low
+  feature_category: content_display
+  target_feature: presence of discoverable creation affordance
+  test_persona: explorer
+  steps_description: Look for any direct creation affordance on the homepage (search
+    for buttons, links, headings suggesting 'create' or 'new agent'; alternatively
+    inspect DOM for hidden controls). If absent, attempt to accomplish the creation
+    intent using available elements (use any visible navigation or call-to-action
+    elements to reach potential creation areas). Document the inability to perform
+    the creation task and propose a UX improvement recommending an explicit creation
+    control on the homepage (suggest adding a clear 'Create Agent' button, a dedicated
+    onboarding step, or a prominent link in the header).
+  success_criteria: If creation UI is absent, testers clearly identify the gap and
+    the site allows alternative paths OR surfaces a clear reason creation isn't available
+    (a message that creation is disabled OR a link to learn more about creating agents
+    OR the site provides an alternative workflow). If none of these occur, the absence
+    of any feedback is a fail and the recommendation should be implemented.
