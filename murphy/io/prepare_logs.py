@@ -15,8 +15,9 @@ import csv
 import json
 import re
 import sys
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable, TextIO
+from typing import Any, TextIO
 
 from murphy.models import EvaluationReport, TestResult
 
@@ -188,18 +189,10 @@ def build_eval_run_row(
 		'errors': list(result.errors),
 		'agent_self_verdict': agent_verdict,
 		'agent_reason': _truncate(agent['reason'], max_narrative_chars) if agent else '',
-		'agent_process_evaluation': _truncate(
-			(agent or {}).get('process_evaluation') or '', max_narrative_chars
-		),
-		'agent_logical_evaluation': _truncate(
-			(agent or {}).get('logical_evaluation') or '', max_narrative_chars
-		),
-		'agent_usability_evaluation': _truncate(
-			(agent or {}).get('usability_evaluation') or '', max_narrative_chars
-		),
-		'agent_validation_evidence': _truncate(
-			(agent or {}).get('validation_evidence') or '', max_narrative_chars
-		),
+		'agent_process_evaluation': _truncate((agent or {}).get('process_evaluation') or '', max_narrative_chars),
+		'agent_logical_evaluation': _truncate((agent or {}).get('logical_evaluation') or '', max_narrative_chars),
+		'agent_usability_evaluation': _truncate((agent or {}).get('usability_evaluation') or '', max_narrative_chars),
+		'agent_validation_evidence': _truncate((agent or {}).get('validation_evidence') or '', max_narrative_chars),
 		'judge_verdict': judge_verdict,
 		'judge_reasoning': '',
 		'judge_failure_reason': '',

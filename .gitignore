@@ -70,4 +70,3 @@ browser_profile/
 
 # Batch runs (also matched by murphy/output/*)
 murphy/output/run_*/
-

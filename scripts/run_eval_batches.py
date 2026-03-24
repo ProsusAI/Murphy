@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Run Murphy multiple times with the same frozen eval plan.
 
 Each invocation uses ``--output-dir <output-root>/run_<n>/``. Before each run, the
