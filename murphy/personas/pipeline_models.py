@@ -49,7 +49,7 @@ class DimensionScore(BaseModel):
 	"""A score for a single trait dimension."""
 
 	trait_name: str
-	score: int
+	score: int | float
 
 
 class SessionScore(BaseModel):
@@ -60,6 +60,55 @@ class SessionScore(BaseModel):
 	scores: list[DimensionScore]
 	reasoning: str
 
-	def scores_as_dict(self) -> dict[str, int]:
+	def scores_as_dict(self) -> dict[str, int | float]:
 		"""Convert scores list to a {trait_name: score} dict for convenience."""
 		return {s.trait_name: s.score for s in self.scores}
+
+
+# ── Phase 3: Clustering & Persona Labeling ───────────────────────────────────
+
+
+class PersonaDescription(BaseModel):
+	"""LLM-generated label for a single persona cluster.
+
+	Used as structured output from the labeling LLM call.
+	"""
+
+	persona_id: int
+	name: str
+	description: str
+	distinguishing_traits: list[str]
+
+
+class PersonaLabels(BaseModel):
+	"""LLM output: labels for all persona clusters in one call."""
+
+	personas: list[PersonaDescription]
+
+
+class SessionPersonaAssignment(BaseModel):
+	"""Maps a scored session to its assigned persona cluster."""
+
+	session_id: str
+	user_id: str
+	persona_id: int
+
+
+class Persona(BaseModel):
+	"""A fully described persona: algorithmic centroid merged with LLM labels."""
+
+	persona_id: int
+	name: str
+	description: str
+	centroid: list[DimensionScore]
+	distinguishing_traits: list[str]
+	size: int
+
+
+class PersonaResult(BaseModel):
+	"""Complete output of Phase 3: personas, assignments, and quality metrics."""
+
+	personas: list[Persona]
+	num_clusters: int
+	silhouette_score: float
+	assignments: list[SessionPersonaAssignment]

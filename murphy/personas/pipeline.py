@@ -13,16 +13,19 @@ from browser_use.llm import ChatOpenAI
 from murphy.config import (
 	PERSONA_DISCOVERY_SESSIONS,
 	PERSONA_LLM_CONCURRENCY,
+	PERSONA_MAX_CLUSTERS,
 	PERSONA_MONTHS_BACK,
 	PERSONA_SCORING_SESSIONS,
 	POSTHOG_API_KEY,
 	POSTHOG_HOST,
 	POSTHOG_PROJECT_ID,
 )
+from murphy.personas.clustering import cluster_sessions
 from murphy.personas.compressor import compress_session
 from murphy.personas.discovery import run_discovery
 from murphy.personas.models import AnalyticsSession
-from murphy.personas.pipeline_models import SessionScore, TraitSchema
+from murphy.personas.persona_labeling import build_persona_result, label_personas
+from murphy.personas.pipeline_models import PersonaResult, SessionScore, TraitSchema
 from murphy.personas.posthog_adapter import PostHogAdapter
 from murphy.personas.posthog_client import PostHogClient
 from murphy.personas.scoring import run_scoring
@@ -127,8 +130,10 @@ async def run_persona_pipeline(
 	min_events: int = 20,
 	months_back: int = PERSONA_MONTHS_BACK,
 	max_concurrent: int = PERSONA_LLM_CONCURRENCY,
-) -> tuple[TraitSchema, list[SessionScore], str | None]:
-	"""Run the full persona discovery and scoring pipeline.
+	max_clusters: int = PERSONA_MAX_CLUSTERS,
+	num_clusters: int | None = None,
+) -> tuple[TraitSchema, list[SessionScore], PersonaResult, str | None]:
+	"""Run the full persona discovery, scoring, and clustering pipeline.
 
 	1. Fetch discovery sessions from PostHog.
 	2. Enrich with person properties and population paths.
@@ -136,11 +141,9 @@ async def run_persona_pipeline(
 	4. Fetch scoring sessions (distinct from discovery via offset).
 	5. Enrich scoring sessions with person properties.
 	6. Run Phase 2 scoring -> list[SessionScore].
+	7. Run Phase 3 clustering -> PersonaResult.
 
-	Returns ``(schema, scores, discovery_timeline_sample)``. The third value is
-	the compressed session text passed into the per-session discovery LLM as
-	``{timeline}`` in :data:`murphy.personas.discovery.OBSERVE_USER` for the
-	first discovery session, or ``None`` if there were no discovery sessions.
+	Returns ``(schema, scores, persona_result, discovery_timeline_sample)``.
 	"""
 	async with PostHogClient(
 		api_key=POSTHOG_API_KEY,
@@ -208,4 +211,17 @@ async def run_persona_pipeline(
 			max_concurrent=max_concurrent,
 		)
 
-		return schema, scores, discovery_timeline_sample
+		# Phase 3: Clustering + Labeling
+		logger.info('Clustering %d scored sessions (num_clusters=%s, max_clusters=%d)', len(scores), num_clusters, max_clusters)
+		clustering = cluster_sessions(scores, schema, k=num_clusters, k_range=(4, max_clusters))
+
+		cluster_sizes = [int((clustering.labels == i).sum()) for i in range(clustering.k)]
+		labels = await label_personas(llm, schema, clustering.centroids, cluster_sizes)
+		persona_result = build_persona_result(schema, scores, clustering, labels)
+		logger.info(
+			'Persona pipeline complete: %d personas (silhouette=%.4f)',
+			persona_result.num_clusters,
+			persona_result.silhouette_score,
+		)
+
+		return schema, scores, persona_result, discovery_timeline_sample

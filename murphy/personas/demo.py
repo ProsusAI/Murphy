@@ -19,7 +19,7 @@ import sys
 
 from murphy.personas.discovery import OBSERVE_USER
 from murphy.personas.pipeline import run_persona_pipeline
-from murphy.personas.pipeline_models import SessionScore, TraitSchema
+from murphy.personas.pipeline_models import PersonaResult, SessionScore, TraitSchema
 
 
 def _print_discovery_session_context(timeline: str | None, max_chars: int) -> None:
@@ -102,6 +102,28 @@ def _print_scores(scores: list[SessionScore], schema: TraitSchema, num_examples:
 		print()
 
 
+def _print_personas(result: PersonaResult, schema: TraitSchema) -> None:
+	dim_names = [d.name for d in schema.dimensions]
+
+	print('=' * 80)
+	print('  DISCOVERED PERSONAS')
+	print('=' * 80)
+	print(f'\n{result.num_clusters} personas  |  silhouette score: {result.silhouette_score:.4f}\n')
+
+	for persona in sorted(result.personas, key=lambda p: p.size, reverse=True):
+		pct = persona.size / len(result.assignments) * 100 if result.assignments else 0
+		print(f'--- {persona.name} (id={persona.persona_id}, {persona.size} sessions, {pct:.0f}%) ---')
+		print(f'  {persona.description}')
+		print(f'  Distinguishing traits: {", ".join(persona.distinguishing_traits)}')
+		print('  Centroid:')
+		centroid_dict = {s.trait_name: s.score for s in persona.centroid}
+		for name in dim_names:
+			val = centroid_dict.get(name, 0)
+			bar = '#' * round(val) if isinstance(val, (int, float)) else ''
+			print(f'    {name:<30s}  {val:<5}  {bar}')
+		print()
+
+
 async def main() -> None:
 	parser = argparse.ArgumentParser(description='Persona Discovery & Scoring demo')
 	parser.add_argument('--discovery', type=int, default=10, help='Number of discovery sessions (default: 10)')
@@ -117,6 +139,7 @@ async def main() -> None:
 		default=12000,
 		help='Max characters of discovery timeline sample to print (default: 12000; 0 = no limit)',
 	)
+	parser.add_argument('--clusters', type=int, default=None, help='Force a specific number of persona clusters (default: auto-select via silhouette)')
 	parser.add_argument('--no-context', action='store_true', help='Skip printing the discovery session context sample')
 	args = parser.parse_args()
 
@@ -129,13 +152,14 @@ async def main() -> None:
 	print(f'\nRunning persona pipeline: {args.discovery} discovery + {args.scoring} scoring sessions')
 	print(f'Model: {args.model}  |  Min events: {args.min_events}  |  Months back: {args.months_back}\n')
 
-	schema, scores, discovery_timeline_sample = await run_persona_pipeline(
+	schema, scores, persona_result, discovery_timeline_sample = await run_persona_pipeline(
 		model=args.model,
 		discovery_sessions=args.discovery,
 		scoring_sessions=args.scoring,
 		min_events=args.min_events,
 		months_back=args.months_back,
 		max_concurrent=args.concurrency,
+		num_clusters=args.clusters,
 	)
 
 	if not args.no_context:
@@ -143,6 +167,7 @@ async def main() -> None:
 
 	_print_schema(schema)
 	_print_scores(scores, schema, num_examples=args.examples)
+	_print_personas(persona_result, schema)
 
 
 if __name__ == '__main__':
