@@ -67,6 +67,19 @@ def main() -> int:
 		metavar='N',
 		help='Number of tests to run concurrently (default: 3)',
 	)
+	parser.add_argument(
+		'--discover-personas',
+		action='store_true',
+		help='Run persona discovery pipeline first, then use discovered personas for testing',
+	)
+	parser.add_argument(
+		'--personas',
+		nargs='?',
+		const=True,
+		default=None,
+		metavar='PATH',
+		help='Use discovered personas (default: {output_dir}/personas.json, or specify a path)',
+	)
 	args = parser.parse_args()
 
 	try:
@@ -100,10 +113,37 @@ async def _async_main(args: argparse.Namespace) -> None:
 	# Ensure dummy fixture files exist for upload testing
 	fixture_paths = ensure_dummy_fixture_files()
 
+	from murphy.personas.pipeline_models import PersonaResult, TraitSchema
+	from murphy.personas.storage import load_personas, save_personas
+
 	llm = ChatOpenAI(model=args.model)
 	judge_llm = ChatOpenAI(model=args.judge_model) if args.judge_model != args.model else None
 	output_dir = Path(args.output_dir)
 	output_dir.mkdir(parents=True, exist_ok=True)
+
+	# ── Resolve discovered personas ──
+	discovered_personas: tuple[PersonaResult, TraitSchema] | None = None
+
+	if args.discover_personas:
+		from murphy.personas.pipeline import run_persona_pipeline
+
+		logger.info('Running persona discovery pipeline...')
+		schema, _scores, persona_result, _sample = await run_persona_pipeline(
+			discovery_sessions=100,
+			scoring_sessions=200,
+			num_clusters=5,
+		)
+		save_personas(schema, persona_result, output_dir)
+		discovered_personas = (persona_result, schema)
+		logger.info('Discovered %d personas, saved to %s', len(persona_result.personas), output_dir / 'personas.json')
+	elif args.personas is not None:
+		if args.personas is True:
+			personas_path = output_dir / 'personas.json'
+		else:
+			personas_path = Path(args.personas)
+		assert personas_path.exists(), f'Personas file not found: {personas_path}'
+		schema, persona_result = load_personas(personas_path)
+		discovered_personas = (persona_result, schema)
 
 	browser_session: BrowserSession | None = None
 	analysis: WebsiteAnalysis | None = None
@@ -162,6 +202,7 @@ async def _async_main(args: argparse.Namespace) -> None:
 				session=browser_session,
 				max_scenarios=args.max_tests,
 				max_steps=args.max_steps,
+				discovered_personas=discovered_personas,
 			)
 
 			# Save test plan to YAML
@@ -201,7 +242,9 @@ async def _async_main(args: argparse.Namespace) -> None:
 				logger.info('  Using %d features for test generation.\n', len(analysis.features))
 
 			# ── Generate tests ──
-			test_plan = await generate_tests(args.url, analysis, llm, args.max_tests, goal=args.goal)
+			test_plan = await generate_tests(
+				args.url, analysis, llm, args.max_tests, goal=args.goal, discovered_personas=discovered_personas
+			)
 
 			# Save test plan to YAML
 			plan_path = save_test_plan(args.url, test_plan, output_dir)
@@ -250,6 +293,7 @@ async def _async_main(args: argparse.Namespace) -> None:
 				save_callback=_on_test_complete,
 				max_concurrent=args.parallel,
 				judge_llm=judge_llm,
+				discovered_personas=discovered_personas,
 			)
 			if analysis:
 				write_reports_and_print(args.url, analysis, results, output_dir)
@@ -275,6 +319,7 @@ async def _async_main(args: argparse.Namespace) -> None:
 				save_callback=_on_test_complete,
 				max_concurrent=args.parallel,
 				judge_llm=judge_llm,
+				discovered_personas=discovered_personas,
 			)
 
 		state = ServerState(

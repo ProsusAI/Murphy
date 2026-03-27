@@ -237,7 +237,7 @@ class TestScenario(BaseModel):
 	priority: Literal['critical', 'high', 'medium', 'low']
 	feature_category: FeatureCategory
 	target_feature: str
-	test_persona: TestPersona
+	test_persona: str
 	steps_description: str = Field(min_length=1)
 	success_criteria: str = Field(min_length=1)
 

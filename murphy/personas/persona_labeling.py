@@ -42,6 +42,21 @@ For each cluster, provide:
 - The 2-3 traits that most distinguish this persona from the others
   (list dimension names where this cluster's centroid diverges most
   from the overall mean)
+- test_orientation: Classify whether testing this persona should focus on
+  UX clarity (visible feedback, guidance, orientation) or resilience
+  (handling unexpected/hostile behavior without crashing). Output "ux" or "resilience".
+- success_criteria_guidance: In 1-2 sentences, describe what success looks like
+  when a website is tested by this persona. Use the same style as:
+  "The website provides VISIBLE FEEDBACK for the confused interaction — an error
+  message, a tooltip, or an inline hint."
+- execution_hints: Write 2-4 short behavioral instructions for a browser agent
+  role-playing this persona. Each hint should describe a concrete behavior
+  pattern, e.g., "You have zero patience — if something takes more than
+  2 seconds with no feedback, treat it as broken."
+- judge_questions: Write 2-4 evaluation questions a QA judge should ask when
+  assessing whether a website handled this persona well. Each question should
+  reference a specific trait dimension, e.g., "Would a user with low technical
+  literacy understand this error message?"
 
 Be specific and grounded in the centroid scores. Avoid generic labels."""
 
@@ -140,6 +155,10 @@ def build_persona_result(
 				centroid=centroid_scores,
 				distinguishing_traits=desc.distinguishing_traits if desc else [],
 				size=size,
+				test_orientation=desc.test_orientation if desc else 'ux',
+				success_criteria_guidance=desc.success_criteria_guidance if desc else '',
+				execution_hints=desc.execution_hints if desc else [],
+				judge_questions=desc.judge_questions if desc else [],
 			)
 		)
 

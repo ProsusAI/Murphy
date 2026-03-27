@@ -21,6 +21,7 @@ from murphy.models import (
 	TraitLevel,
 	TraitVector,
 )
+from murphy.personas.pipeline_models import PersonaResult, TraitSchema
 
 TRAIT_JUDGE_QUESTIONS: dict[str, dict[TraitLevel, str]] = {
 	'technical_literacy': {
@@ -115,7 +116,9 @@ You will receive four evidence sections:
 
 ## Trait-based evaluation
 
-Each test has a **persona** with a **trait vector** (5 dimensions) and a **test type** (ux/security/boundary). The user prompt includes per-trait evaluation questions and test-type rules assembled from the persona's traits. Use those to structure your evaluation.
+Each test has a **persona** with a **trait vector** and a **test type** (ux/security/boundary or ux/resilience for discovered personas). The user prompt includes per-trait evaluation questions and test-type rules assembled from the persona's traits. Use those to structure your evaluation.
+
+Predefined personas use 5 fixed dimensions (technical_literacy, patience, intent, exploration, reading_comprehension). Discovered personas may use different, dynamically named trait dimensions with centroid scores and custom judge_questions. In both cases, evaluate each provided dimension/question independently.
 
 Evaluate each trait dimension independently, then synthesize into a verdict. A test can fail on one trait dimension but pass on others — report all of them in `trait_evaluations`.
 
@@ -329,11 +332,14 @@ async def murphy_judge(
 	start_url: str = '',
 	*,
 	judge_llm: ChatOpenAI | None = None,
+	discovered_personas: tuple[PersonaResult, TraitSchema] | None = None,
 ) -> JudgeVerdict:
 	"""Evaluate agent success based on action trace, not self-report.
 
 	When judge_llm is provided, it is used for the verdict call instead of llm.
 	This allows using a more capable model for judging while using a cheaper model elsewhere.
+	When discovered_personas is provided, discovered persona context is used for
+	personas not found in the predefined PERSONA_REGISTRY.
 	"""
 	judge = judge_llm or llm
 	# Pre-processed evidence
@@ -353,10 +359,15 @@ async def murphy_judge(
 
 	# Build trait context for this persona
 	trait_context = ''
-	persona_entry = PERSONA_REGISTRY.get(scenario.test_persona)
+	persona_entry = PERSONA_REGISTRY.get(scenario.test_persona)  # type: ignore[arg-type]
 	if persona_entry:
 		traits, test_type = persona_entry
 		trait_context = build_judge_trait_context(scenario.test_persona, traits, test_type)
+	elif discovered_personas:
+		from murphy.personas.bridge import build_discovered_judge_context
+
+		persona_result, trait_schema = discovered_personas
+		trait_context = build_discovered_judge_context(scenario.test_persona, persona_result, trait_schema)
 
 	user_prompt = JUDGE_USER_TEMPLATE.format(
 		name=scenario.name,

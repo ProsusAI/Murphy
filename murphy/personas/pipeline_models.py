@@ -78,6 +78,18 @@ class PersonaDescription(BaseModel):
 	name: str
 	description: str
 	distinguishing_traits: list[str]
+	test_orientation: str = Field(
+		description="'ux' or 'resilience' — whether testing this persona focuses on UX clarity or resilience to unexpected behavior",
+	)
+	success_criteria_guidance: str = Field(
+		description='What "success" looks like when testing as this persona (1-2 sentences)',
+	)
+	execution_hints: list[str] = Field(
+		description='2-4 behavioral instructions for the agent acting as this persona',
+	)
+	judge_questions: list[str] = Field(
+		description='2-4 evaluation questions for the judge to assess whether the site handled this persona well',
+	)
 
 
 class PersonaLabels(BaseModel):
@@ -103,6 +115,10 @@ class Persona(BaseModel):
 	centroid: list[DimensionScore]
 	distinguishing_traits: list[str]
 	size: int
+	test_orientation: str = ''
+	success_criteria_guidance: str = ''
+	execution_hints: list[str] = Field(default_factory=list)
+	judge_questions: list[str] = Field(default_factory=list)
 
 
 class PersonaResult(BaseModel):
