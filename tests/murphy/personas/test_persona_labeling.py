@@ -43,12 +43,20 @@ MOCK_LABELS = PersonaLabels(
 			name='Deep Diver',
 			description='Highly engaged users who focus on one area.',
 			distinguishing_traits=['engagement_depth'],
+			test_orientation='ux',
+			success_criteria_guidance='User completes deep exploration of a single feature.',
+			execution_hints=['Focus on one area', 'Go deep'],
+			judge_questions=['Did the user explore deeply?'],
 		),
 		PersonaDescription(
 			persona_id=1,
 			name='Broad Explorer',
 			description='Users who sample many features with less depth.',
 			distinguishing_traits=['exploration_breadth'],
+			test_orientation='ux',
+			success_criteria_guidance='User samples multiple features.',
+			execution_hints=['Try many features', 'Move quickly'],
+			judge_questions=['Did the user explore broadly?'],
 		),
 	]
 )
@@ -230,6 +238,10 @@ def test_build_persona_result_fallback_names():
 				name='Deep Diver',
 				description='Deep users.',
 				distinguishing_traits=['engagement_depth'],
+				test_orientation='ux',
+				success_criteria_guidance='User completes deep exploration of a single feature.',
+				execution_hints=['Focus on one area', 'Go deep'],
+				judge_questions=['Did the user explore deeply?'],
 			),
 		]
 	)

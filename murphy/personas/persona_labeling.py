@@ -16,6 +16,7 @@ from murphy.personas.clustering import ClusteringResult
 from murphy.personas.pipeline_models import (
 	DimensionScore,
 	Persona,
+	PersonaDescription,
 	PersonaLabels,
 	PersonaResult,
 	SessionPersonaAssignment,
@@ -134,7 +135,7 @@ def build_persona_result(
 	"""Merge algorithmic clustering with LLM-generated labels into the final result."""
 	dim_names = [d.name for d in schema.dimensions]
 
-	label_map: dict[int, PersonaLabels.personas] = {}
+	label_map: dict[int, PersonaDescription] = {}
 	for p in labels.personas:
 		label_map[p.persona_id] = p
 

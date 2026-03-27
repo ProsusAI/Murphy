@@ -100,7 +100,7 @@ def plan_quality_issues(
 		has_adversarial_intent = False
 		has_high_exploration = False
 		for s in plan.scenarios:
-			entry = PERSONA_REGISTRY.get(s.test_persona)
+			entry = PERSONA_REGISTRY.get(s.test_persona)  # type: ignore[arg-type]
 			if not entry:
 				continue
 			traits, _ = entry
