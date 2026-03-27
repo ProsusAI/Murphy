@@ -11,6 +11,7 @@ from murphy.models import (
 	ExecutiveSummary,
 	ReportSummary,
 	TestResult,
+	TokenUsage,
 	WebsiteAnalysis,
 )
 
@@ -140,9 +141,16 @@ def write_reports_and_print(
 	results: list[TestResult],
 	output_dir: Path,
 	executive_summary: ExecutiveSummary | None = None,
+	persona_discovery_tokens: TokenUsage | None = None,
+	murphy_tokens: TokenUsage | None = None,
 ) -> None:
 	"""Write JSON + markdown reports and log summary to console."""
-	json_path, md_path = write_full_report(url, analysis, results, output_dir, executive_summary=executive_summary)
+	json_path, md_path = write_full_report(
+		url, analysis, results, output_dir,
+		executive_summary=executive_summary,
+		persona_discovery_tokens=persona_discovery_tokens,
+		murphy_tokens=murphy_tokens,
+	)
 	summary = build_summary(results)
 
 	logger.info('\n%s', '=' * 60)
@@ -151,3 +159,16 @@ def write_reports_and_print(
 	logger.info('\n  Pass rate: %s%% (%d/%d)', summary.pass_rate, summary.passed, summary.total)
 	logger.info('  JSON report: %s', json_path)
 	logger.info('  Markdown report: %s', md_path)
+
+	if persona_discovery_tokens:
+		logger.info(
+			'  Persona discovery tokens: %s input, %s output',
+			f'{persona_discovery_tokens.input_tokens:,}',
+			f'{persona_discovery_tokens.output_tokens:,}',
+		)
+	if murphy_tokens:
+		logger.info(
+			'  Murphy execution tokens: %s input, %s output',
+			f'{murphy_tokens.input_tokens:,}',
+			f'{murphy_tokens.output_tokens:,}',
+		)

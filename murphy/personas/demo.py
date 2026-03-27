@@ -160,7 +160,7 @@ async def main() -> None:
 	print(f'\nRunning persona pipeline: {args.discovery} discovery + {args.scoring} scoring sessions')
 	print(f'Model: {args.model}  |  Min events: {args.min_events}  |  Months back: {args.months_back}\n')
 
-	schema, scores, persona_result, discovery_timeline_sample = await run_persona_pipeline(
+	schema, scores, persona_result, discovery_timeline_sample, persona_tokens = await run_persona_pipeline(
 		model=args.model,
 		discovery_sessions=args.discovery,
 		scoring_sessions=args.scoring,
@@ -176,6 +176,8 @@ async def main() -> None:
 	_print_schema(schema)
 	_print_scores(scores, schema, num_examples=args.examples)
 	_print_personas(persona_result, schema)
+
+	print(f'\nToken usage: {persona_tokens.input_tokens:,} input, {persona_tokens.output_tokens:,} output')
 
 	if args.output:
 		out_path = save_personas(schema, persona_result, Path(args.output))

@@ -247,6 +247,39 @@ def write_markdown_report(report: EvaluationReport, output_dir: Path) -> Path:
 			_render_test_detail(r, i, detail_lines)
 			lines += ['<details>', f'<summary>{summary_text}</summary>', ''] + detail_lines + ['</details>', '']
 
+	# ── Token Usage ───────────────────────────────────────────────────────────
+	if report.persona_discovery_tokens or report.murphy_tokens:
+		lines += [
+			'## Token Usage',
+			'',
+			'| Phase | Input Tokens | Output Tokens | Total |',
+			'|-------|-------------|---------------|-------|',
+		]
+		total_input = 0
+		total_output = 0
+		if report.persona_discovery_tokens:
+			pt = report.persona_discovery_tokens
+			total_input += pt.input_tokens
+			total_output += pt.output_tokens
+			lines.append(
+				f'| Persona Discovery | {pt.input_tokens:,} | {pt.output_tokens:,} '
+				f'| {pt.input_tokens + pt.output_tokens:,} |'
+			)
+		if report.murphy_tokens:
+			mt = report.murphy_tokens
+			total_input += mt.input_tokens
+			total_output += mt.output_tokens
+			lines.append(
+				f'| Murphy Execution | {mt.input_tokens:,} | {mt.output_tokens:,} '
+				f'| {mt.input_tokens + mt.output_tokens:,} |'
+			)
+		if report.persona_discovery_tokens and report.murphy_tokens:
+			lines.append(
+				f'| **Total** | **{total_input:,}** | **{total_output:,}** '
+				f'| **{total_input + total_output:,}** |'
+			)
+		lines.append('')
+
 	# Features discovered
 	if a.features:
 		lines += [
