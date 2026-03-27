@@ -10,6 +10,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from browser_use.llm import ChatOpenAI
+from browser_use.tokens.service import TokenCost
 from murphy.config import (
 	PERSONA_DISCOVERY_SESSIONS,
 	PERSONA_LLM_CONCURRENCY,
@@ -25,6 +26,7 @@ from murphy.personas.compressor import compress_session
 from murphy.personas.discovery import run_discovery
 from murphy.personas.models import AnalyticsSession
 from murphy.personas.persona_labeling import build_persona_result, label_personas
+from murphy.models import TokenUsage
 from murphy.personas.pipeline_models import PersonaResult, SessionScore, TraitSchema
 from murphy.personas.posthog_adapter import PostHogAdapter
 from murphy.personas.posthog_client import PostHogClient
@@ -132,7 +134,7 @@ async def run_persona_pipeline(
 	max_concurrent: int = PERSONA_LLM_CONCURRENCY,
 	max_clusters: int = PERSONA_MAX_CLUSTERS,
 	num_clusters: int | None = None,
-) -> tuple[TraitSchema, list[SessionScore], PersonaResult, str | None]:
+) -> tuple[TraitSchema, list[SessionScore], PersonaResult, str | None, TokenUsage]:
 	"""Run the full persona discovery, scoring, and clustering pipeline.
 
 	1. Fetch discovery sessions from PostHog.
@@ -143,7 +145,7 @@ async def run_persona_pipeline(
 	6. Run Phase 2 scoring -> list[SessionScore].
 	7. Run Phase 3 clustering -> PersonaResult.
 
-	Returns ``(schema, scores, persona_result, discovery_timeline_sample)``.
+	Returns ``(schema, scores, persona_result, discovery_timeline_sample, token_usage)``.
 	"""
 	async with PostHogClient(
 		api_key=POSTHOG_API_KEY,
@@ -152,6 +154,9 @@ async def run_persona_pipeline(
 	) as client:
 		adapter = PostHogAdapter(client)
 		llm = ChatOpenAI(model=model, temperature=0.3)
+
+		token_cost = TokenCost()
+		token_cost.register_llm(llm)
 
 		after_date = datetime.now(tz=timezone.utc) - timedelta(days=months_back * 30)
 		after_iso = after_date.strftime('%Y-%m-%d %H:%M:%S')
@@ -224,4 +229,15 @@ async def run_persona_pipeline(
 			persona_result.silhouette_score,
 		)
 
-		return schema, scores, persona_result, discovery_timeline_sample
+		usage = token_cost.get_usage_tokens_for_model(model)
+		token_usage = TokenUsage(
+			input_tokens=usage.prompt_tokens,
+			output_tokens=usage.completion_tokens,
+		)
+		logger.info(
+			'Persona discovery tokens: input=%d, output=%d',
+			token_usage.input_tokens,
+			token_usage.output_tokens,
+		)
+
+		return schema, scores, persona_result, discovery_timeline_sample, token_usage

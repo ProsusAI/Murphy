@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING
 from dotenv import load_dotenv
 
 from browser_use.config import CONFIG
+from browser_use.tokens.service import TokenCost
 
 if TYPE_CHECKING:
 	from murphy.api.server import ServerState
@@ -105,7 +106,7 @@ async def _async_main(args: argparse.Namespace) -> None:
 	from murphy.io.features_io import read_features_markdown, write_features_markdown
 	from murphy.io.fixtures import ensure_dummy_fixture_files
 	from murphy.io.test_plan_io import load_test_plan, save_test_plan
-	from murphy.models import WebsiteAnalysis
+	from murphy.models import TokenUsage, WebsiteAnalysis
 
 	# Apply patches early (idempotent)
 	apply_patches()
@@ -121,6 +122,14 @@ async def _async_main(args: argparse.Namespace) -> None:
 	output_dir = Path(args.output_dir)
 	output_dir.mkdir(parents=True, exist_ok=True)
 
+	# ── Token tracking for Murphy execution ──
+	murphy_token_cost = TokenCost()
+	murphy_token_cost.register_llm(llm)
+	if judge_llm is not None:
+		murphy_token_cost.register_llm(judge_llm)
+
+	persona_discovery_tokens: TokenUsage | None = None
+
 	# ── Resolve discovered personas ──
 	discovered_personas: tuple[PersonaResult, TraitSchema] | None = None
 
@@ -128,10 +137,10 @@ async def _async_main(args: argparse.Namespace) -> None:
 		from murphy.personas.pipeline import run_persona_pipeline
 
 		logger.info('Running persona discovery pipeline...')
-		schema, _scores, persona_result, _sample = await run_persona_pipeline(
+		schema, _scores, persona_result, _sample, persona_discovery_tokens = await run_persona_pipeline(
 			discovery_sessions=100,
 			scoring_sessions=200,
-			num_clusters=5,
+			num_clusters=8,
 		)
 		save_personas(schema, persona_result, output_dir)
 		discovered_personas = (persona_result, schema)
@@ -277,9 +286,23 @@ async def _async_main(args: argparse.Namespace) -> None:
 			)
 
 		# ── Phase 3: Execute ──
+		def _get_murphy_tokens() -> TokenUsage:
+			usage = murphy_token_cost.get_usage_tokens_for_model(args.model)
+			total_input = usage.prompt_tokens
+			total_output = usage.completion_tokens
+			if judge_llm is not None:
+				judge_usage = murphy_token_cost.get_usage_tokens_for_model(args.judge_model)
+				total_input += judge_usage.prompt_tokens
+				total_output += judge_usage.completion_tokens
+			return TokenUsage(input_tokens=total_input, output_tokens=total_output)
+
 		def _on_test_complete(results: list[TestResult]) -> None:
 			if analysis:
-				write_reports_and_print(args.url, analysis, results, output_dir)
+				write_reports_and_print(
+					args.url, analysis, results, output_dir,
+					persona_discovery_tokens=persona_discovery_tokens,
+					murphy_tokens=_get_murphy_tokens(),
+				)
 
 		if not args.ui:
 			results = await execute_tests_with_session(
@@ -296,7 +319,11 @@ async def _async_main(args: argparse.Namespace) -> None:
 				discovered_personas=discovered_personas,
 			)
 			if analysis:
-				write_reports_and_print(args.url, analysis, results, output_dir)
+				write_reports_and_print(
+					args.url, analysis, results, output_dir,
+					persona_discovery_tokens=persona_discovery_tokens,
+					murphy_tokens=_get_murphy_tokens(),
+				)
 			else:
 				_log_results_summary(results)
 			return
@@ -338,7 +365,11 @@ async def _async_main(args: argparse.Namespace) -> None:
 				await asyncio.sleep(1)
 				if state.done and state.results and not getattr(state, '_reports_written', False):
 					if analysis:
-						write_reports_and_print(args.url, analysis, state.results, output_dir)
+						write_reports_and_print(
+							args.url, analysis, state.results, output_dir,
+							persona_discovery_tokens=persona_discovery_tokens,
+							murphy_tokens=_get_murphy_tokens(),
+						)
 					else:
 						_log_results_summary(state.results)
 					state._reports_written = True  # type: ignore[attr-defined]

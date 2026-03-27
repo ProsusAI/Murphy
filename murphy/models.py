@@ -347,6 +347,13 @@ class ExecutiveSummary(BaseModel):
 	recommended_actions: list[str] = Field(description='Top 3 recommended actions to improve the site.')
 
 
+class TokenUsage(BaseModel):
+	"""Accumulated LLM token usage for a pipeline phase."""
+
+	input_tokens: int = 0
+	output_tokens: int = 0
+
+
 class EvaluationReport(BaseModel):
 	url: str
 	timestamp: str
@@ -354,3 +361,5 @@ class EvaluationReport(BaseModel):
 	results: list[TestResult]
 	summary: ReportSummary
 	executive_summary: ExecutiveSummary | None = None
+	persona_discovery_tokens: TokenUsage | None = None
+	murphy_tokens: TokenUsage | None = None
