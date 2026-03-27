@@ -73,7 +73,7 @@ def find_optimal_k(
 
 	sil_scores: dict[int, float] = {}
 	for k in range(lo, hi + 1):
-		km = KMeans(n_clusters=k, n_init=10, random_state=42)
+		km = KMeans(n_clusters=k, n_init=10, random_state=42)  # type: ignore[arg-type]
 		labels = km.fit_predict(matrix)
 		sil = float(silhouette_score(matrix, labels))
 		sil_scores[k] = sil
@@ -129,7 +129,7 @@ def cluster_sessions(
 		k = min(k, matrix.shape[0] - 1)
 		k = max(k, 2)
 
-	km = KMeans(n_clusters=k, n_init=10, random_state=42)
+	km = KMeans(n_clusters=k, n_init=10, random_state=42)  # type: ignore[arg-type]
 	labels = km.fit_predict(fit_matrix)
 
 	sil = float(silhouette_score(fit_matrix, labels)) if len(set(labels)) > 1 else 0.0
