@@ -60,48 +60,74 @@ def scenario_quality_issues(task: str, scenario: TestScenario) -> list[str]:
 	return issues
 
 
-def plan_quality_issues(task: str, plan: TestPlan) -> list[str]:
-	"""Plan-level quality validation. Returns list of issue descriptions."""
+def plan_quality_issues(
+	task: str,
+	plan: TestPlan,
+	valid_persona_names: set[str] | None = None,
+) -> list[str]:
+	"""Plan-level quality validation. Returns list of issue descriptions.
+
+	When *valid_persona_names* is provided (discovered personas), validates persona
+	names against that set and checks for diversity instead of fixed trait coverage.
+	"""
 	issues: list[str] = []
 
 	# 1. Minimum scenarios
 	if len(plan.scenarios) < 5:
 		issues.append(f'Plan has only {len(plan.scenarios)} scenarios (minimum 5)')
 
-	# 2. Trait-space coverage validation
-	has_low_tech_lit = False
-	has_low_patience = False
-	has_adversarial_intent = False
-	has_high_exploration = False
-	for s in plan.scenarios:
-		entry = PERSONA_REGISTRY.get(s.test_persona)
-		if not entry:
-			continue
-		traits, _ = entry
-		if traits.technical_literacy == TraitLevel.low:
-			has_low_tech_lit = True
-		if traits.patience == TraitLevel.low:
-			has_low_patience = True
-		if traits.intent == 'adversarial':
-			has_adversarial_intent = True
-		if traits.exploration == TraitLevel.high:
-			has_high_exploration = True
-	coverage_gaps: list[str] = []
-	if not has_low_tech_lit:
-		coverage_gaps.append('low technical_literacy')
-	if not has_low_patience:
-		coverage_gaps.append('low patience')
-	if not has_adversarial_intent:
-		coverage_gaps.append('adversarial intent')
-	if not has_high_exploration:
-		coverage_gaps.append('high exploration')
-	if coverage_gaps:
-		issues.append(f'Missing trait coverage: {", ".join(coverage_gaps)}')
+	if valid_persona_names is not None:
+		# Discovered-persona mode: check name validity and diversity
+		for s in plan.scenarios:
+			if s.test_persona not in valid_persona_names:
+				issues.append(f'Scenario "{s.name}" uses unknown persona "{s.test_persona}"')
 
-	# 3. Critical happy path
-	has_critical_happy = any(s.test_persona == 'happy_path' and s.priority == 'critical' for s in plan.scenarios)
-	if not has_critical_happy:
-		issues.append('No happy_path scenario with priority=critical')
+		distinct_personas = {s.test_persona for s in plan.scenarios}
+		if len(distinct_personas) < min(3, len(valid_persona_names)):
+			issues.append(
+				f'Only {len(distinct_personas)} distinct persona(s) used; '
+				f'need at least {min(3, len(valid_persona_names))} for diversity'
+			)
+
+		# 3. Critical scenario (not necessarily happy_path for discovered)
+		has_critical = any(s.priority == 'critical' for s in plan.scenarios)
+		if not has_critical:
+			issues.append('No scenario with priority=critical')
+	else:
+		# 2. Trait-space coverage validation (predefined personas)
+		has_low_tech_lit = False
+		has_low_patience = False
+		has_adversarial_intent = False
+		has_high_exploration = False
+		for s in plan.scenarios:
+			entry = PERSONA_REGISTRY.get(s.test_persona)
+			if not entry:
+				continue
+			traits, _ = entry
+			if traits.technical_literacy == TraitLevel.low:
+				has_low_tech_lit = True
+			if traits.patience == TraitLevel.low:
+				has_low_patience = True
+			if traits.intent == 'adversarial':
+				has_adversarial_intent = True
+			if traits.exploration == TraitLevel.high:
+				has_high_exploration = True
+		coverage_gaps: list[str] = []
+		if not has_low_tech_lit:
+			coverage_gaps.append('low technical_literacy')
+		if not has_low_patience:
+			coverage_gaps.append('low patience')
+		if not has_adversarial_intent:
+			coverage_gaps.append('adversarial intent')
+		if not has_high_exploration:
+			coverage_gaps.append('high exploration')
+		if coverage_gaps:
+			issues.append(f'Missing trait coverage: {", ".join(coverage_gaps)}')
+
+		# 3. Critical happy path
+		has_critical_happy = any(s.test_persona == 'happy_path' and s.priority == 'critical' for s in plan.scenarios)
+		if not has_critical_happy:
+			issues.append('No happy_path scenario with priority=critical')
 
 	# 4. Per-scenario quality
 	for s in plan.scenarios:

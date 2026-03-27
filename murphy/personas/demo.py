@@ -17,9 +17,12 @@ import asyncio
 import logging
 import sys
 
+from pathlib import Path
+
 from murphy.personas.discovery import OBSERVE_USER
 from murphy.personas.pipeline import run_persona_pipeline
 from murphy.personas.pipeline_models import PersonaResult, SessionScore, TraitSchema
+from murphy.personas.storage import save_personas
 
 
 def _print_discovery_session_context(timeline: str | None, max_chars: int) -> None:
@@ -141,6 +144,7 @@ async def main() -> None:
 	)
 	parser.add_argument('--clusters', type=int, default=None, help='Force a specific number of persona clusters (default: auto-select via silhouette)')
 	parser.add_argument('--no-context', action='store_true', help='Skip printing the discovery session context sample')
+	parser.add_argument('--output', type=str, default=None, help='Output directory for personas.json (default: none)')
 	args = parser.parse_args()
 
 	logging.basicConfig(
@@ -168,6 +172,10 @@ async def main() -> None:
 	_print_schema(schema)
 	_print_scores(scores, schema, num_examples=args.examples)
 	_print_personas(persona_result, schema)
+
+	if args.output:
+		out_path = save_personas(schema, persona_result, Path(args.output))
+		print(f'\nPersonas saved to {out_path}')
 
 
 if __name__ == '__main__':
