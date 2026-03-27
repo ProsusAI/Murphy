@@ -10,8 +10,8 @@ from __future__ import annotations
 import logging
 
 import numpy as np
-from browser_use.llm import ChatOpenAI, SystemMessage, UserMessage
 
+from browser_use.llm import ChatOpenAI, SystemMessage, UserMessage
 from murphy.personas.clustering import ClusteringResult
 from murphy.personas.pipeline_models import (
 	DimensionScore,

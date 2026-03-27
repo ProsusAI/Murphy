@@ -1,7 +1,6 @@
 """Tests for Phase 3a — clustering (pure algorithmic, no LLM)."""
 
 import numpy as np
-import pytest
 
 from murphy.personas.clustering import (
 	ClusteringResult,

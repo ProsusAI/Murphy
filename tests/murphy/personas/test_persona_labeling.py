@@ -129,18 +129,30 @@ async def test_label_personas_prompt_contains_cluster_sizes():
 def test_build_persona_result_merges_correctly():
 	scores = [
 		SessionScore(
-			session_id='s1', user_id='u1',
-			scores=[DimensionScore(trait_name='engagement_depth', score=5), DimensionScore(trait_name='exploration_breadth', score=1)],
+			session_id='s1',
+			user_id='u1',
+			scores=[
+				DimensionScore(trait_name='engagement_depth', score=5),
+				DimensionScore(trait_name='exploration_breadth', score=1),
+			],
 			reasoning='deep',
 		),
 		SessionScore(
-			session_id='s2', user_id='u2',
-			scores=[DimensionScore(trait_name='engagement_depth', score=1), DimensionScore(trait_name='exploration_breadth', score=5)],
+			session_id='s2',
+			user_id='u2',
+			scores=[
+				DimensionScore(trait_name='engagement_depth', score=1),
+				DimensionScore(trait_name='exploration_breadth', score=5),
+			],
 			reasoning='broad',
 		),
 		SessionScore(
-			session_id='s3', user_id='u3',
-			scores=[DimensionScore(trait_name='engagement_depth', score=4), DimensionScore(trait_name='exploration_breadth', score=2)],
+			session_id='s3',
+			user_id='u3',
+			scores=[
+				DimensionScore(trait_name='engagement_depth', score=4),
+				DimensionScore(trait_name='exploration_breadth', score=2),
+			],
 			reasoning='deep-ish',
 		),
 	]
@@ -184,13 +196,21 @@ def test_build_persona_result_fallback_names():
 	"""When LLM labels don't cover a cluster, fallback to 'Cluster N'."""
 	scores = [
 		SessionScore(
-			session_id='s1', user_id='u1',
-			scores=[DimensionScore(trait_name='engagement_depth', score=5), DimensionScore(trait_name='exploration_breadth', score=1)],
+			session_id='s1',
+			user_id='u1',
+			scores=[
+				DimensionScore(trait_name='engagement_depth', score=5),
+				DimensionScore(trait_name='exploration_breadth', score=1),
+			],
 			reasoning='deep',
 		),
 		SessionScore(
-			session_id='s2', user_id='u2',
-			scores=[DimensionScore(trait_name='engagement_depth', score=1), DimensionScore(trait_name='exploration_breadth', score=5)],
+			session_id='s2',
+			user_id='u2',
+			scores=[
+				DimensionScore(trait_name='engagement_depth', score=1),
+				DimensionScore(trait_name='exploration_breadth', score=5),
+			],
 			reasoning='broad',
 		),
 	]
