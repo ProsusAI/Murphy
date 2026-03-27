@@ -168,7 +168,9 @@ def build_test_generation_prompt(
 			'- impatient_user (UX): "The website provides VISIBLE STATE FEEDBACK during rapid interactions — loading indicators, \'please wait\' messages, queued-action confirmation, or duplicate-prevention messages. Silent deduplication with no user-facing signal is a FAILURE"\n'
 			'- angry_user (Security): "The website absorbs the hostile interaction gracefully — no crash, no broken state from force-navigation, no infinite loops from rapid clicks"'
 		)
-		persona_names_instruction = '- test_persona (one of: happy_path, confused_novice, adversarial, edge_case, explorer, impatient_user, angry_user)'
+		persona_names_instruction = (
+			'- test_persona (one of: happy_path, confused_novice, adversarial, edge_case, explorer, impatient_user, angry_user)'
+		)
 
 	return f"""Based on this website analysis, generate {max_tests} test scenarios that target the discovered features.
 {goal_block}
@@ -303,8 +305,8 @@ def build_plan_synthesis_prompt(
 		persona_result, trait_schema = discovered_personas
 		names = get_discovered_persona_names(persona_result)
 		persona_req = f'- Must include a diverse mix of these personas: {", ".join(names)}.\n'
-		first_name = names[0] if names else 'happy_path'
-		critical_req = f'- At least one scenario must have priority=critical.\n'
+		names[0] if names else 'happy_path'
+		critical_req = '- At least one scenario must have priority=critical.\n'
 		distribution_block = (
 			f'PERSONA DISTRIBUTION:\n'
 			f'{build_discovered_persona_distribution_text(persona_result, trait_schema)}\n\n'
@@ -315,14 +317,14 @@ def build_plan_synthesis_prompt(
 		persona_req = '- Must include these personas: happy_path, confused_novice, adversarial, edge_case, explorer.\n'
 		critical_req = '- At least one scenario must be happy_path with priority=critical.\n'
 		distribution_block = (
-			f'PERSONA DISTRIBUTION:\n'
-			f'- happy_path (~20%): Standard user completing the expected flow. Success requires visible confirmation feedback.\n'
-			f'- confused_novice (~15%): Misclicks, wrong inputs, backtracking. Success requires visible guidance — error messages, tooltips, inline hints. Silent rejection is a FAIL.\n'
-			f'- adversarial (~15%): XSS payloads, SQL injection, probing /admin. Silent sanitization is a valid PASS.\n'
-			f'- edge_case (~15%): Empty inputs, special chars, long strings. Graceful degradation (even silent) is a PASS.\n'
-			f'- explorer (~10%): Unusual navigation, unexpected feature combos. Success requires orientation feedback — page titles, breadcrumbs, "no results" messages. Dead ends with no feedback are FAILS.\n'
-			f'- impatient_user (~15%): Rapid clicks, skipping steps. Success requires visible state feedback — loading indicators, "please wait" messages. Silent deduplication is a FAIL.\n'
-			f'- angry_user (~10%): Rage-clicks, force-navigation, rapid form submissions, abandoning flows. Absorbing hostility without crash is a PASS.\n'
+			'PERSONA DISTRIBUTION:\n'
+			'- happy_path (~20%): Standard user completing the expected flow. Success requires visible confirmation feedback.\n'
+			'- confused_novice (~15%): Misclicks, wrong inputs, backtracking. Success requires visible guidance — error messages, tooltips, inline hints. Silent rejection is a FAIL.\n'
+			'- adversarial (~15%): XSS payloads, SQL injection, probing /admin. Silent sanitization is a valid PASS.\n'
+			'- edge_case (~15%): Empty inputs, special chars, long strings. Graceful degradation (even silent) is a PASS.\n'
+			'- explorer (~10%): Unusual navigation, unexpected feature combos. Success requires orientation feedback — page titles, breadcrumbs, "no results" messages. Dead ends with no feedback are FAILS.\n'
+			'- impatient_user (~15%): Rapid clicks, skipping steps. Success requires visible state feedback — loading indicators, "please wait" messages. Silent deduplication is a FAIL.\n'
+			'- angry_user (~10%): Rage-clicks, force-navigation, rapid form submissions, abandoning flows. Absorbing hostility without crash is a PASS.\n'
 		)
 
 	return (

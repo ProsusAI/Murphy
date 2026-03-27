@@ -16,7 +16,6 @@ import argparse
 import asyncio
 import logging
 import sys
-
 from pathlib import Path
 
 from murphy.personas.discovery import OBSERVE_USER
@@ -142,7 +141,12 @@ async def main() -> None:
 		default=12000,
 		help='Max characters of discovery timeline sample to print (default: 12000; 0 = no limit)',
 	)
-	parser.add_argument('--clusters', type=int, default=None, help='Force a specific number of persona clusters (default: auto-select via silhouette)')
+	parser.add_argument(
+		'--clusters',
+		type=int,
+		default=None,
+		help='Force a specific number of persona clusters (default: auto-select via silhouette)',
+	)
 	parser.add_argument('--no-context', action='store_true', help='Skip printing the discovery session context sample')
 	parser.add_argument('--output', type=str, default=None, help='Output directory for personas.json (default: none)')
 	args = parser.parse_args()
