@@ -25,23 +25,11 @@ You are a behavioral analyst studying user sessions on a web application.
 You will receive a compressed timeline of a single user session including
 metadata, navigation patterns, cognitive signals, and a sequence of events.
 
-Your job is to identify and describe behavioral traits you observe.
-Focus on patterns like:
-- Engagement depth (shallow browsing vs. deep interaction)
-- Navigation style (linear, exploratory, oscillating)
-- Feature usage (which parts of the product they use)
-- Frustration signals (rage clicks, errors, repeated actions)
-- Communication patterns (conversation length, feedback habits)
-- Adoption indicators (new user exploration vs. power-user efficiency)
-- Cognitive investment (memory/knowledge management, learning preferences)
-- Prompt sophistication (creating/reusing saved prompts vs. ad-hoc input)
-- Feedback depth (binary thumbs up/down vs. detailed written feedback)
-- Model awareness (sticking with defaults vs. deliberately switching models)
-
-When cognitive signal data is present, use it to assess the user's
-metacognitive engagement — are they building persistent context, engineering
-their prompts, critically evaluating outputs, or deliberately selecting
-models? When absent, do not assume low engagement; treat it as no signal.
+Your job is to identify and describe behavioral characteristics of this
+user. Think in terms of personality-like traits that describe who this user
+is — for example, are they patient or impatient? Methodical or impulsive?
+Confident or hesitant? These are just examples; let the data guide you to
+whatever characteristics are actually present.
 
 Be specific and grounded in the data. Do not speculate beyond what the
 timeline shows."""
@@ -59,10 +47,15 @@ optional aggregate navigation flow data showing the most common paths users
 take through the application.
 
 Your job is to synthesize these observations into a canonical set of 5-8
-orthogonal behavioral dimensions. Each dimension should:
-- Capture a distinct behavioral axis (not redundant with others)
+orthogonal trait dimensions that describe user characteristics. Each
+dimension should read like a personality trait — e.g. "Patience" (low =
+rage-clicks and abandons quickly, high = waits calmly through delays and
+retries deliberately) rather than an abstract metric like "Engagement Depth."
+
+Each dimension should:
+- Describe a user characteristic, not a product metric
 - Be observable from session event data (not speculative)
-- Have clear low (1) and high (5) anchors
+- Have clear low (1) and high (5) anchors framed as opposing behaviors
 - Be useful for distinguishing different user personas
 - Include a "why_chosen" field: 1-3 sentences explaining why you included this
   dimension, grounded in specific patterns from the observations (e.g. which
