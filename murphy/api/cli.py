@@ -299,7 +299,10 @@ async def _async_main(args: argparse.Namespace) -> None:
 		def _on_test_complete(results: list[TestResult]) -> None:
 			if analysis:
 				write_reports_and_print(
-					args.url, analysis, results, output_dir,
+					args.url,
+					analysis,
+					results,
+					output_dir,
 					persona_discovery_tokens=persona_discovery_tokens,
 					murphy_tokens=_get_murphy_tokens(),
 				)
@@ -320,7 +323,10 @@ async def _async_main(args: argparse.Namespace) -> None:
 			)
 			if analysis:
 				write_reports_and_print(
-					args.url, analysis, results, output_dir,
+					args.url,
+					analysis,
+					results,
+					output_dir,
 					persona_discovery_tokens=persona_discovery_tokens,
 					murphy_tokens=_get_murphy_tokens(),
 				)
@@ -366,7 +372,10 @@ async def _async_main(args: argparse.Namespace) -> None:
 				if state.done and state.results and not getattr(state, '_reports_written', False):
 					if analysis:
 						write_reports_and_print(
-							args.url, analysis, state.results, output_dir,
+							args.url,
+							analysis,
+							state.results,
+							output_dir,
 							persona_discovery_tokens=persona_discovery_tokens,
 							murphy_tokens=_get_murphy_tokens(),
 						)
