@@ -21,12 +21,12 @@ from murphy.config import (
 	POSTHOG_HOST,
 	POSTHOG_PROJECT_ID,
 )
+from murphy.models import TokenUsage
 from murphy.personas.clustering import cluster_sessions
 from murphy.personas.compressor import compress_session
 from murphy.personas.discovery import run_discovery
 from murphy.personas.models import AnalyticsSession
 from murphy.personas.persona_labeling import build_persona_result, label_personas
-from murphy.models import TokenUsage
 from murphy.personas.pipeline_models import PersonaResult, SessionScore, TraitSchema
 from murphy.personas.posthog_adapter import PostHogAdapter
 from murphy.personas.posthog_client import PostHogClient

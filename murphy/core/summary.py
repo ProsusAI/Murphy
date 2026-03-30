@@ -146,7 +146,10 @@ def write_reports_and_print(
 ) -> None:
 	"""Write JSON + markdown reports and log summary to console."""
 	json_path, md_path = write_full_report(
-		url, analysis, results, output_dir,
+		url,
+		analysis,
+		results,
+		output_dir,
 		executive_summary=executive_summary,
 		persona_discovery_tokens=persona_discovery_tokens,
 		murphy_tokens=murphy_tokens,

@@ -262,22 +262,17 @@ def write_markdown_report(report: EvaluationReport, output_dir: Path) -> Path:
 			total_input += pt.input_tokens
 			total_output += pt.output_tokens
 			lines.append(
-				f'| Persona Discovery | {pt.input_tokens:,} | {pt.output_tokens:,} '
-				f'| {pt.input_tokens + pt.output_tokens:,} |'
+				f'| Persona Discovery | {pt.input_tokens:,} | {pt.output_tokens:,} | {pt.input_tokens + pt.output_tokens:,} |'
 			)
 		if report.murphy_tokens:
 			mt = report.murphy_tokens
 			total_input += mt.input_tokens
 			total_output += mt.output_tokens
 			lines.append(
-				f'| Murphy Execution | {mt.input_tokens:,} | {mt.output_tokens:,} '
-				f'| {mt.input_tokens + mt.output_tokens:,} |'
+				f'| Murphy Execution | {mt.input_tokens:,} | {mt.output_tokens:,} | {mt.input_tokens + mt.output_tokens:,} |'
 			)
 		if report.persona_discovery_tokens and report.murphy_tokens:
-			lines.append(
-				f'| **Total** | **{total_input:,}** | **{total_output:,}** '
-				f'| **{total_input + total_output:,}** |'
-			)
+			lines.append(f'| **Total** | **{total_input:,}** | **{total_output:,}** | **{total_input + total_output:,}** |')
 		lines.append('')
 
 	# Features discovered
