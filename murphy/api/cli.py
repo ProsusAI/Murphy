@@ -115,6 +115,7 @@ async def _async_main(args: argparse.Namespace) -> None:
 	from browser_use.browser.profile import BrowserProfile
 	from browser_use.browser.session import BrowserSession
 	from murphy.api.auth import detect_auth_required, wait_for_manual_login
+	from murphy.browser.cleanup import clear_browser_pid, get_browser_pid_from_session, kill_stale_browser, record_browser_pid
 	from murphy.browser.patches import apply as apply_patches
 	from murphy.core.analysis import analyze_website
 	from murphy.core.execution import execute_tests_with_session
@@ -125,6 +126,9 @@ async def _async_main(args: argparse.Namespace) -> None:
 	from murphy.io.test_plan_io import load_test_plan, save_test_plan
 	from murphy.llm import create_llm
 	from murphy.models import TokenUsage, WebsiteAnalysis
+
+	# Kill any orphan browser from a previous crashed run
+	kill_stale_browser()
 
 	# Apply patches early (idempotent)
 	apply_patches()
@@ -200,6 +204,10 @@ async def _async_main(args: argparse.Namespace) -> None:
 			)
 		)
 		await browser_session.start()
+
+		browser_pid = get_browser_pid_from_session(browser_session)
+		if browser_pid:
+			record_browser_pid(browser_pid)
 
 		if args.auth:
 			# --auth flag: skip detection, go straight to login wait
@@ -414,6 +422,7 @@ async def _async_main(args: argparse.Namespace) -> None:
 	finally:
 		if browser_session:
 			await browser_session.kill()
+		clear_browser_pid()
 
 
 async def _open_mode(output_dir: Path) -> None:

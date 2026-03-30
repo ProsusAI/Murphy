@@ -14,6 +14,8 @@ from typing import Any
 
 from browser_use.browser.profile import BrowserProfile
 from browser_use.browser.session import BrowserSession
+from browser_use.llm import ChatOpenAI
+from murphy.browser.cleanup import clear_browser_pid, get_browser_pid_from_session, kill_stale_browser, record_browser_pid
 from murphy.browser.patches import apply as apply_patches
 from murphy.evaluate import (
 	analyze_website,
@@ -36,16 +38,21 @@ async def run_analyze(
 ) -> WebsiteAnalysis:
 	"""Run website analysis (feature discovery)."""
 	apply_patches()
+	kill_stale_browser()
 	llm = create_llm(model, provider=provider)
 	own_session = browser_session is None
 	if own_session:
 		browser_session = BrowserSession(browser_profile=BrowserProfile(headless=True, keep_alive=False))
 		await browser_session.start()
+		browser_pid = get_browser_pid_from_session(browser_session)
+		if browser_pid:
+			record_browser_pid(browser_pid)
 	try:
 		return await analyze_website(url, llm, browser_session=browser_session, goal=goal)
 	finally:
 		if own_session:
 			await browser_session.kill()
+			clear_browser_pid()
 
 
 async def run_generate_plan(
@@ -80,6 +87,7 @@ async def run_execute(
 ) -> tuple[list[TestResult], ReportSummary]:
 	"""Execute tests and return results + summary."""
 	apply_patches()
+	kill_stale_browser()
 	if fixture_paths is None:
 		fixture_paths = ensure_dummy_fixture_files()
 	llm = create_llm(model, provider=provider)
@@ -90,6 +98,9 @@ async def run_execute(
 	if own_session:
 		browser_session = BrowserSession(browser_profile=BrowserProfile(headless=True, keep_alive=False))
 		await browser_session.start()
+		browser_pid = get_browser_pid_from_session(browser_session)
+		if browser_pid:
+			record_browser_pid(browser_pid)
 	try:
 		results = await execute_tests_with_session(
 			url,
@@ -108,6 +119,7 @@ async def run_execute(
 	finally:
 		if own_session:
 			await browser_session.kill()
+			clear_browser_pid()
 
 
 async def run_evaluate(
@@ -120,12 +132,16 @@ async def run_evaluate(
 ) -> TestPlan:
 	"""Exploration-first: explore site then generate test plan."""
 	apply_patches()
+	kill_stale_browser()
 	task = goal or f'Evaluate the website at {url}'
 	llm = create_llm(model, provider=provider)
 	own_session = browser_session is None
 	if own_session:
 		browser_session = BrowserSession(browser_profile=BrowserProfile(headless=True, keep_alive=False))
 		await browser_session.start()
+		browser_pid = get_browser_pid_from_session(browser_session)
+		if browser_pid:
+			record_browser_pid(browser_pid)
 	try:
 		return await explore_and_generate_plan(
 			task=task,
@@ -137,3 +153,4 @@ async def run_evaluate(
 	finally:
 		if own_session:
 			await browser_session.kill()
+			clear_browser_pid()
