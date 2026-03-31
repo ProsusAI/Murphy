@@ -26,6 +26,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 - Removed actions column from results main page in the UI
 
+## [2.0.0] - 2026-03-31
+
+### Added
+- Persona discovery and persona assignment, now used directly by Murphy during evaluation runs
+
 ## [1.0.0] - 2026-03-05
 
 ### Added
