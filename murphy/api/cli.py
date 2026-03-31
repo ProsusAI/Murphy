@@ -163,6 +163,7 @@ async def _async_main(args: argparse.Namespace) -> None:
 
 		logger.info('Running persona discovery pipeline...')
 		schema, _scores, persona_result, _sample, persona_discovery_tokens = await run_persona_pipeline(
+			model=args.model,
 			discovery_sessions=100,
 			scoring_sessions=200,
 			num_clusters=8,
