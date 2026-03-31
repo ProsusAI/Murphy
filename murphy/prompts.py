@@ -146,10 +146,10 @@ def build_test_generation_prompt(
 	if goal:
 		goal_block = f'\nIMPORTANT GOAL: The user specifically wants to test: {goal}. Prioritize generating scenarios that address this goal.\n'
 		goal_steps_rule = (
-			f'\n- GOAL PROGRESSION: Steps must progress through the stated goal\'s workflow, not just search for controls. '
-			f'At least one step MUST attempt to complete the core goal action (e.g., actually submitting the form, completing the purchase, or finishing the flow), not merely look for UI elements. '
-			f'BAD: "1) Look for a create button 2) If not found, note absence 3) Recommend adding a CTA" (only discovers controls, never attempts the goal). '
-			f'GOOD: "1) Navigate to the relevant section 2) Initiate the workflow 3) Fill in required fields and submit 4) Verify the outcome".'
+			"\n- GOAL PROGRESSION: Steps must progress through the stated goal's workflow, not just search for controls. "
+			'At least one step MUST attempt to complete the core goal action (e.g., actually submitting the form, completing the purchase, or finishing the flow), not merely look for UI elements. '
+			'BAD: "1) Look for a create button 2) If not found, note absence 3) Recommend adding a CTA" (only discovers controls, never attempts the goal). '
+			'GOOD: "1) Navigate to the relevant section 2) Initiate the workflow 3) Fill in required fields and submit 4) Verify the outcome".'
 		)
 		goal_criteria_rule = (
 			f'\n- GOAL COMPLETION AS SUCCESS CRITERION: The stated goal ("{goal}") being accomplished MUST be the primary success criterion for every scenario. '
@@ -353,7 +353,7 @@ def build_plan_synthesis_prompt(
 		f'{critical_req}'
 		f'- The first happy-path/primary scenario must describe the chosen route AND mention alternatives considered.\n'
 		f'- steps_description must be INTENT-BASED: describe WHAT to accomplish, not exact elements. Each step must include at least one alternative approach in parentheses. BAD: "Click the Submit button". GOOD: "Submit the form (via Submit button, Enter key, or any submit control)".\n'
-		f'- GOAL PROGRESSION: Steps must progress through the stated TASK\'s workflow, not just search for controls. '
+		f"- GOAL PROGRESSION: Steps must progress through the stated TASK's workflow, not just search for controls. "
 		f'At least one step MUST attempt to complete the core goal action (e.g., actually submitting the form, completing the purchase, or finishing the flow), not merely look for UI elements. '
 		f'BAD: "1) Look for a create button 2) If not found, note absence 3) Recommend adding a CTA" (only discovers controls, never attempts the goal). '
 		f'GOOD: "1) Navigate to the relevant section 2) Initiate the workflow 3) Fill in required fields and submit 4) Verify the outcome".\n'
