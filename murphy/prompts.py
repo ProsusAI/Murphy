@@ -141,8 +141,24 @@ def build_test_generation_prompt(
 	peripheral_features = [f for f in testable_features if f.importance == 'peripheral']
 
 	goal_block = ''
+	goal_criteria_rule = ''
+	goal_steps_rule = ''
 	if goal:
 		goal_block = f'\nIMPORTANT GOAL: The user specifically wants to test: {goal}. Prioritize generating scenarios that address this goal.\n'
+		goal_steps_rule = (
+			f'\n- GOAL PROGRESSION: Steps must progress through the stated goal\'s workflow, not just search for controls. '
+			f'At least one step MUST attempt to complete the core goal action (e.g., actually submitting the form, completing the purchase, or finishing the flow), not merely look for UI elements. '
+			f'BAD: "1) Look for a create button 2) If not found, note absence 3) Recommend adding a CTA" (only discovers controls, never attempts the goal). '
+			f'GOOD: "1) Navigate to the relevant section 2) Initiate the workflow 3) Fill in required fields and submit 4) Verify the outcome".'
+		)
+		goal_criteria_rule = (
+			f'\n- GOAL COMPLETION AS SUCCESS CRITERION: The stated goal ("{goal}") being accomplished MUST be the primary success criterion for every scenario. '
+			f'Success means the goal action was completed end-to-end (e.g., entity created, purchase confirmed, flow finished), not merely that the user could begin or find the entry point. '
+			f'Persona-specific behavior criteria (e.g., visible feedback, graceful error handling) are still required, but they must be IN ADDITION TO verified goal completion. '
+			f'BAD: "The site allows the user to begin the flow" (only evaluates the entry point, not completion). '
+			f'BAD: "The site remains responsive and shows no errors" (only persona-driven, ignores goal). '
+			f'GOOD: "The user completes the goal action end-to-end (outcome confirmed via list update, detail view, success message, OR redirect to result) AND the site provides visible feedback throughout the interaction".'
+		)
 
 	# Build persona distribution and criteria blocks — use discovered or predefined
 	if discovered_personas:
@@ -220,7 +236,7 @@ STEP WRITING RULES — steps_description must be INTENT-BASED with alternatives:
 - BAD: "Click the Search icon in the top-right corner"
 - GOOD: "Trigger a search (via search icon, search bar, or keyboard shortcut)"
 - Each step MUST include at least one alternative approach in parentheses.
-- Write steps AS IF the agent IS the persona. For confused novice, steps include wrong clicks and backtracking. For adversarial, steps include actual attack payloads.
+- Write steps AS IF the agent IS the persona. For confused novice, steps include wrong clicks and backtracking. For adversarial, steps include actual attack payloads.{goal_steps_rule}
 
 SUCCESS CRITERIA RULES — must use BEHAVIORAL OUTCOME format:
 - Describe the behavioral outcome, not specific UI text or elements.
@@ -233,7 +249,7 @@ SUCCESS CRITERIA RULES — must use BEHAVIORAL OUTCOME format:
 - Focus on what SHOULD NOT happen (crash, data leak, unhandled exception) as much as what should.
 - "Silent handling" and "graceful degradation" are valid pass conditions ONLY for security-oriented personas (adversarial, edge_case, angry_user).
 - For UX-oriented personas (happy_path, confused_novice, impatient_user, explorer), success criteria MUST include visible feedback requirements.
-- The judge evaluates success by matching the action trace and browser URLs against these criteria.
+- The judge evaluates success by matching the action trace and browser URLs against these criteria.{goal_criteria_rule}
 
 CRITICAL — Security-oriented persona criteria:
 - For adversarial tests: if the site accepts the input without crashing, erroring, or exposing sensitive data, that IS a pass. Silent sanitization is valid and correct behavior.
@@ -337,7 +353,17 @@ def build_plan_synthesis_prompt(
 		f'{critical_req}'
 		f'- The first happy-path/primary scenario must describe the chosen route AND mention alternatives considered.\n'
 		f'- steps_description must be INTENT-BASED: describe WHAT to accomplish, not exact elements. Each step must include at least one alternative approach in parentheses. BAD: "Click the Submit button". GOOD: "Submit the form (via Submit button, Enter key, or any submit control)".\n'
+		f'- GOAL PROGRESSION: Steps must progress through the stated TASK\'s workflow, not just search for controls. '
+		f'At least one step MUST attempt to complete the core goal action (e.g., actually submitting the form, completing the purchase, or finishing the flow), not merely look for UI elements. '
+		f'BAD: "1) Look for a create button 2) If not found, note absence 3) Recommend adding a CTA" (only discovers controls, never attempts the goal). '
+		f'GOOD: "1) Navigate to the relevant section 2) Initiate the workflow 3) Fill in required fields and submit 4) Verify the outcome".\n'
 		f'- success_criteria must use BEHAVIORAL OUTCOME format: describe the expected behavior, not specific UI text. List 3+ acceptable alternative outcomes separated by OR. BAD: "Error toast says Invalid". GOOD: "The site rejects invalid input without crashing (error message, input cleared, silent rejection, or redirect)". Never quote specific error message text as the only acceptable outcome.\n'
+		f'- GOAL COMPLETION AS SUCCESS CRITERION: The stated TASK ("{task}") being accomplished MUST be the primary success criterion for every scenario. '
+		f'Success means the goal action was completed end-to-end (e.g., entity created, purchase confirmed, flow finished), not merely that the user could begin or find the entry point. '
+		f'Persona-specific behavior criteria (e.g., visible feedback, graceful error handling) are still required, but they must be IN ADDITION TO verified goal completion. '
+		f'BAD: "The site allows the user to begin the flow" (only evaluates the entry point, not completion). '
+		f'BAD: "The site remains responsive and shows no errors" (only persona-driven, ignores the task goal). '
+		f'GOOD: "The user completes the goal action end-to-end (outcome confirmed via list update, detail view, success message, OR redirect to result) AND the site provides visible feedback throughout the interaction".\n'
 		f'- Do NOT fabricate URLs — only reference pages/paths observed in the exploration context.\n'
 		f'- Do NOT assume UI elements exist that were not observed during exploration (e.g., do not assume a search bar, filter, or input field exists unless one was seen). If a persona needs to interact with an input field but none was observed, write the scenario to: (a) look for the expected element, (b) note its absence, (c) use whatever elements ARE present to achieve the task intent, and (d) recommend the missing element as a UX improvement in the final assessment.\n'
 		f'- For security/resilience-oriented personas: evaluate how the website HANDLES unexpected behavior. Any graceful handling (including silent sanitization) is a pass; only crash/leak/corruption is a fail.\n'

@@ -45,6 +45,17 @@ def scenario_quality_issues(task: str, scenario: TestScenario) -> list[str]:
 	if not any(signal in criteria_lower for signal in ui_signals):
 		issues.append(f'Scenario "{scenario.name}" success criteria lack observable UI signals')
 
+	# 3b. Goal anchoring — success criteria should reference the task/goal
+	criteria_words = set(re.findall(r'\w+', criteria_lower))
+	stop_words = {'the', 'a', 'an', 'to', 'is', 'and', 'or', 'in', 'on', 'for', 'of', 'with', 'test', 'evaluate'}
+	meaningful_task_words = task_words - stop_words
+	criteria_goal_overlap = meaningful_task_words & criteria_words
+	if meaningful_task_words and not criteria_goal_overlap:
+		issues.append(
+			f'Scenario "{scenario.name}" success criteria have no reference to the goal "{task}" — '
+			f'criteria should evaluate goal progress, not only persona behavior'
+		)
+
 	# 4. No fabricated URLs — reject patterns like "/spaces/" or bare http:// in steps
 	if re.search(r'https?://(?!.*(?:' + re.escape(task.split()[0] if task.split() else '') + r'))', steps):
 		# Only flag if URL doesn't look related to the task
