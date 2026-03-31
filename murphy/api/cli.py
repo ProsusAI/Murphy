@@ -167,6 +167,7 @@ async def _async_main(args: argparse.Namespace) -> None:
 			discovery_sessions=100,
 			scoring_sessions=200,
 			num_clusters=8,
+			min_events=100,
 		)
 		save_personas(schema, persona_result, output_dir)
 		discovered_personas = (persona_result, schema)
