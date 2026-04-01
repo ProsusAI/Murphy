@@ -211,21 +211,29 @@ class PostHogClient:
 
 		all_session_ids = [s['session_id'] for s in sessions_rows]
 
-		# 2. Fetch events for all selected sessions
-		escaped_sids = ', '.join(f"'{sid}'" for sid in all_session_ids)
-		events_q = (
-			f'SELECT properties.$session_id as session_id, event, distinct_id, timestamp, properties'
-			f' FROM events'
-			f' WHERE properties.$session_id IN ({escaped_sids})'
-			f' ORDER BY timestamp ASC'
-			f' LIMIT 50000'
-		)
-		events_result = await self.query(events_q)
-		event_rows = _rows_to_dicts(events_result)
-
+		# 2. Fetch events for all selected sessions (batched to avoid PostHog timeouts)
 		events_by_session: dict[str, list[dict[str, Any]]] = defaultdict(list)
-		for evt in event_rows:
-			events_by_session[evt['session_id']].append(evt)
+		batch_size = 50
+		for i in range(0, len(all_session_ids), batch_size):
+			batch_ids = all_session_ids[i : i + batch_size]
+			escaped_sids = ', '.join(f"'{sid}'" for sid in batch_ids)
+			events_q = (
+				f'SELECT properties.$session_id as session_id, event, distinct_id, timestamp, properties'
+				f' FROM events'
+				f' WHERE properties.$session_id IN ({escaped_sids}){time_filter}'
+				f' LIMIT 50000'
+			)
+			events_result = await self.query(events_q)
+			for evt in _rows_to_dicts(events_result):
+				events_by_session[evt['session_id']].append(evt)
+			logger.debug(
+				'PostHog: fetched events batch %d–%d of %d sessions',
+				i + 1, min(i + batch_size, len(all_session_ids)), len(all_session_ids),
+			)
+
+		# Sort events within each session by timestamp (ORDER BY removed from query)
+		for sid, evts in events_by_session.items():
+			evts.sort(key=lambda e: e.get('timestamp', ''))
 
 		# Group sessions by user
 		result: dict[str, list[dict[str, Any]]] = defaultdict(list)

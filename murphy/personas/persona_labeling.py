@@ -103,24 +103,32 @@ async def label_personas(
 	schema: TraitSchema,
 	centroids: np.ndarray,
 	cluster_sizes: list[int],
+	max_retries: int = 3,
 ) -> PersonaLabels:
 	"""Ask the LLM to name and describe each persona cluster."""
-	response = await llm.ainvoke(
-		messages=[
-			SystemMessage(content=LABEL_SYSTEM),
-			UserMessage(
-				content=LABEL_USER.format(
-					num_clusters=centroids.shape[0],
-					schema_block=_format_schema_for_labeling(schema),
-					clusters_block=_format_clusters(schema, centroids, cluster_sizes),
-				)
-			),
-		],
-		output_format=PersonaLabels,
-	)
-	labels: PersonaLabels = response.completion
-	logger.info('LLM labeled %d personas: %s', len(labels.personas), [p.name for p in labels.personas])
-	return labels
+	messages = [
+		SystemMessage(content=LABEL_SYSTEM),
+		UserMessage(
+			content=LABEL_USER.format(
+				num_clusters=centroids.shape[0],
+				schema_block=_format_schema_for_labeling(schema),
+				clusters_block=_format_clusters(schema, centroids, cluster_sizes),
+			)
+		),
+	]
+
+	last_exc: Exception | None = None
+	for attempt in range(1, max_retries + 1):
+		try:
+			response = await llm.ainvoke(messages=messages, output_format=PersonaLabels)
+			labels: PersonaLabels = response.completion
+			logger.info('LLM labeled %d personas: %s', len(labels.personas), [p.name for p in labels.personas])
+			return labels
+		except Exception as exc:
+			last_exc = exc
+			logger.warning('label_personas attempt %d/%d failed: %s', attempt, max_retries, exc)
+
+	raise last_exc  # type: ignore[misc]
 
 
 # ── Assembly ─────────────────────────────────────────────────────────────────
