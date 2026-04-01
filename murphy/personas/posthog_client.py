@@ -228,7 +228,9 @@ class PostHogClient:
 				events_by_session[evt['session_id']].append(evt)
 			logger.debug(
 				'PostHog: fetched events batch %d–%d of %d sessions',
-				i + 1, min(i + batch_size, len(all_session_ids)), len(all_session_ids),
+				i + 1,
+				min(i + batch_size, len(all_session_ids)),
+				len(all_session_ids),
 			)
 
 		# Sort events within each session by timestamp (ORDER BY removed from query)
