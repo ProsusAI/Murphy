@@ -132,7 +132,7 @@ async def main() -> None:
 	parser.add_argument('--scoring', type=int, default=20, help='Number of scoring sessions (default: 20)')
 	parser.add_argument('--min-events', type=int, default=20, help='Min events per session (default: 20)')
 	parser.add_argument('--months-back', type=int, default=2, help='Months of history to sample (default: 2)')
-	parser.add_argument('--model', type=str, default='gpt-4.1-mini', help='LLM model (default: gpt-4.1-mini)')
+	parser.add_argument('--model', type=str, default='gpt-5-mini', help='LLM model (default: gpt-5-mini)')
 	parser.add_argument('--examples', type=int, default=5, help='Number of score examples to display (default: 5)')
 	parser.add_argument('--concurrency', type=int, default=15, help='Max concurrent LLM calls (default: 15)')
 	parser.add_argument(
