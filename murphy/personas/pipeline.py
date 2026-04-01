@@ -218,7 +218,7 @@ async def run_persona_pipeline(
 
 		# Phase 3: Clustering + Labeling
 		logger.info('Clustering %d scored sessions (num_clusters=%s, max_clusters=%d)', len(scores), num_clusters, max_clusters)
-		clustering = cluster_sessions(scores, schema, k=num_clusters, k_range=(4, max_clusters))
+		clustering = cluster_sessions(scores, schema, k=num_clusters, k_range=(2, max_clusters))
 
 		cluster_sizes = [int((clustering.labels == i).sum()) for i in range(clustering.k)]
 		labels = await label_personas(llm, schema, clustering.centroids, cluster_sizes)
