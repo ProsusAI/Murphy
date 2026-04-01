@@ -126,7 +126,7 @@ def _unique_user_ids(sessions: list[AnalyticsSession]) -> list[str]:
 
 
 async def run_persona_pipeline(
-	model: str = 'gpt-4.1-mini',
+	model: str = 'gpt-5-mini',
 	discovery_sessions: int = PERSONA_DISCOVERY_SESSIONS,
 	scoring_sessions: int = PERSONA_SCORING_SESSIONS,
 	min_events: int = 20,
