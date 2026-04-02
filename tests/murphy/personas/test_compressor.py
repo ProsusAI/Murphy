@@ -146,7 +146,160 @@ def test_autocapture_without_text():
 	events = [_make_event('$autocapture', _ts(0), {})]
 	session = _make_session(events)
 	result = compress_session(session)
-	assert 'Interacted with element' in result
+	assert 'Clicked element' in result
+
+
+def test_autocapture_elements_chain_aria_label():
+	events = [
+		AnalyticsEvent(
+			event_id='e1',
+			event_name='$autocapture',
+			user_id='user-a',
+			session_id='sess-1',
+			timestamp=_ts(0),
+			properties={'$event_type': 'click'},
+			elements_chain='button._iconOnly_1fq3z_107:attr__aria-label="Send message"nth-child="1";div._sendButton_1vzw4_178:nth-child="1"',
+		),
+	]
+	session = _make_session(events)
+	result = compress_session(session)
+	assert 'Clicked "Send message"' in result
+
+
+def test_autocapture_elements_chain_text():
+	events = [
+		AnalyticsEvent(
+			event_id='e1',
+			event_name='$autocapture',
+			user_id='user-a',
+			session_id='sess-1',
+			timestamp=_ts(0),
+			properties={'$event_type': 'click'},
+			elements_chain='div._tabLabel_3ukkt_55:text="Limits"nth-child="1";button._tab_1pq8g_2:nth-child="5"',
+		),
+	]
+	session = _make_session(events)
+	result = compress_session(session)
+	assert 'Clicked "Limits"' in result
+
+
+def test_autocapture_elements_chain_no_text_uses_tag():
+	events = [
+		AnalyticsEvent(
+			event_id='e1',
+			event_name='$autocapture',
+			user_id='user-a',
+			session_id='sess-1',
+			timestamp=_ts(0),
+			properties={'$event_type': 'click'},
+			elements_chain='textarea._promptTextarea_1vzw4_64:nth-child="1";div._wrapper_wj1qs_1:nth-child="1"',
+		),
+	]
+	session = _make_session(events)
+	result = compress_session(session)
+	assert 'Clicked textarea' in result
+
+
+def test_autocapture_change_event():
+	events = [
+		AnalyticsEvent(
+			event_id='e1',
+			event_name='$autocapture',
+			user_id='user-a',
+			session_id='sess-1',
+			timestamp=_ts(0),
+			properties={'$event_type': 'change'},
+			elements_chain='input._hidden_1135e_75:attr__id="dropdownFileInput"nth-child="2"',
+		),
+	]
+	session = _make_session(events)
+	result = compress_session(session)
+	assert 'Changed input' in result
+
+
+def test_autocapture_submit_event():
+	events = [
+		AnalyticsEvent(
+			event_id='e1',
+			event_name='$autocapture',
+			user_id='user-a',
+			session_id='sess-1',
+			timestamp=_ts(0),
+			properties={'$event_type': 'submit'},
+			elements_chain='form._form_1vzw4_56:attr__class="_form_1vzw4_56"nth-child="1"',
+		),
+	]
+	session = _make_session(events)
+	result = compress_session(session)
+	assert 'Submitted form' in result
+
+
+def test_autocapture_walks_chain_for_parent_text():
+	events = [
+		AnalyticsEvent(
+			event_id='e1',
+			event_name='$autocapture',
+			user_id='user-a',
+			session_id='sess-1',
+			timestamp=_ts(0),
+			properties={'$event_type': 'click'},
+			elements_chain='svg._icon_1abc2_5:nth-child="1";button._sendBtn_3def4_12:text="Send";div._toolbar_5ghi6_1',
+		),
+	]
+	session = _make_session(events)
+	result = compress_session(session)
+	assert 'Clicked "Send"' in result
+
+
+def test_autocapture_tag_fallback_from_props():
+	events = [
+		AnalyticsEvent(
+			event_id='e1',
+			event_name='$autocapture',
+			user_id='user-a',
+			session_id='sess-1',
+			timestamp=_ts(0),
+			properties={'$event_type': 'click', '$el_tag_name': 'button'},
+			elements_chain='button._noText_1abc2_5:nth-child="1"',
+		),
+	]
+	session = _make_session(events)
+	result = compress_session(session)
+	assert 'Clicked button' in result
+
+
+def test_autocapture_href_link_click():
+	events = [
+		AnalyticsEvent(
+			event_id='e1',
+			event_name='$autocapture',
+			user_id='user-a',
+			session_id='sess-1',
+			timestamp=_ts(0),
+			properties={'$event_type': 'click', '$el_href': 'https://example.com/settings'},
+			elements_chain='a._link_1abc2_5:nth-child="1"',
+		),
+	]
+	session = _make_session(events)
+	result = compress_session(session)
+	assert 'Clicked link to /settings' in result
+
+
+def test_autocapture_el_text_preferred_over_chain():
+	events = [
+		AnalyticsEvent(
+			event_id='e1',
+			event_name='$autocapture',
+			user_id='user-a',
+			session_id='sess-1',
+			timestamp=_ts(0),
+			properties={'$el_text': 'Save Changes', '$event_type': 'click'},
+			elements_chain='button:text="Save Changes"nth-child="1"',
+		),
+	]
+	session = _make_session(events)
+	result = compress_session(session)
+	assert 'Clicked "Save Changes"' in result
 
 
 def test_conversation_started():

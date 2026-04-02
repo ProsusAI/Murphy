@@ -40,6 +40,7 @@ def _event_from_dict(row: dict[str, Any], *, has_uuid: bool = True) -> Analytics
 		session_id=row.get('session_id'),
 		timestamp=_parse_timestamp(row['timestamp']),
 		properties=_parse_properties(row.get('properties')),
+		elements_chain=row.get('elements_chain') or '',
 		source=SOURCE,
 		raw=row,
 	)
