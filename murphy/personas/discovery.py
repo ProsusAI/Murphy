@@ -133,11 +133,7 @@ async def _name_cluster(
 ) -> TraitDimension:
 	"""Use the LLM to name a single trait dimension from its cluster members."""
 	trait_list = '\n'.join(f'- {t}' for t in cluster_traits)
-	paths_block = (
-		f'\n=== Aggregate Navigation Flows (population-level) ===\n{population_paths}'
-		if population_paths
-		else ''
-	)
+	paths_block = f'\n=== Aggregate Navigation Flows (population-level) ===\n{population_paths}' if population_paths else ''
 
 	response = await llm.ainvoke(
 		messages=[
@@ -198,9 +194,7 @@ async def cluster_trait_dimensions(
 	for trait, label in zip(traits, labels):
 		cluster_groups.setdefault(int(label), []).append(trait)
 
-	dimensions = await asyncio.gather(
-		*[_name_cluster(llm, cluster_groups[c], population_paths) for c in sorted(cluster_groups)]
-	)
+	dimensions = await asyncio.gather(*[_name_cluster(llm, cluster_groups[c], population_paths) for c in sorted(cluster_groups)])
 
 	rationale = (
 		f'Clustered {len(traits)} unique traits into {best_k} dimensions '

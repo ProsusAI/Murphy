@@ -124,7 +124,7 @@ class PostHogClient:
 
 		where = f' WHERE {" AND ".join(conditions)}' if conditions else ''
 		hogql = (
-			f"SELECT uuid, event, distinct_id, properties.$session_id as session_id, timestamp, properties,"
+			f'SELECT uuid, event, distinct_id, properties.$session_id as session_id, timestamp, properties,'
 			f" if(event = '$autocapture', elements_chain, '') as elements_chain"
 			f' FROM events{where}'
 			f' ORDER BY timestamp DESC'
@@ -219,7 +219,7 @@ class PostHogClient:
 			batch_ids = all_session_ids[i : i + batch_size]
 			escaped_sids = ', '.join(f"'{sid}'" for sid in batch_ids)
 			events_q = (
-				f"SELECT properties.$session_id as session_id, event, distinct_id, timestamp, properties,"
+				f'SELECT properties.$session_id as session_id, event, distinct_id, timestamp, properties,'
 				f" if(event = '$autocapture', elements_chain, '') as elements_chain"
 				f' FROM events'
 				f' WHERE properties.$session_id IN ({escaped_sids}){time_filter}'
