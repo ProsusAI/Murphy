@@ -220,6 +220,43 @@ def _extract_pathname(url_or_path: str) -> str:
 	return url_or_path or '/'
 
 
+_ELEMENTS_CHAIN_TEXT_RE = re.compile(r'text="([^"]*)"')
+_ELEMENTS_CHAIN_ARIA_LABEL_RE = re.compile(r'attr__aria-label="([^"]*)"')
+_ELEMENTS_CHAIN_TAG_RE = re.compile(r'^([a-z][a-z0-9]*)')
+
+
+def _tag_from_elements_chain(chain: str) -> str | None:
+	"""Return the tag name of the first (interacted) element in the chain."""
+	if not chain:
+		return None
+	first_element = chain.split(';', 1)[0]
+	m = _ELEMENTS_CHAIN_TAG_RE.match(first_element)
+	return m.group(1) if m else None
+
+
+def _label_from_elements_chain(chain: str) -> str | None:
+	"""Extract a human-readable element label from a PostHog elements_chain.
+
+	Walks the full chain (clicked element → parent elements) looking for
+	text content or aria-label. Returns ``None`` when no useful label
+	can be extracted — callers should fall back to tag name, href, or a
+	generic description rather than guessing from CSS internals.
+	"""
+	if not chain:
+		return None
+
+	for element in chain.split(';'):
+		m = _ELEMENTS_CHAIN_TEXT_RE.search(element)
+		if m and m.group(1).strip():
+			return m.group(1).strip()[:60]
+
+		m = _ELEMENTS_CHAIN_ARIA_LABEL_RE.search(element)
+		if m and m.group(1).strip():
+			return m.group(1).strip()[:60]
+
+	return None
+
+
 def _feature_section(pathname: str) -> str:
 	"""Map a pathname to its top-level feature section."""
 	parts = [p for p in pathname.strip('/').split('/') if p]
@@ -247,11 +284,34 @@ def _compress_event_label(event: AnalyticsEvent) -> str:
 		return base + _extras(name, props)
 
 	if name == '$autocapture':
+		event_type = props.get('$event_type', 'click')
 		el_text = props.get('$el_text', '').strip()
-		if el_text:
-			base = f'Clicked "{el_text[:60]}"'
+		if not el_text:
+			el_text = _label_from_elements_chain(event.elements_chain) or ''
+		tag = props.get('$el_tag_name') or _tag_from_elements_chain(event.elements_chain) or ''
+		href = props.get('$el_href', '')
+		if event_type == 'change':
+			if el_text:
+				base = f'Changed "{el_text[:60]}"'
+			elif tag:
+				base = f'Changed {tag}'
+			else:
+				base = 'Changed form field'
+		elif event_type == 'submit':
+			if el_text:
+				base = f'Submitted "{el_text[:60]}"'
+			else:
+				base = 'Submitted form'
 		else:
-			base = 'Interacted with element'
+			if el_text:
+				base = f'Clicked "{el_text[:60]}"'
+			elif href:
+				path = _extract_pathname(href) if href.startswith('http') else href
+				base = f'Clicked link to {path[:60]}'
+			elif tag:
+				base = f'Clicked {tag}'
+			else:
+				base = 'Clicked element'
 		return base + _extras(name, props)
 
 	if name == 'conversation_started':

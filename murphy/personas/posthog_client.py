@@ -63,7 +63,7 @@ class PostHogClient:
 		self._client = httpx.AsyncClient(
 			base_url=self._host,
 			headers={'Authorization': f'Bearer {self._api_key}'},
-			timeout=30.0,
+			timeout=60.0,
 		)
 		return self
 
@@ -124,7 +124,8 @@ class PostHogClient:
 
 		where = f' WHERE {" AND ".join(conditions)}' if conditions else ''
 		hogql = (
-			f'SELECT uuid, event, distinct_id, properties.$session_id as session_id, timestamp, properties'
+			f"SELECT uuid, event, distinct_id, properties.$session_id as session_id, timestamp, properties,"
+			f" if(event = '$autocapture', elements_chain, '') as elements_chain"
 			f' FROM events{where}'
 			f' ORDER BY timestamp DESC'
 			f' LIMIT {limit}'
@@ -213,12 +214,13 @@ class PostHogClient:
 
 		# 2. Fetch events for all selected sessions (batched to avoid PostHog timeouts)
 		events_by_session: dict[str, list[dict[str, Any]]] = defaultdict(list)
-		batch_size = 50
+		batch_size = 20
 		for i in range(0, len(all_session_ids), batch_size):
 			batch_ids = all_session_ids[i : i + batch_size]
 			escaped_sids = ', '.join(f"'{sid}'" for sid in batch_ids)
 			events_q = (
-				f'SELECT properties.$session_id as session_id, event, distinct_id, timestamp, properties'
+				f"SELECT properties.$session_id as session_id, event, distinct_id, timestamp, properties,"
+				f" if(event = '$autocapture', elements_chain, '') as elements_chain"
 				f' FROM events'
 				f' WHERE properties.$session_id IN ({escaped_sids}){time_filter}'
 				f' LIMIT 50000'
