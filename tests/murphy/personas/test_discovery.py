@@ -168,9 +168,15 @@ async def test_cluster_trait_dimensions_returns_schema():
 	llm.ainvoke.return_value = resp
 
 	observations = [
-		SessionObservation(session_id='s1', observed_traits=['patient', 'calm', 'deliberate'], behavioral_summary='Waited calmly.'),
-		SessionObservation(session_id='s2', observed_traits=['impatient', 'rushed', 'exploratory'], behavioral_summary='Moved fast.'),
-		SessionObservation(session_id='s3', observed_traits=['methodical', 'focused', 'thorough'], behavioral_summary='Checked everything.'),
+		SessionObservation(
+			session_id='s1', observed_traits=['patient', 'calm', 'deliberate'], behavioral_summary='Waited calmly.'
+		),
+		SessionObservation(
+			session_id='s2', observed_traits=['impatient', 'rushed', 'exploratory'], behavioral_summary='Moved fast.'
+		),
+		SessionObservation(
+			session_id='s3', observed_traits=['methodical', 'focused', 'thorough'], behavioral_summary='Checked everything.'
+		),
 	]
 
 	embeddings = _mock_embeddings(9)
@@ -208,7 +214,9 @@ async def test_cluster_trait_dimensions_includes_population_paths():
 	llm.ainvoke.return_value = resp
 
 	observations = [
-		SessionObservation(session_id='s1', observed_traits=['patient', 'calm', 'deliberate', 'fast', 'slow'], behavioral_summary=''),
+		SessionObservation(
+			session_id='s1', observed_traits=['patient', 'calm', 'deliberate', 'fast', 'slow'], behavioral_summary=''
+		),
 	]
 	embeddings = _mock_embeddings(5)
 
