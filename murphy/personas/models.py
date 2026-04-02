@@ -19,6 +19,7 @@ class AnalyticsEvent(BaseModel):
 	session_id: str | None = None
 	timestamp: datetime
 	properties: dict[str, Any] = Field(default_factory=dict)
+	elements_chain: str = ''
 	source: str = ''
 	raw: dict[str, Any] | None = None
 
