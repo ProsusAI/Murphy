@@ -1,8 +1,9 @@
-"""Phase 1 — Discovery: observe sessions and aggregate into a trait schema.
+"""Phase 1 — Discovery: observe sessions and cluster into a trait schema.
 
-Two LLM steps:
-1. Per-session observation (concurrent, semaphore-limited).
-2. Cross-session aggregation into a canonical TraitSchema.
+Two steps:
+1. Per-session observation (concurrent LLM calls, semaphore-limited).
+2. Embedding-based clustering of observed traits into canonical dimensions,
+   with a per-cluster LLM call to name each dimension.
 """
 
 from __future__ import annotations
@@ -11,10 +12,15 @@ import asyncio
 import logging
 from typing import Any
 
+import numpy as np
+from openai import AsyncOpenAI
+from sklearn.cluster import KMeans
+
 from browser_use.llm import ChatOpenAI, SystemMessage, UserMessage
+from murphy.personas.clustering import find_optimal_k
 from murphy.personas.compressor import compress_session
 from murphy.personas.models import AnalyticsSession
-from murphy.personas.pipeline_models import SessionObservation, TraitSchema
+from murphy.personas.pipeline_models import SessionObservation, TraitDimension, TraitSchema
 
 logger = logging.getLogger(__name__)
 
@@ -39,38 +45,37 @@ Analyze this session timeline and identify the behavioral traits you observe.
 
 {timeline}"""
 
-AGGREGATE_SYSTEM = """\
-You are a behavioral scientist designing a trait taxonomy for user personas.
+CLUSTER_NAME_SYSTEM = """\
+You are a behavioral scientist naming a trait dimension for user personas.
 
-You will receive behavioral observations from multiple user sessions, plus
-optional aggregate navigation flow data showing the most common paths users
-take through the application.
+You will receive a cluster of related behavioral trait labels that were
+observed across multiple user sessions and grouped by semantic similarity.
 
-Your job is to synthesize these observations into a canonical set of 5-8
-orthogonal trait dimensions that describe user characteristics. Each
-dimension should read like a personality trait — e.g. "Patience" (low =
-rage-clicks and abandons quickly, high = waits calmly through delays and
-retries deliberately) rather than an abstract metric like "Engagement Depth."
+Your job is to synthesize these related traits into a single canonical
+trait dimension. The dimension should read like a personality trait — e.g.
+"Patience" (low = rage-clicks and abandons quickly, high = waits calmly
+through delays and retries deliberately) rather than an abstract metric
+like "Engagement Depth."
 
-Each dimension should:
+The dimension must:
 - Describe a user characteristic, not a product metric
 - Be observable from session event data (not speculative)
 - Have clear low (1) and high (5) anchors framed as opposing behaviors
 - Be useful for distinguishing different user personas
-- Include a "why_chosen" field: 1-3 sentences explaining why you included this
-  dimension, grounded in specific patterns from the observations (e.g. which
-  traits recurred, how users differed, or what navigation flows suggested the axis)
+- Include a "why_chosen" field: 1-3 sentences explaining why these traits
+  cluster together and why the resulting dimension is meaningful"""
 
-Aim for dimensions that separate user archetypes meaningfully."""
+CLUSTER_NAME_USER = """\
+The following behavioral traits were observed across user sessions and
+clustered together by semantic similarity. Synthesize them into one
+canonical trait dimension with a name, description, and low/high anchors.
 
-AGGREGATE_USER = """\
-Below are behavioral observations from {num_sessions} user sessions.
-Synthesize them into a canonical trait schema of 5-8 orthogonal dimensions.
-For every dimension, explain in why_chosen how the observations (and population
-flows, if present) motivated that axis.
-
-{observations_block}
+Trait labels in this cluster:
+{trait_list}
 {paths_block}"""
+
+EMBEDDING_MODEL = 'text-embedding-3-small'
+EMBEDDING_BATCH_SIZE = 2048
 
 
 # ── LLM calls ────────────────────────────────────────────────────────────────
@@ -91,37 +96,117 @@ async def observe_session(llm: ChatOpenAI, timeline: str, session_id: str) -> Se
 	return observation
 
 
-async def aggregate_trait_schema(
-	llm: ChatOpenAI,
-	observations: list[SessionObservation],
-	population_paths: str | None = None,
-) -> TraitSchema:
-	"""Synthesize all per-session observations into a canonical trait schema."""
-	obs_lines: list[str] = []
-	for i, obs in enumerate(observations, 1):
-		traits = ', '.join(obs.observed_traits)
-		obs_lines.append(f'Session {i}: {obs.behavioral_summary} [Traits: {traits}]')
-	observations_block = '\n'.join(obs_lines)
+# ── Embedding + clustering ───────────────────────────────────────────────────
 
-	if population_paths:
-		paths_block = f'\n=== Aggregate Navigation Flows (population-level) ===\n{population_paths}'
-	else:
-		paths_block = ''
+
+async def _embed_traits(traits: list[str]) -> np.ndarray:
+	"""Embed trait strings using OpenAI text embeddings. Returns (N, dim) array."""
+	client = AsyncOpenAI()
+	all_embeddings: list[list[float]] = []
+
+	for i in range(0, len(traits), EMBEDDING_BATCH_SIZE):
+		batch = traits[i : i + EMBEDDING_BATCH_SIZE]
+		resp = await client.embeddings.create(model=EMBEDDING_MODEL, input=batch)
+		for item in sorted(resp.data, key=lambda x: x.index):
+			all_embeddings.append(item.embedding)
+
+	return np.array(all_embeddings, dtype=np.float64)
+
+
+def _deduplicate_traits(observations: list[SessionObservation]) -> list[str]:
+	"""Collect and case-insensitively deduplicate trait strings across all observations."""
+	seen: set[str] = set()
+	unique: list[str] = []
+	for obs in observations:
+		for trait in obs.observed_traits:
+			key = trait.strip().lower()
+			if key and key not in seen:
+				seen.add(key)
+				unique.append(trait.strip())
+	return unique
+
+
+async def _name_cluster(
+	llm: ChatOpenAI,
+	cluster_traits: list[str],
+	population_paths: str | None = None,
+) -> TraitDimension:
+	"""Use the LLM to name a single trait dimension from its cluster members."""
+	trait_list = '\n'.join(f'- {t}' for t in cluster_traits)
+	paths_block = (
+		f'\n=== Aggregate Navigation Flows (population-level) ===\n{population_paths}'
+		if population_paths
+		else ''
+	)
 
 	response = await llm.ainvoke(
 		messages=[
-			SystemMessage(content=AGGREGATE_SYSTEM),
+			SystemMessage(content=CLUSTER_NAME_SYSTEM),
 			UserMessage(
-				content=AGGREGATE_USER.format(
-					num_sessions=len(observations),
-					observations_block=observations_block,
+				content=CLUSTER_NAME_USER.format(
+					trait_list=trait_list,
 					paths_block=paths_block,
 				)
 			),
 		],
-		output_format=TraitSchema,
+		output_format=TraitDimension,
 	)
 	return response.completion
+
+
+async def cluster_trait_dimensions(
+	llm: ChatOpenAI,
+	observations: list[SessionObservation],
+	population_paths: str | None = None,
+	k_range: tuple[int, int] = (4, 10),
+) -> TraitSchema:
+	"""Cluster observed traits into canonical dimensions via embedding similarity.
+
+	1. Deduplicate trait strings across all observations.
+	2. Embed via OpenAI text-embedding-3-small.
+	3. Find optimal k with silhouette sweep (reuses find_optimal_k from clustering.py).
+	4. K-Means cluster with best k.
+	5. LLM-name each cluster into a TraitDimension.
+	"""
+	traits = _deduplicate_traits(observations)
+	if not traits:
+		return TraitSchema(dimensions=[], rationale='No traits observed.')
+
+	logger.info('Embedding %d unique traits for dimension clustering', len(traits))
+	embeddings = await _embed_traits(traits)
+
+	n = embeddings.shape[0]
+	lo = max(k_range[0], 2)
+	hi = min(k_range[1], n - 1)
+
+	if n <= lo:
+		best_k = n
+		sil_scores: dict[int, float] = {}
+	else:
+		best_k, sil_scores = find_optimal_k(embeddings, k_range=(lo, hi))
+
+	logger.info(
+		'Trait dimension clustering: best_k=%d (silhouette scores: %s)',
+		best_k,
+		{k: f'{v:.4f}' for k, v in sil_scores.items()},
+	)
+
+	km = KMeans(n_clusters=best_k, n_init=10, random_state=42)  # type: ignore[arg-type]
+	labels = km.fit_predict(embeddings)
+
+	cluster_groups: dict[int, list[str]] = {}
+	for trait, label in zip(traits, labels):
+		cluster_groups.setdefault(int(label), []).append(trait)
+
+	dimensions = await asyncio.gather(
+		*[_name_cluster(llm, cluster_groups[c], population_paths) for c in sorted(cluster_groups)]
+	)
+
+	rationale = (
+		f'Clustered {len(traits)} unique traits into {best_k} dimensions '
+		f'via embedding similarity (silhouette sweep over k={lo}..{hi}).'
+	)
+	return TraitSchema(dimensions=list(dimensions), rationale=rationale)
 
 
 # ── Orchestrator ─────────────────────────────────────────────────────────────
@@ -163,9 +248,9 @@ async def run_discovery(
 	failed = len(results) - len(observations)
 	if failed:
 		logger.warning('Discovery completed with %d/%d failures', failed, len(results))
-	logger.info('Completed %d session observations, aggregating trait schema', len(observations))
+	logger.info('Completed %d session observations, clustering trait dimensions', len(observations))
 
-	schema = await aggregate_trait_schema(llm, list(observations), population_paths)
+	schema = await cluster_trait_dimensions(llm, list(observations), population_paths)
 	logger.info(
 		'Discovered %d trait dimensions: %s',
 		len(schema.dimensions),
