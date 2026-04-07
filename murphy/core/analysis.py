@@ -4,7 +4,7 @@ import logging
 
 from browser_use import Agent
 from browser_use.browser.session import BrowserSession
-from browser_use.llm import ChatOpenAI
+from browser_use.llm import BaseChatModel
 from murphy.models import WebsiteAnalysis
 from murphy.prompts import build_analysis_prompt
 
@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 async def analyze_website(
 	url: str,
-	llm: ChatOpenAI,
+	llm: BaseChatModel,
 	category: str | None = None,
 	goal: str | None = None,
 	browser_session: BrowserSession | None = None,

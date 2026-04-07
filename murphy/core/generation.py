@@ -5,7 +5,7 @@ from typing import Any
 
 from browser_use import Agent
 from browser_use.browser.session import BrowserSession
-from browser_use.llm import ChatOpenAI, SystemMessage, UserMessage
+from browser_use.llm import BaseChatModel, SystemMessage, UserMessage
 from murphy.config import EXPLORE_MAX_STEPS, QUALITY_MAX_RETRIES
 from murphy.core.quality import plan_quality_issues
 from murphy.models import TestPlan
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 async def generate_tests(
 	url: str,
 	analysis: 'Any',
-	llm: ChatOpenAI,
+	llm: BaseChatModel,
 	max_tests: int,
 	goal: str | None = None,
 ) -> TestPlan:
@@ -78,7 +78,7 @@ async def generate_tests(
 async def explore_and_generate_plan(
 	task: str,
 	url: str,
-	llm: ChatOpenAI,
+	llm: BaseChatModel,
 	session: BrowserSession,
 	max_scenarios: int = 8,
 	max_steps: int = 30,
