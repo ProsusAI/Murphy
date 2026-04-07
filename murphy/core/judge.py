@@ -150,6 +150,7 @@ Even when verdict=true, populate `missing_signals` with any expected confirmatio
 If verdict=true and all expected signals were observed, leave `missing_signals` as an empty list.
 
 
+
 ## Failure classification
 
 If verdict is FALSE, you MUST also classify the failure:

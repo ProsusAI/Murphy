@@ -15,6 +15,7 @@ from browser_use.browser.session import BrowserSession
 from browser_use.llm import ChatOpenAI
 from murphy.core.judge import murphy_judge
 from murphy.core.summary import classify_failure
+from murphy.io.report_helpers import _slugify
 from murphy.models import (
 	ScenarioExecutionVerdict,
 	TestPlan,
@@ -75,25 +76,6 @@ def _extract_form_fills(actions: list[dict[str, Any]]) -> list[dict]:
 	return fills
 
 
-def _extract_pages_visited(actions: list[dict[str, Any]], start_url: str) -> list[str]:
-	"""Extract unique pages visited from action history."""
-	pages: list[str] = [start_url]
-	for action in actions:
-		for key, val in action.items():
-			if key in ('navigate', 'go_to_url') and isinstance(val, dict):
-				url = val.get('url', '')
-				if url:
-					pages.append(url)
-	# Deduplicate preserving order
-	seen: set[str] = set()
-	unique: list[str] = []
-	for p in pages:
-		if p not in seen:
-			seen.add(p)
-			unique.append(p)
-	return unique
-
-
 _URL_RE = re.compile(r'https?://[^\s<>"\')\]]+')
 
 
@@ -134,6 +116,7 @@ async def _execute_single_test(
 	index: int,
 	total: int,
 	judge_llm: ChatOpenAI | None = None,
+	output_dir: Path | None = None,
 ) -> TestResult:
 	"""Execute one test scenario and return its TestResult.
 
@@ -204,11 +187,11 @@ async def _execute_single_test(
 		all_actions = history.model_actions()
 		errors = history.errors()
 
-		# Collect pages from actions, session tabs, and error text URLs
-		action_pages = _extract_pages_visited(all_actions, url)
+		# Collect pages from history state, session tabs, and error text URLs
+		history_urls = [u for u in history.urls() if u]
 		session_urls = await _collect_session_urls(browser_session)
 		error_urls = _extract_urls_from_texts([e for e in errors if e])
-		all_pages = action_pages + session_urls + error_urls
+		all_pages = history_urls + session_urls + error_urls
 		# Deduplicate preserving order
 		seen_urls: set[str] = set()
 		unique_pages: list[str] = []
@@ -216,6 +199,16 @@ async def _execute_single_test(
 			if p not in seen_urls:
 				seen_urls.add(p)
 				unique_pages.append(p)
+
+		# Save full browser-use history to output/agent_history/ when output_dir is set
+		if output_dir is not None:
+			slug = _slugify(scenario.name)
+			history_path = output_dir / 'agent_history' / f'test_{index:02d}_{slug}.json'
+			try:
+				history.save_to_file(history_path)
+				logger.debug('  Agent history saved: %s', history_path)
+			except Exception as e:
+				logger.warning('  Failed to save agent history: %s', e)
 
 		test_result = TestResult(
 			scenario=scenario,
@@ -373,6 +366,7 @@ async def execute_tests(
 	progress_state: Any = None,
 	save_callback: Callable[[list[TestResult]], None] | None = None,
 	judge_llm: ChatOpenAI | None = None,
+	output_dir: Path | None = None,
 ) -> list[TestResult]:
 	"""Execute tests without a pre-existing session (creates its own)."""
 	from browser_use.browser.profile import BrowserProfile
@@ -390,6 +384,7 @@ async def execute_tests(
 			save_callback=save_callback,
 			max_concurrent=1,
 			judge_llm=judge_llm,
+			output_dir=output_dir,
 		)
 	finally:
 		await browser_session.kill()
@@ -407,12 +402,22 @@ async def execute_tests_with_session(
 	save_callback: Callable[[list[TestResult]], None] | None = None,
 	max_concurrent: int = 3,
 	judge_llm: ChatOpenAI | None = None,
+	output_dir: Path | None = None,
 ) -> list[TestResult]:
 	"""Phase 3 execution reusing an existing browser session.
 
 	Uses BOTH structured agent verdict (ScenarioExecutionVerdict) AND murphy judge.
 	When max_concurrent > 1, runs tests in parallel using a session pool.
 	"""
+	import shutil
+
+	# Clean up agent_history and screenshots directories from previous runs
+	if output_dir is not None:
+		agent_history_dir = output_dir / 'agent_history'
+		if agent_history_dir.exists():
+			shutil.rmtree(agent_history_dir)
+		agent_history_dir.mkdir(parents=True, exist_ok=True)
+
 	total = len(test_plan.scenarios)
 	mode = 'parallel' if max_concurrent > 1 else 'sequential'
 	logger.info('\n%s', '=' * 60)
@@ -437,6 +442,7 @@ async def execute_tests_with_session(
 				index=i,
 				total=total,
 				judge_llm=judge_llm,
+				output_dir=output_dir,
 			)
 			results.append(test_result)
 
@@ -484,6 +490,7 @@ async def execute_tests_with_session(
 					index=index_0 + 1,
 					total=total,
 					judge_llm=judge_llm,
+					output_dir=output_dir,
 				)
 				results_slots[index_0] = result
 

@@ -44,7 +44,7 @@ def main() -> int:
 		prog='murphy',
 		description='Murphy — AI-driven website evaluation',
 	)
-	parser.add_argument('--url', required=True, help='Target URL to evaluate')
+	parser.add_argument('--url', help='Target URL to evaluate (required unless --open)')
 	parser.add_argument('--goal', help="Free-text goal to bias test generation (e.g. 'test the checkout flow')")
 	parser.add_argument('--auth', action='store_true', help='Skip auto-detection and go straight to manual login wait')
 	parser.add_argument('--no-auth', action='store_true', help='Skip auth detection entirely, treat site as public')
@@ -54,6 +54,11 @@ def main() -> int:
 	parser.add_argument('--model', default='gpt-5-mini', help='OpenAI model for agent tasks (default: gpt-5-mini)')
 	parser.add_argument('--judge-model', default='gpt-5-mini', help='OpenAI model for judging verdicts (default: gpt-5-mini)')
 	parser.add_argument('--output-dir', default='./murphy/output', help='Output directory for reports')
+	parser.add_argument(
+		'--open',
+		action='store_true',
+		help='Open existing results from --output-dir without running tests',
+	)
 	parser.add_argument('--category', help='Site category hint (ecommerce, saas, content, social)')
 	parser.add_argument('--ui', action='store_true', help='Launch interactive web UI instead of running in terminal')
 	parser.add_argument(
@@ -69,6 +74,9 @@ def main() -> int:
 	)
 	args = parser.parse_args()
 
+	if not args.open and not args.url:
+		parser.error('--url is required unless using --open')
+
 	try:
 		asyncio.run(_async_main(args))
 		return 0
@@ -80,6 +88,10 @@ def main() -> int:
 
 
 async def _async_main(args: argparse.Namespace) -> None:
+	if args.open:
+		await _open_mode(Path(args.output_dir))
+		return
+
 	from browser_use.browser.profile import BrowserProfile
 	from browser_use.browser.session import BrowserSession
 	from browser_use.llm import ChatOpenAI
@@ -250,6 +262,7 @@ async def _async_main(args: argparse.Namespace) -> None:
 				save_callback=_on_test_complete,
 				max_concurrent=args.parallel,
 				judge_llm=judge_llm,
+				output_dir=output_dir,
 			)
 			if analysis:
 				write_reports_and_print(args.url, analysis, results, output_dir)
@@ -275,6 +288,7 @@ async def _async_main(args: argparse.Namespace) -> None:
 				save_callback=_on_test_complete,
 				max_concurrent=args.parallel,
 				judge_llm=judge_llm,
+				output_dir=output_dir,
 			)
 
 		state = ServerState(
@@ -282,6 +296,7 @@ async def _async_main(args: argparse.Namespace) -> None:
 			analysis=analysis,
 			test_plan=test_plan,
 			execute_fn=_execute_fn,
+			output_dir=output_dir,
 		)
 		state.build_summary_fn = build_summary
 
@@ -305,6 +320,38 @@ async def _async_main(args: argparse.Namespace) -> None:
 	finally:
 		if browser_session:
 			await browser_session.kill()
+
+
+async def _open_mode(output_dir: Path) -> None:
+	"""Start the results server from existing evaluation_report.json (no browser/LLM)."""
+	from murphy.api.server import ServerState, start_server
+	from murphy.models import EvaluationReport
+
+	report_path = output_dir / 'evaluation_report.json'
+	if not report_path.exists():
+		raise FileNotFoundError(f'No report found at {report_path}')
+
+	report = EvaluationReport.model_validate_json(report_path.read_text())
+	state = ServerState(
+		url=report.url,
+		analysis=report.analysis,
+		test_plan=None,
+		execute_fn=None,
+		output_dir=output_dir,
+	)
+	state.results = report.results
+	state.summary = report.summary
+	state.done = True
+
+	runner, _ = await start_server(state)
+	logger.info('  Press Ctrl+C to stop.\n')
+	stop_event = asyncio.Event()
+	try:
+		await stop_event.wait()
+	except KeyboardInterrupt:
+		pass
+	finally:
+		await runner.cleanup()
 
 
 def _log_results_summary(results: list[TestResult]) -> None:
