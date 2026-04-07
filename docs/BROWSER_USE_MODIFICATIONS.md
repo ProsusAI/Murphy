@@ -26,6 +26,12 @@
 
 10. **Linting fixes** (`browser_use/agent/prompts.py`, `browser_use/agent/service.py`, `browser_use/code_use/service.py`) — Assigned unused expression results to underscore-prefixed variables to satisfy pyright `reportUnusedExpression`. Also excluded `browser_use/mcp/` and `browser_use/skill_cli/` from pyright checking (optional dependencies not installed).
 
+11. **LLM retry loop for transient errors** (`browser_use/agent/service.py`, `browser_use/agent/views.py`) — `get_model_output()` now retries up to `llm_retry_max_attempts` (default 3) with linear backoff on `ModelRateLimitError` / `ModelProviderError` before attempting a fallback LLM switch. New `llm_retry_max_attempts` setting added to `AgentSettings`.
+
+12. **Increased max completion tokens** (`browser_use/llm/openai/chat.py`) — Doubled `max_completion_tokens` from 4096 to 8192 to reduce truncated structured outputs.
+
+13. **Broader empty-response detection** (`browser_use/llm/openai/chat.py`) — Changed empty-content check from `is None` to falsy (`not content`) to also catch empty strings; updated error message and status code to 502 (provider-side issue).
+
 ## Syncing with Upstream
 
 ```bash
