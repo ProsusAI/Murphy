@@ -342,6 +342,7 @@ async def _async_main(args: argparse.Namespace) -> None:
 				max_concurrent=args.parallel,
 				judge_llm=judge_llm,
 				discovered_personas=discovered_personas,
+				output_dir=output_dir,
 			)
 			if analysis:
 				write_reports_and_print(
@@ -377,6 +378,7 @@ async def _async_main(args: argparse.Namespace) -> None:
 				max_concurrent=args.parallel,
 				judge_llm=judge_llm,
 				discovered_personas=discovered_personas,
+				output_dir=output_dir,
 			)
 
 		state = ServerState(
