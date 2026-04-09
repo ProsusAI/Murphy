@@ -4,10 +4,10 @@ Usage::
 
     python -m murphy.personas.demo [--discovery N] [--scoring N] [--min-events N] [--months-back N] [--model MODEL] [--examples N] [--context-max-chars N] [--no-context]
 
-Defaults to 10 discovery sessions and 20 scoring sessions for a quick demo run.
+Defaults match :mod:`murphy.config` (discovery/scoring counts, min events, cluster count).
+Omit ``--clusters`` to use ``PERSONA_NUM_CLUSTERS``; pass ``--clusters 0`` for automatic K (silhouette).
 After the run, prints a sample of the compressed session text inserted as {timeline} in the
 per-session discovery user message (OBSERVE_USER in murphy.personas.discovery).
-Set higher values (100/200) for production-quality results.
 """
 
 from __future__ import annotations
@@ -17,7 +17,15 @@ import asyncio
 import logging
 import sys
 from pathlib import Path
+from typing import Any
 
+from murphy.config import (
+	PERSONA_DISCOVERY_SESSIONS,
+	PERSONA_LLM_CONCURRENCY,
+	PERSONA_MIN_EVENTS,
+	PERSONA_MONTHS_BACK,
+	PERSONA_SCORING_SESSIONS,
+)
 from murphy.personas.discovery import OBSERVE_USER
 from murphy.personas.pipeline import run_persona_pipeline
 from murphy.personas.pipeline_models import PersonaResult, SessionScore, TraitSchema
@@ -128,13 +136,38 @@ def _print_personas(result: PersonaResult, schema: TraitSchema) -> None:
 
 async def main() -> None:
 	parser = argparse.ArgumentParser(description='Persona Discovery & Scoring demo')
-	parser.add_argument('--discovery', type=int, default=10, help='Number of discovery sessions (default: 10)')
-	parser.add_argument('--scoring', type=int, default=20, help='Number of scoring sessions (default: 20)')
-	parser.add_argument('--min-events', type=int, default=20, help='Min events per session (default: 20)')
-	parser.add_argument('--months-back', type=int, default=2, help='Months of history to sample (default: 2)')
+	parser.add_argument(
+		'--discovery',
+		type=int,
+		default=PERSONA_DISCOVERY_SESSIONS,
+		help=f'Number of discovery sessions (default: {PERSONA_DISCOVERY_SESSIONS} from config)',
+	)
+	parser.add_argument(
+		'--scoring',
+		type=int,
+		default=PERSONA_SCORING_SESSIONS,
+		help=f'Number of scoring sessions (default: {PERSONA_SCORING_SESSIONS} from config)',
+	)
+	parser.add_argument(
+		'--min-events',
+		type=int,
+		default=PERSONA_MIN_EVENTS,
+		help=f'Min events per session (default: {PERSONA_MIN_EVENTS} from config)',
+	)
+	parser.add_argument(
+		'--months-back',
+		type=int,
+		default=PERSONA_MONTHS_BACK,
+		help=f'Months of history to sample (default: {PERSONA_MONTHS_BACK} from config)',
+	)
 	parser.add_argument('--model', type=str, default='gpt-5-mini', help='LLM model (default: gpt-5-mini)')
 	parser.add_argument('--examples', type=int, default=5, help='Number of score examples to display (default: 5)')
-	parser.add_argument('--concurrency', type=int, default=15, help='Max concurrent LLM calls (default: 15)')
+	parser.add_argument(
+		'--concurrency',
+		type=int,
+		default=PERSONA_LLM_CONCURRENCY,
+		help=f'Max concurrent LLM calls (default: {PERSONA_LLM_CONCURRENCY} from config)',
+	)
 	parser.add_argument(
 		'--context-max-chars',
 		type=int,
@@ -145,7 +178,7 @@ async def main() -> None:
 		'--clusters',
 		type=int,
 		default=None,
-		help='Force a specific number of persona clusters (default: auto-select via silhouette)',
+		help='Persona cluster count (default: PERSONA_NUM_CLUSTERS from config); use 0 for auto (silhouette)',
 	)
 	parser.add_argument('--no-context', action='store_true', help='Skip printing the discovery session context sample')
 	parser.add_argument('--output', type=str, default=None, help='Output directory for personas.json (default: none)')
@@ -160,15 +193,17 @@ async def main() -> None:
 	print(f'\nRunning persona pipeline: {args.discovery} discovery + {args.scoring} scoring sessions')
 	print(f'Model: {args.model}  |  Min events: {args.min_events}  |  Months back: {args.months_back}\n')
 
-	schema, scores, persona_result, discovery_timeline_sample, persona_tokens = await run_persona_pipeline(
-		model=args.model,
-		discovery_sessions=args.discovery,
-		scoring_sessions=args.scoring,
-		min_events=args.min_events,
-		months_back=args.months_back,
-		max_concurrent=args.concurrency,
-		num_clusters=args.clusters,
-	)
+	pipeline_kw: dict[str, Any] = {
+		'model': args.model,
+		'discovery_sessions': args.discovery,
+		'scoring_sessions': args.scoring,
+		'min_events': args.min_events,
+		'months_back': args.months_back,
+		'max_concurrent': args.concurrency,
+	}
+	if args.clusters is not None:
+		pipeline_kw['num_clusters'] = args.clusters
+	schema, scores, persona_result, discovery_timeline_sample, persona_tokens = await run_persona_pipeline(**pipeline_kw)
 
 	if not args.no_context:
 		_print_discovery_session_context(discovery_timeline_sample, max_chars=args.context_max_chars)

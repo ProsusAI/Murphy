@@ -15,7 +15,9 @@ from murphy.config import (
 	PERSONA_DISCOVERY_SESSIONS,
 	PERSONA_LLM_CONCURRENCY,
 	PERSONA_MAX_CLUSTERS,
+	PERSONA_MIN_EVENTS,
 	PERSONA_MONTHS_BACK,
+	PERSONA_NUM_CLUSTERS,
 	PERSONA_SCORING_SESSIONS,
 	POSTHOG_API_KEY,
 	POSTHOG_HOST,
@@ -125,11 +127,25 @@ def _unique_user_ids(sessions: list[AnalyticsSession]) -> list[str]:
 	return result
 
 
+def _effective_num_clusters(num_clusters: int | None) -> int | None:
+	"""Resolve K for clustering.
+
+	``0`` means automatic selection (silhouette). When the caller omits
+	``num_clusters`` (``None``), use :data:`~murphy.config.PERSONA_NUM_CLUSTERS`
+	(unless that is ``0``, which also means auto).
+	"""
+	if num_clusters == 0:
+		return None
+	if num_clusters is not None:
+		return num_clusters
+	return None if PERSONA_NUM_CLUSTERS == 0 else PERSONA_NUM_CLUSTERS
+
+
 async def run_persona_pipeline(
 	model: str = 'gpt-5-mini',
 	discovery_sessions: int = PERSONA_DISCOVERY_SESSIONS,
 	scoring_sessions: int = PERSONA_SCORING_SESSIONS,
-	min_events: int = 20,
+	min_events: int = PERSONA_MIN_EVENTS,
 	months_back: int = PERSONA_MONTHS_BACK,
 	max_concurrent: int = PERSONA_LLM_CONCURRENCY,
 	max_clusters: int = PERSONA_MAX_CLUSTERS,
@@ -217,8 +233,9 @@ async def run_persona_pipeline(
 		)
 
 		# Phase 3: Clustering + Labeling
-		logger.info('Clustering %d scored sessions (num_clusters=%s, max_clusters=%d)', len(scores), num_clusters, max_clusters)
-		clustering = cluster_sessions(scores, schema, k=num_clusters, k_range=(2, max_clusters))
+		k_clusters = _effective_num_clusters(num_clusters)
+		logger.info('Clustering %d scored sessions (num_clusters=%s, max_clusters=%d)', len(scores), k_clusters, max_clusters)
+		clustering = cluster_sessions(scores, schema, k=k_clusters, k_range=(2, max_clusters))
 
 		cluster_sizes = [int((clustering.labels == i).sum()) for i in range(clustering.k)]
 		labels = await label_personas(llm, schema, clustering.centroids, cluster_sizes)

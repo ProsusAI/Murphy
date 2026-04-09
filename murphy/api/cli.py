@@ -141,13 +141,7 @@ async def _async_main(args: argparse.Namespace) -> None:
 		from murphy.personas.pipeline import run_persona_pipeline
 
 		logger.info('Running persona discovery pipeline...')
-		schema, _scores, persona_result, _sample, persona_discovery_tokens = await run_persona_pipeline(
-			model=args.model,
-			discovery_sessions=200,
-			scoring_sessions=500,
-			num_clusters=8,
-			min_events=100,
-		)
+		schema, _scores, persona_result, _sample, persona_discovery_tokens = await run_persona_pipeline(model=args.model)
 		save_personas(schema, persona_result, output_dir)
 		discovered_personas = (persona_result, schema)
 		logger.info('Discovered %d personas, saved to %s', len(persona_result.personas), output_dir / 'personas.json')
