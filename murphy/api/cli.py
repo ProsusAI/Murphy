@@ -335,11 +335,7 @@ async def _async_main(args: argparse.Namespace) -> None:
 				save_callback=_on_test_complete,
 				max_concurrent=args.parallel,
 				judge_llm=judge_llm,
-<<<<<<< HEAD
-				output_dir=output_dir,
-=======
 				discovered_personas=discovered_personas,
->>>>>>> posthog-ingestion-cluster-dimensions
 			)
 			if analysis:
 				write_reports_and_print(
@@ -372,11 +368,7 @@ async def _async_main(args: argparse.Namespace) -> None:
 				save_callback=_on_test_complete,
 				max_concurrent=args.parallel,
 				judge_llm=judge_llm,
-<<<<<<< HEAD
-				output_dir=output_dir,
-=======
 				discovered_personas=discovered_personas,
->>>>>>> posthog-ingestion-cluster-dimensions
 			)
 
 		state = ServerState(
