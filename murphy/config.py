@@ -56,8 +56,12 @@ PERSONA_MIN_EVENTS_PER_SESSION = int(os.environ.get('PERSONA_MIN_EVENTS_PER_SESS
 
 # ─── Persona pipeline defaults ──────────────────────────────────────────────
 
-PERSONA_DISCOVERY_SESSIONS = int(os.environ.get('PERSONA_DISCOVERY_SESSIONS', '100'))
-PERSONA_SCORING_SESSIONS = int(os.environ.get('PERSONA_SCORING_SESSIONS', '200'))
+PERSONA_DISCOVERY_SESSIONS = int(os.environ.get('PERSONA_DISCOVERY_SESSIONS', '200'))
+PERSONA_SCORING_SESSIONS = int(os.environ.get('PERSONA_SCORING_SESSIONS', '500'))
+# Minimum event count per session when sampling from PostHog for the persona pipeline
+PERSONA_MIN_EVENTS = int(os.environ.get('PERSONA_MIN_EVENTS', '100'))
 PERSONA_LLM_CONCURRENCY = int(os.environ.get('PERSONA_LLM_CONCURRENCY', '15'))
 PERSONA_MONTHS_BACK = int(os.environ.get('PERSONA_MONTHS_BACK', '2'))
 PERSONA_MAX_CLUSTERS = int(os.environ.get('PERSONA_MAX_CLUSTERS', '10'))
+# Fixed K for K-Means in the persona pipeline; ``0`` = auto-select via silhouette
+PERSONA_NUM_CLUSTERS = int(os.environ.get('PERSONA_NUM_CLUSTERS', '8'))
