@@ -7,7 +7,7 @@ Built on top of [browser-use](https://github.com/browser-use/browser-use) (AI br
 ## Prerequisites
 
 - Python >= 3.11
-- An OpenAI API key (`OPENAI_API_KEY`) — default model is `gpt-5-mini`
+- An LLM API key — default model is `gpt-5-mini` (OpenAI), but Murphy supports multiple providers (see [Model Providers](#model-providers))
 
 ## Which setup should I use?
 
@@ -43,10 +43,11 @@ uv run playwright install chromium
 ```bash
 cp .env.example .env
 ```
-Then set your key:
+Then set your key (at minimum one provider):
 ```
 OPENAI_API_KEY=sk-...
 ```
+See [Model Providers](#model-providers) for other providers.
 
 ## Setup (Docker)
 
@@ -179,8 +180,10 @@ The full JSON report (`evaluation_report.json`) contains structured results, act
 | `--features` | | Path to existing features markdown (skips feature discovery) |
 | `--plan` | | Path to existing YAML test plan (skips planning, goes straight to execution) |
 | `--max-tests` | `8` | Maximum number of test scenarios to generate |
-| `--model` | `gpt-5-mini` | LLM model for agent tasks |
-| `--judge-model` | `gpt-5-mini` | LLM model for judging verdicts |
+| `--provider` | `openai` | LLM provider (see [Model Providers](#model-providers)) |
+| `--model` | `gpt-5-mini` | LLM model name as it appears in the provider's docs |
+| `--judge-provider` | *(same as `--provider`)* | LLM provider for judging verdicts |
+| `--judge-model` | *(same as `--model`)* | LLM model for judging verdicts |
 | `--output-dir` | `./murphy/output` | Output directory for all generated files |
 | `--category` | | Site category hint (`ecommerce`, `saas`, `content`, `social`) |
 | `--open` | `false` | Open the interactive UI for a previously completed run (no browser or LLM required); `--url` is not needed |
@@ -220,15 +223,69 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#rest-api-murphy-api) for full en
 
 ---
 
+## Model Providers
+
+Murphy supports multiple LLM providers via [browser-use](https://github.com/browser-use/browser-use). Use `--provider` and `--model` to select any supported provider. Model names are passed exactly as they appear in the provider's documentation — no renaming needed.
+
+```bash
+# Default: OpenAI
+uv run murphy --url https://example.com --model gpt-5-mini
+
+# Google Gemini
+uv run murphy --url https://example.com --provider google --model gemini-2.5-pro
+
+# Anthropic Claude
+uv run murphy --url https://example.com --provider anthropic --model claude-sonnet-4-20250514
+
+# Azure OpenAI
+uv run murphy --url https://example.com --provider azure --model gpt-4o
+
+# Mistral
+uv run murphy --url https://example.com --provider mistral --model mistral-large-latest
+
+# Mix providers: cheap model for agent tasks, stronger model for judging
+uv run murphy --url https://example.com \
+  --provider google --model gemini-2.5-flash \
+  --judge-provider openai --judge-model gpt-5-mini
+```
+
+Set the corresponding API key as an environment variable (see [Environment Variables](#environment-variables)).
+
+| Provider | `--provider` value | Example `--model` |
+|----------|-------------------|-------------------|
+| OpenAI | `openai` (default) | `gpt-5-mini`, `gpt-4o`, `o3` |
+| Google Gemini | `google` | `gemini-2.5-pro`, `gemini-2.5-flash` |
+| Anthropic | `anthropic` | `claude-sonnet-4-20250514`, `claude-haiku-4-5-20251001` |
+| Azure OpenAI | `azure` | `gpt-4o`, `gpt-4o-mini` |
+| Mistral | `mistral` | `mistral-large-latest`, `mistral-small-latest` |
+| Groq | `groq` | `llama3-70b-8192` |
+| DeepSeek | `deepseek` | `deepseek-chat` |
+| Cerebras | `cerebras` | `llama-3.3-70b` |
+| Ollama | `ollama` | `llama3`, `mistral` |
+| OpenRouter | `openrouter` | `meta-llama/llama-3-70b` |
+| Browser Use | `bu` | `bu-latest` |
+
+---
+
 ## Environment Variables
 
 All variables are optional unless noted. See `.env.example` for a template.
 
-### LLM Provider
+### LLM Providers
 
-| Variable | Description |
-|----------|-------------|
-| `OPENAI_API_KEY` | OpenAI API key (required) |
+Set the API key for whichever provider you use (at least one is required):
+
+| Variable | Provider |
+|----------|----------|
+| `OPENAI_API_KEY` | OpenAI (default) |
+| `GOOGLE_API_KEY` | Google Gemini |
+| `ANTHROPIC_API_KEY` | Anthropic Claude |
+| `AZURE_OPENAI_KEY` | Azure OpenAI (also needs `AZURE_OPENAI_ENDPOINT`) |
+| `MISTRAL_API_KEY` | Mistral |
+| `GROQ_API_KEY` | Groq |
+| `CEREBRAS_API_KEY` | Cerebras |
+| `OPENROUTER_API_KEY` | OpenRouter |
+| `BROWSER_USE_API_KEY` | Browser Use |
 
 ### REST API
 

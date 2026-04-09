@@ -23,6 +23,7 @@ class AnalyzeRequest(BaseModel):
 	url: str
 	category: str | None = None
 	goal: str | None = None
+	provider: str = 'openai'
 	model: str = 'gpt-5-mini'
 	webhook_url: str | None = None
 	async_mode: bool = Field(False, alias='async')
@@ -35,6 +36,7 @@ class GeneratePlanRequest(BaseModel):
 	analysis: Annotated[WebsiteAnalysis, BeforeValidator(_parse_json_string)]
 	max_tests: int = 8
 	goal: str | None = None
+	provider: str = 'openai'
 	model: str = 'gpt-5-mini'
 	webhook_url: str | None = None
 	async_mode: bool = Field(False, alias='async')
@@ -47,8 +49,10 @@ class ExecuteRequest(BaseModel):
 	test_plan: Annotated[TestPlan, BeforeValidator(_parse_json_string)] | None = None
 	evaluate_job_id: str | None = None
 	goal: str | None = None
+	provider: str = 'openai'
 	model: str = 'gpt-5-mini'
-	judge_model: str = 'gpt-5-mini'
+	judge_provider: str | None = None
+	judge_model: str | None = None
 	max_steps: int = 15
 	max_concurrent: int = 3
 	webhook_url: str | None = None
@@ -61,8 +65,10 @@ class EvaluateRequest(BaseModel):
 	url: str
 	goal: str | None = None
 	max_tests: int = 8
+	provider: str = 'openai'
 	model: str = 'gpt-5-mini'
-	judge_model: str = 'gpt-5-mini'
+	judge_provider: str | None = None
+	judge_model: str | None = None
 	async_mode: bool = Field(False, alias='async')
 	webhook_url: str | None = None
 

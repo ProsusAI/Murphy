@@ -8,12 +8,12 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
 	from browser_use.browser.session import BrowserSession
-	from browser_use.llm import ChatOpenAI
+	from browser_use.llm import BaseChatModel
 
 logger = logging.getLogger(__name__)
 
 
-async def detect_auth_required(browser_session: BrowserSession, llm: ChatOpenAI, url: str) -> bool:
+async def detect_auth_required(browser_session: BrowserSession, llm: BaseChatModel, url: str) -> bool:
 	"""Navigate to URL and use a passive LLM call to detect if login is required."""
 	logger.info('\n%s', '=' * 60)
 	logger.info('Checking if %s requires login...', url)
@@ -59,7 +59,7 @@ async def _get_page_text(browser_session: BrowserSession) -> tuple[str, str, str
 	return current_url, title, body
 
 
-async def _llm_classify_page(llm: ChatOpenAI, url: str, title: str, body: str, *, mode: str = 'auth_detect') -> bool:
+async def _llm_classify_page(llm: BaseChatModel, url: str, title: str, body: str, *, mode: str = 'auth_detect') -> bool:
 	"""Use a single LLM call (no agent) to classify page content.
 
 	Returns True if the page looks like authenticated/usable content.
@@ -97,7 +97,7 @@ async def _llm_classify_page(llm: ChatOpenAI, url: str, title: str, body: str, *
 
 async def wait_for_manual_login(
 	browser_session: BrowserSession,
-	llm: ChatOpenAI,
+	llm: BaseChatModel,
 	url: str,
 	*,
 	already_navigated: bool = False,

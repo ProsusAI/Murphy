@@ -12,7 +12,7 @@ from typing import Any
 from browser_use import Agent
 from browser_use.agent.views import AgentHistoryList
 from browser_use.browser.session import BrowserSession
-from browser_use.llm import ChatOpenAI
+from browser_use.llm import BaseChatModel
 from murphy.core.judge import murphy_judge
 from murphy.core.summary import classify_failure
 from murphy.io.report_helpers import _slugify
@@ -108,14 +108,14 @@ async def _collect_session_urls(browser_session: BrowserSession) -> list[str]:
 async def _execute_single_test(
 	url: str,
 	scenario: TestScenario,
-	llm: ChatOpenAI,
+	llm: BaseChatModel,
 	browser_session: BrowserSession,
 	goal: str | None,
 	fixture_paths: list[Path] | None,
 	max_steps: int,
 	index: int,
 	total: int,
-	judge_llm: ChatOpenAI | None = None,
+	judge_llm: BaseChatModel | None = None,
 	output_dir: Path | None = None,
 ) -> TestResult:
 	"""Execute one test scenario and return its TestResult.
@@ -362,10 +362,10 @@ async def _cleanup_session_pool(sessions: list[BrowserSession], original_session
 async def execute_tests(
 	url: str,
 	test_plan: TestPlan,
-	llm: ChatOpenAI,
+	llm: BaseChatModel,
 	progress_state: Any = None,
 	save_callback: Callable[[list[TestResult]], None] | None = None,
-	judge_llm: ChatOpenAI | None = None,
+	judge_llm: BaseChatModel | None = None,
 	output_dir: Path | None = None,
 ) -> list[TestResult]:
 	"""Execute tests without a pre-existing session (creates its own)."""
@@ -393,7 +393,7 @@ async def execute_tests(
 async def execute_tests_with_session(
 	url: str,
 	test_plan: TestPlan,
-	llm: ChatOpenAI,
+	llm: BaseChatModel,
 	browser_session: BrowserSession,
 	progress_state: Any = None,
 	goal: str | None = None,
@@ -401,7 +401,7 @@ async def execute_tests_with_session(
 	max_steps: int = 15,
 	save_callback: Callable[[list[TestResult]], None] | None = None,
 	max_concurrent: int = 3,
-	judge_llm: ChatOpenAI | None = None,
+	judge_llm: BaseChatModel | None = None,
 	output_dir: Path | None = None,
 ) -> list[TestResult]:
 	"""Phase 3 execution reusing an existing browser session.

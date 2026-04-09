@@ -10,7 +10,7 @@ can't miss navigation proof buried in nested JSON.
 """
 
 from browser_use.agent.views import AgentHistoryList
-from browser_use.llm import ChatOpenAI, SystemMessage, UserMessage
+from browser_use.llm import BaseChatModel, SystemMessage, UserMessage
 from browser_use.llm.messages import ContentPartImageParam, ContentPartTextParam, ImageURL
 from browser_use.utils import sanitize_surrogates
 from murphy.models import (
@@ -148,6 +148,7 @@ Even when verdict=true, populate `missing_signals` with any expected confirmatio
 - Secondary confirmations missing: e.g. "confirmation dialog not shown before delete"
 
 If verdict=true and all expected signals were observed, leave `missing_signals` as an empty list.
+
 
 
 
@@ -326,10 +327,10 @@ def _format_pages_reached(history: AgentHistoryList) -> str:
 async def murphy_judge(
 	history: AgentHistoryList,
 	scenario: TestScenario,
-	llm: ChatOpenAI,
+	llm: BaseChatModel,
 	start_url: str = '',
 	*,
-	judge_llm: ChatOpenAI | None = None,
+	judge_llm: BaseChatModel | None = None,
 ) -> JudgeVerdict:
 	"""Evaluate agent success based on action trace, not self-report.
 

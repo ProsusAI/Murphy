@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 from typing import Literal
 
-from browser_use.llm import ChatOpenAI, SystemMessage, UserMessage
+from browser_use.llm import BaseChatModel, SystemMessage, UserMessage
 from browser_use.utils import sanitize_surrogates
 from murphy.io.report import write_full_report
 from murphy.models import (
@@ -71,7 +71,7 @@ async def generate_executive_summary(
 	analysis: WebsiteAnalysis,
 	results: list[TestResult],
 	summary: ReportSummary,
-	llm: ChatOpenAI,
+	llm: BaseChatModel,
 ) -> ExecutiveSummary:
 	"""Generate an LLM-powered executive summary of the evaluation results."""
 	results_summary_parts: list[str] = []
