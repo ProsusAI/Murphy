@@ -22,6 +22,7 @@ from murphy.models import (
 	TestResult,
 	TestScenario,
 )
+from murphy.personas.pipeline_models import PersonaResult, TraitSchema
 from murphy.prompts import build_execution_prompt
 
 logger = logging.getLogger(__name__)
@@ -116,7 +117,11 @@ async def _execute_single_test(
 	index: int,
 	total: int,
 	judge_llm: ChatOpenAI | None = None,
+<<<<<<< HEAD
 	output_dir: Path | None = None,
+=======
+	discovered_personas: tuple[PersonaResult, TraitSchema] | None = None,
+>>>>>>> posthog-ingestion-cluster-dimensions
 ) -> TestResult:
 	"""Execute one test scenario and return its TestResult.
 
@@ -133,7 +138,11 @@ async def _execute_single_test(
 
 		file_paths_str = [str(p) for p in fixture_paths] if fixture_paths else []
 		task_prompt = build_execution_prompt(
-			goal or f'Evaluate {url}', scenario, url, available_file_paths=file_paths_str or None
+			goal or f'Evaluate {url}',
+			scenario,
+			url,
+			available_file_paths=file_paths_str or None,
+			discovered_personas=discovered_personas,
 		)
 
 		agent_kwargs: dict[str, Any] = {
@@ -160,7 +169,9 @@ async def _execute_single_test(
 		verdict = _parse_structured_output(history, ScenarioExecutionVerdict)
 
 		# Also run murphy judge for authoritative pass/fail
-		judgement = await murphy_judge(history, scenario, llm, start_url=url, judge_llm=judge_llm)
+		judgement = await murphy_judge(
+			history, scenario, llm, start_url=url, judge_llm=judge_llm, discovered_personas=discovered_personas
+		)
 
 		# Merge: use judge verdict as authoritative, but overlay agent's evaluations
 		success = judgement.verdict
@@ -366,7 +377,11 @@ async def execute_tests(
 	progress_state: Any = None,
 	save_callback: Callable[[list[TestResult]], None] | None = None,
 	judge_llm: ChatOpenAI | None = None,
+<<<<<<< HEAD
 	output_dir: Path | None = None,
+=======
+	discovered_personas: tuple[PersonaResult, TraitSchema] | None = None,
+>>>>>>> posthog-ingestion-cluster-dimensions
 ) -> list[TestResult]:
 	"""Execute tests without a pre-existing session (creates its own)."""
 	from browser_use.browser.profile import BrowserProfile
@@ -384,7 +399,11 @@ async def execute_tests(
 			save_callback=save_callback,
 			max_concurrent=1,
 			judge_llm=judge_llm,
+<<<<<<< HEAD
 			output_dir=output_dir,
+=======
+			discovered_personas=discovered_personas,
+>>>>>>> posthog-ingestion-cluster-dimensions
 		)
 	finally:
 		await browser_session.kill()
@@ -402,7 +421,11 @@ async def execute_tests_with_session(
 	save_callback: Callable[[list[TestResult]], None] | None = None,
 	max_concurrent: int = 3,
 	judge_llm: ChatOpenAI | None = None,
+<<<<<<< HEAD
 	output_dir: Path | None = None,
+=======
+	discovered_personas: tuple[PersonaResult, TraitSchema] | None = None,
+>>>>>>> posthog-ingestion-cluster-dimensions
 ) -> list[TestResult]:
 	"""Phase 3 execution reusing an existing browser session.
 
@@ -442,7 +465,11 @@ async def execute_tests_with_session(
 				index=i,
 				total=total,
 				judge_llm=judge_llm,
+<<<<<<< HEAD
 				output_dir=output_dir,
+=======
+				discovered_personas=discovered_personas,
+>>>>>>> posthog-ingestion-cluster-dimensions
 			)
 			results.append(test_result)
 
@@ -490,7 +517,11 @@ async def execute_tests_with_session(
 					index=index_0 + 1,
 					total=total,
 					judge_llm=judge_llm,
+<<<<<<< HEAD
 					output_dir=output_dir,
+=======
+					discovered_personas=discovered_personas,
+>>>>>>> posthog-ingestion-cluster-dimensions
 				)
 				results_slots[index_0] = result
 

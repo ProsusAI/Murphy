@@ -9,6 +9,7 @@ from browser_use.llm import ChatOpenAI, SystemMessage, UserMessage
 from murphy.config import EXPLORE_MAX_STEPS, QUALITY_MAX_RETRIES
 from murphy.core.quality import plan_quality_issues
 from murphy.models import TestPlan
+from murphy.personas.pipeline_models import PersonaResult, TraitSchema
 from murphy.prompts import build_plan_synthesis_prompt, build_test_generation_prompt, build_test_generation_system_message
 
 logger = logging.getLogger(__name__)
@@ -20,14 +21,22 @@ async def generate_tests(
 	llm: ChatOpenAI,
 	max_tests: int,
 	goal: str | None = None,
+	discovered_personas: tuple[PersonaResult, TraitSchema] | None = None,
 ) -> TestPlan:
 	"""Feature-discovery test generation: analysis → test plan with quality checks."""
 	logger.info('\n%s', '=' * 60)
 	logger.info('Generating test scenarios')
 	logger.info('%s\n', '=' * 60)
 
-	prompt = build_test_generation_prompt(url, analysis, max_tests, goal)
+	prompt = build_test_generation_prompt(url, analysis, max_tests, goal, discovered_personas=discovered_personas)
 	system_msg = SystemMessage(content=build_test_generation_system_message())
+
+	# Build valid persona names set for quality checks
+	valid_persona_names: set[str] | None = None
+	if discovered_personas:
+		from murphy.personas.bridge import get_discovered_persona_names
+
+		valid_persona_names = set(get_discovered_persona_names(discovered_personas[0]))
 
 	quality_task = goal or f'evaluate {url}'
 	best_plan: TestPlan | None = None
@@ -35,7 +44,7 @@ async def generate_tests(
 	for attempt in range(QUALITY_MAX_RETRIES + 1):
 		retry_hint = ''
 		if attempt > 0 and best_plan is not None:
-			quality_issues = plan_quality_issues(quality_task, best_plan)
+			quality_issues = plan_quality_issues(quality_task, best_plan, valid_persona_names=valid_persona_names)
 			if quality_issues:
 				retry_hint = (
 					'\n\nPREVIOUS ATTEMPT HAD QUALITY ISSUES — fix these:\n'
@@ -62,7 +71,7 @@ async def generate_tests(
 
 		# Check quality on first attempt — retry if issues found
 		if attempt == 0:
-			quality_issues = plan_quality_issues(quality_task, plan)
+			quality_issues = plan_quality_issues(quality_task, plan, valid_persona_names=valid_persona_names)
 			if not quality_issues:
 				break
 			logger.info('  Quality issues found (%d), regenerating...', len(quality_issues))
@@ -82,6 +91,7 @@ async def explore_and_generate_plan(
 	session: BrowserSession,
 	max_scenarios: int = 8,
 	max_steps: int = 30,
+	discovered_personas: tuple[PersonaResult, TraitSchema] | None = None,
 ) -> TestPlan:
 	"""Exploration-first plan generation: explore → summarize → synthesize with quality checks."""
 	from murphy.browser.actions import register_domain_access_action, register_refresh_dom_action
@@ -122,14 +132,23 @@ async def explore_and_generate_plan(
 
 	# Step 4: Generate plan with quality checks
 	logger.info('Synthesizing test plan...')
-	synthesis_prompt = build_plan_synthesis_prompt(task, url, exploration_context, max_scenarios)
+	synthesis_prompt = build_plan_synthesis_prompt(
+		task, url, exploration_context, max_scenarios, discovered_personas=discovered_personas
+	)
+
+	# Build valid persona names set for quality checks
+	valid_persona_names: set[str] | None = None
+	if discovered_personas:
+		from murphy.personas.bridge import get_discovered_persona_names
+
+		valid_persona_names = set(get_discovered_persona_names(discovered_personas[0]))
 
 	best_plan: TestPlan | None = None
 
 	for attempt in range(QUALITY_MAX_RETRIES + 1):
 		retry_hint = ''
 		if attempt > 0 and best_plan is not None:
-			quality_issues = plan_quality_issues(task, best_plan)
+			quality_issues = plan_quality_issues(task, best_plan, valid_persona_names=valid_persona_names)
 			if quality_issues:
 				retry_hint = (
 					'\n\nPREVIOUS ATTEMPT HAD QUALITY ISSUES — fix these:\n'
@@ -164,7 +183,7 @@ async def explore_and_generate_plan(
 
 		# Check quality on first attempt — retry if issues found
 		if attempt == 0:
-			quality_issues = plan_quality_issues(task, plan)
+			quality_issues = plan_quality_issues(task, plan, valid_persona_names=valid_persona_names)
 			if not quality_issues:
 				break
 			logger.info('  Quality issues found (%d), regenerating...', len(quality_issues))
