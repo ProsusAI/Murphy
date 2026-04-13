@@ -25,8 +25,10 @@ from browser_use.config import CONFIG
 from browser_use.tokens.service import TokenCost
 
 if TYPE_CHECKING:
+	from browser_use.llm import ChatOpenAI
 	from murphy.api.server import ServerState
 	from murphy.models import TestPlan, TestResult
+	from murphy.personas.pipeline_models import PersonaResult, TraitSchema
 
 load_dotenv()
 
@@ -86,6 +88,11 @@ def main() -> int:
 		metavar='PATH',
 		help='Use discovered personas (default: {output_dir}/personas.json, or specify a path)',
 	)
+	parser.add_argument(
+		'--eval-fidelity',
+		action='store_true',
+		help='After tests complete, score Murphy behavior against discovered persona centroids and write persona_fidelity_report.{json,md}',
+	)
 	args = parser.parse_args()
 
 	if not args.open and not args.url:
@@ -130,7 +137,6 @@ async def _async_main(args: argparse.Namespace) -> None:
 	# Ensure dummy fixture files exist for upload testing
 	fixture_paths = ensure_dummy_fixture_files()
 
-	from murphy.personas.pipeline_models import PersonaResult, TraitSchema
 	from murphy.personas.storage import load_personas, save_personas
 
 	llm = ChatOpenAI(model=args.model)
@@ -348,6 +354,8 @@ async def _async_main(args: argparse.Namespace) -> None:
 				)
 			else:
 				_log_results_summary(results)
+			if args.eval_fidelity:
+				await _run_fidelity_eval(output_dir, discovered_personas, llm)
 			return
 
 		# ── Server UI mode (--ui) ──
@@ -398,6 +406,8 @@ async def _async_main(args: argparse.Namespace) -> None:
 						)
 					else:
 						_log_results_summary(state.results)
+					if args.eval_fidelity:
+						await _run_fidelity_eval(output_dir, discovered_personas, llm)
 					state._reports_written = True  # type: ignore[attr-defined]
 		except KeyboardInterrupt:
 			pass
@@ -408,6 +418,39 @@ async def _async_main(args: argparse.Namespace) -> None:
 		if browser_session:
 			await browser_session.kill()
 		clear_browser_pid()
+
+
+async def _run_fidelity_eval(
+	output_dir: Path,
+	discovered_personas: tuple[PersonaResult, TraitSchema] | None,
+	llm: ChatOpenAI,
+) -> None:
+	"""Run the persona fidelity eval after tests complete and print a summary."""
+	if discovered_personas is None:
+		logger.warning('--eval-fidelity requires --personas or --discover-personas; skipping.')
+		return
+
+	from murphy.eval.runner import _fidelity_label, run_fidelity_eval, write_fidelity_reports
+
+	persona_result, schema = discovered_personas
+	logger.info('\nRunning persona fidelity evaluation...')
+	report = await run_fidelity_eval(output_dir, schema, persona_result, llm)
+
+	if report is None:
+		logger.info('No discovered-persona tests found for fidelity eval.')
+		return
+
+	_, md_path = write_fidelity_reports(report, output_dir)
+
+	total = len(report.results)
+	avg = sum(r.overall_fidelity_score for r in report.results) / total
+	logger.info(
+		'Persona fidelity: %d test(s), avg %.2f (%s) — %s',
+		total,
+		avg,
+		_fidelity_label(avg),
+		md_path,
+	)
 
 
 async def _open_mode(output_dir: Path) -> None:

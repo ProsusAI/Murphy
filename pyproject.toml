@@ -129,6 +129,7 @@ exclude = [
     "browser_use/llm/tests/test_chat_models.py",
     "browser_use/llm/tests/test_single_step.py",
     "product_extraction.py",
+    "visualize_personas.py",
     "discover/",
     "list/",
 ]
