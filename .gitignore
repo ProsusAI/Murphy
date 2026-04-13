@@ -70,3 +70,6 @@ browser_profile/
 
 # Batch runs (also matched by murphy/output/*)
 murphy/output/run_*/
+
+# Local analysis / visualisation scripts
+visualize_personas.py
