@@ -1,5 +1,7 @@
 """Pydantic models for the Murphy evaluation pipeline."""
 
+import hashlib
+import json
 from enum import IntEnum
 from typing import Annotated, Any, Literal
 
@@ -75,6 +77,24 @@ class TraitVector(BaseModel):
 
 
 TestType = Literal['ux', 'security', 'boundary', 'design']
+
+
+def agent_config_session_id(traits: TraitVector, test_type: TestType) -> str:
+	"""Deterministic session ID from a persona's trait vector and test type.
+
+	The same agent configuration always produces the same ID across runs.
+	"""
+	payload = {
+		'exploration': int(traits.exploration),
+		'intent': traits.intent,
+		'patience': int(traits.patience),
+		'reading_comprehension': int(traits.reading_comprehension),
+		'technical_literacy': int(traits.technical_literacy),
+		'test_type': test_type,
+	}
+	canonical = json.dumps(payload, sort_keys=True, separators=(',', ':'))
+	return hashlib.sha256(canonical.encode()).hexdigest()[:16]
+
 
 PERSONA_REGISTRY: dict[TestPersona, tuple[TraitVector, TestType]] = {
 	'happy_path': (

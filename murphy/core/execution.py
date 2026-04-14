@@ -18,11 +18,13 @@ from murphy.core.judge import murphy_judge
 from murphy.core.summary import classify_failure
 from murphy.io.report_helpers import _slugify
 from murphy.models import (
+	PERSONA_REGISTRY,
 	PersonaFeedback,
 	ScenarioExecutionVerdict,
 	TestPlan,
 	TestResult,
 	TestScenario,
+	agent_config_session_id,
 )
 from murphy.prompts import build_execution_prompt, build_persona_feedback_prompt
 
@@ -120,9 +122,11 @@ async def _submit_feedback(persona: str, feedback: PersonaFeedback) -> None:
 	Each call adds one line to the shared file. Never raises — errors are logged
 	so concurrent runs are not interrupted.
 	"""
+	traits, test_type = PERSONA_REGISTRY[persona]
 	entry = {
 		'timestamp': datetime.now(timezone.utc).isoformat(),
-		'sessionId': persona,
+		'sessionId': agent_config_session_id(traits, test_type),
+		'persona': persona,
 		'grade': feedback.grade,
 		'comments': feedback.comments,
 		'processed': False,

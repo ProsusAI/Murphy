@@ -84,7 +84,7 @@ def main() -> int:
 	parser.add_argument(
 		'--feedback',
 		action='store_true',
-		help='Enable persona feedback mode: POST {sessionId, grade, comments, suggestion} to the feedback API after each persona finishes. Skips full report generation.',
+		help='Enable persona feedback mode: write {sessionId (hash of agent config), persona, grade, comments} to feedback JSONL after each persona finishes. Skips full report generation.',
 	)
 	args = parser.parse_args()
 
