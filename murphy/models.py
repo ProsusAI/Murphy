@@ -32,18 +32,22 @@ TestPersona = Literal[
 	'explorer',  # goes off the beaten path, tries unexpected combinations
 	'impatient_user',  # clicks rapidly, doesn't wait for loads, skips steps
 	'angry_user',  # rage-clicks, force-navigates, rapid form submissions, abandons flows mid-way
-	'design_reviewer',  # evaluates visual design: color, typography, layout, hierarchy, consistency
+	'boomer_ui',  # readability, font size, clear labels, familiar patterns, contrast for aging eyes
+	'genz_ui',  # trendy aesthetics, dark mode vibes, visual appeal, engagement, micro-interactions
+	'whitespace_police_ui',  # spacing consistency, breathing room, alignment, padding regularity, grid adherence
 ]
 
 
 # ─── Trait system ─────────────────────────────────────────────────────────────
 #
 # Each test persona maps to a TraitVector and a TestType. The trait vector
-# captures five behavioral dimensions (technical_literacy, patience, intent,
-# exploration, reading_comprehension) at low/medium/high levels. During
+# captures eight behavioral dimensions at low/medium/high levels. During
 # judging, each trait level selects a different evaluation question — e.g.
 # a low-patience persona is judged on whether the site provided *immediate*
 # feedback, while a high-patience persona only needs eventual correctness.
+#
+# Core dims: technical_literacy, patience, intent, exploration, reading_comprehension
+# UI dims:   visual_density_preference, aesthetic_era, layout_strictness
 #
 # TestType controls pass/fail semantics in the judge:
 #   ux       — silent handling with no visible feedback is a FAIL
@@ -74,6 +78,9 @@ class TraitVector(BaseModel):
 	intent: Literal['benign', 'exploratory', 'adversarial'] = 'benign'
 	exploration: TraitLevel = TraitLevel.medium
 	reading_comprehension: TraitLevel = TraitLevel.medium
+	visual_density_preference: TraitLevel = TraitLevel.medium
+	aesthetic_era: Literal['classic', 'modern', 'experimental'] = 'modern'
+	layout_strictness: TraitLevel = TraitLevel.medium
 
 
 TestType = Literal['ux', 'security', 'boundary', 'design']
@@ -85,12 +92,15 @@ def agent_config_session_id(traits: TraitVector, test_type: TestType) -> str:
 	The same agent configuration always produces the same ID across runs.
 	"""
 	payload = {
+		'aesthetic_era': traits.aesthetic_era,
 		'exploration': int(traits.exploration),
 		'intent': traits.intent,
+		'layout_strictness': int(traits.layout_strictness),
 		'patience': int(traits.patience),
 		'reading_comprehension': int(traits.reading_comprehension),
 		'technical_literacy': int(traits.technical_literacy),
 		'test_type': test_type,
+		'visual_density_preference': int(traits.visual_density_preference),
 	}
 	canonical = json.dumps(payload, sort_keys=True, separators=(',', ':'))
 	return hashlib.sha256(canonical.encode()).hexdigest()[:16]
@@ -167,13 +177,42 @@ PERSONA_REGISTRY: dict[TestPersona, tuple[TraitVector, TestType]] = {
 		),
 		'security',
 	),
-	'design_reviewer': (
+	'boomer_ui': (
+		TraitVector(
+			technical_literacy=TraitLevel.medium,
+			patience=TraitLevel.high,
+			intent='benign',
+			exploration=TraitLevel.low,
+			reading_comprehension=TraitLevel.medium,
+			visual_density_preference=TraitLevel.low,
+			aesthetic_era='classic',
+			layout_strictness=TraitLevel.medium,
+		),
+		'design',
+	),
+	'genz_ui': (
+		TraitVector(
+			technical_literacy=TraitLevel.high,
+			patience=TraitLevel.low,
+			intent='benign',
+			exploration=TraitLevel.high,
+			reading_comprehension=TraitLevel.medium,
+			visual_density_preference=TraitLevel.medium,
+			aesthetic_era='experimental',
+			layout_strictness=TraitLevel.low,
+		),
+		'design',
+	),
+	'whitespace_police_ui': (
 		TraitVector(
 			technical_literacy=TraitLevel.high,
 			patience=TraitLevel.high,
 			intent='benign',
 			exploration=TraitLevel.high,
 			reading_comprehension=TraitLevel.high,
+			visual_density_preference=TraitLevel.low,
+			aesthetic_era='modern',
+			layout_strictness=TraitLevel.high,
 		),
 		'design',
 	),

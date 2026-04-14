@@ -43,6 +43,16 @@ TRAIT_JUDGE_QUESTIONS: dict[str, dict[TraitLevel, str]] = {
 		TraitLevel.medium: 'Did the site handle minor path deviations gracefully?',
 		TraitLevel.low: 'Did the expected path work without requiring exploration?',
 	},
+	'visual_density_preference': {
+		TraitLevel.low: 'Is the layout spacious and uncluttered? This user needs generous whitespace, large tap targets, and no more than one primary action per screen region. Dense dashboards or multi-column data grids feel overwhelming.',
+		TraitLevel.medium: 'Is content density balanced? A reasonable amount of information per viewport with clear grouping and breathing room between sections.',
+		TraitLevel.high: 'Is the layout information-dense and efficient? This user wants maximum data per screen — compact rows, minimal padding, and no wasted space. Sparse layouts feel empty.',
+	},
+	'layout_strictness': {
+		TraitLevel.low: 'Is the layout generally usable? Minor alignment inconsistencies and irregular spacing are acceptable as long as content is readable.',
+		TraitLevel.medium: 'Are elements consistently aligned? Reasonable spacing rhythm and grid adherence expected — occasional irregularities noted but not critical.',
+		TraitLevel.high: 'Is spacing pixel-perfect? Every margin, padding, and gutter must follow a consistent scale. Misaligned elements, inconsistent padding between sibling components, or irregular vertical rhythm = FAIL.',
+	},
 }
 
 TEST_TYPE_RULES: dict[TestType, str] = {
@@ -68,6 +78,8 @@ def build_judge_trait_context(persona: str, traits: TraitVector, test_type: Test
 		'patience': traits.patience,
 		'reading_comprehension': traits.reading_comprehension,
 		'exploration': traits.exploration,
+		'visual_density_preference': traits.visual_density_preference,
+		'layout_strictness': traits.layout_strictness,
 	}
 	for trait_name, level in trait_fields.items():
 		assert isinstance(level, TraitLevel)
@@ -86,6 +98,21 @@ def build_judge_trait_context(persona: str, traits: TraitVector, test_type: Test
 		)
 	else:
 		lines.append(f'- **intent** ({intent}): Did the site complete the intended task successfully?')
+
+	# aesthetic_era is a string literal, not TraitLevel — add directly
+	era = traits.aesthetic_era
+	if era == 'classic':
+		lines.append(
+			f'- **aesthetic_era** ({era}): Does the design use familiar, time-tested patterns? Large readable fonts, high-contrast text, clearly labeled buttons, conventional layouts (top nav, left sidebar). Novel gestures, hidden menus, or icon-only controls without labels = FAIL.'
+		)
+	elif era == 'experimental':
+		lines.append(
+			f'- **aesthetic_era** ({era}): Does the design feel current and visually engaging? Bold color choices, modern typography, dark mode support, motion/transitions, and expressive visual identity. Dated-looking layouts, bland stock aesthetics, or zero visual personality = FAIL.'
+		)
+	else:
+		lines.append(
+			f'- **aesthetic_era** ({era}): Does the design follow contemporary best practices? Clean lines, systematic spacing, well-chosen type scale, and polished visual details.'
+		)
 
 	lines.append('')
 	return '\n'.join(lines)
