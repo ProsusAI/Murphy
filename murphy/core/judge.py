@@ -253,6 +253,82 @@ Also assess feedback quality (response_present, response_timely, response_clear,
 """
 
 
+# Actions that produce meaningful visual state changes worth showing the judge
+_HIGH_SIGNAL_ACTIONS = frozenset({
+	'navigate',
+	'input_text',
+	'done',
+	'select_dropdown_option',
+	'upload_file',
+	'evaluate',  # JS execution often mutates state
+})
+
+# Actions that rarely change what the judge needs to see
+_LOW_SIGNAL_ACTIONS = frozenset({
+	'scroll',
+	'refresh_dom_state',
+	'search_page',
+	'find_elements',
+	'switch_tab',
+	'wait',
+})
+
+
+def _select_key_screenshots(history: AgentHistoryList, max_screenshots: int = 3) -> list[str]:
+	"""Pick the most informative screenshots from the agent history.
+
+	Prefers: final state, steps after high-signal actions, error steps.
+	Skips: scroll/search/DOM-refresh steps that rarely change visible state.
+	Returns at most max_screenshots base64 strings.
+	"""
+	steps = history.history
+	if not steps:
+		return []
+
+	# Score each step
+	scored: list[tuple[int, int, str]] = []  # (score, index, screenshot_b64)
+	for i, step in enumerate(steps):
+		screenshot_b64 = step.state.get_screenshot()
+		if not screenshot_b64:
+			continue
+
+		score = 0
+
+		# Always weight the last step highest
+		if i == len(steps) - 1:
+			score += 10
+
+		# Check action types in this step
+		if step.model_output:
+			for action in step.model_output.action:
+				action_type = next((k for k in action.model_fields_set if k != 'interacted_element'), None)
+				if action_type in _HIGH_SIGNAL_ACTIONS:
+					score += 3
+				elif action_type not in _LOW_SIGNAL_ACTIONS:
+					score += 1  # clicks and other mid-signal actions
+
+		# Error steps are always informative
+		for result in step.result:
+			if getattr(result, 'error', None):
+				score += 4
+
+		if score > 0:
+			scored.append((score, i, screenshot_b64))
+
+	if not scored:
+		# Fallback: just return the last screenshot
+		last = next((step.state.get_screenshot() for step in reversed(steps) if step.state.get_screenshot()), None)
+		return [last] if last else []
+
+	# Sort by score descending, then pick top N spread across the trace
+	scored.sort(key=lambda x: (-x[0], -x[1]))  # highest score first, break ties by recency
+	selected = scored[:max_screenshots]
+
+	# Return in chronological order
+	selected.sort(key=lambda x: x[1])
+	return [s[2] for s in selected]
+
+
 def _extract_navigation_evidence(history: AgentHistoryList) -> str:
 	"""Extract a clean, human-readable summary of navigation actions from the raw action trace.
 
@@ -409,8 +485,8 @@ async def murphy_judge(
 		ContentPartTextParam(text=user_prompt),
 	]
 
-	# Attach last N screenshots (base64) — these let the judge verify visual feedback
-	screenshots = history.screenshots(n_last=3)
+	# Attach key screenshots — selected by action significance, not just recency
+	screenshots = _select_key_screenshots(history, max_screenshots=3)
 	for i, screenshot_b64 in enumerate(screenshots):
 		if screenshot_b64:
 			user_content.append(ContentPartTextParam(text=f'\n## Screenshot {i + 1} of {len(screenshots)}'))
