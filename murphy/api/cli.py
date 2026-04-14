@@ -23,7 +23,6 @@ from typing import TYPE_CHECKING
 from dotenv import load_dotenv
 
 from browser_use.config import CONFIG
-
 from murphy.models import DEFAULT_MAX_TESTS
 
 if TYPE_CHECKING:
@@ -53,7 +52,9 @@ def main() -> int:
 	parser.add_argument('--no-auth', action='store_true', help='Skip auth detection entirely, treat site as public')
 	parser.add_argument('--features', help='Path to existing features markdown (skips analysis, goes to test generation)')
 	parser.add_argument('--plan', help='Path to existing YAML test plan (skips analysis + test generation)')
-	parser.add_argument('--max-tests', type=int, default=DEFAULT_MAX_TESTS, help=f'Max test scenarios (default: {DEFAULT_MAX_TESTS})')
+	parser.add_argument(
+		'--max-tests', type=int, default=DEFAULT_MAX_TESTS, help=f'Max test scenarios (default: {DEFAULT_MAX_TESTS})'
+	)
 	parser.add_argument(
 		'--provider', default='openai', help='LLM provider (default: openai). e.g. google, anthropic, azure, mistral'
 	)

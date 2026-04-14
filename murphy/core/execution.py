@@ -21,6 +21,7 @@ from murphy.models import (
 	PERSONA_REGISTRY,
 	PersonaFeedback,
 	ScenarioExecutionVerdict,
+	TestPersona,
 	TestPlan,
 	TestResult,
 	TestScenario,
@@ -116,7 +117,7 @@ FEEDBACK_FILE = FEEDBACK_OUTPUT_DIR / 'feedback.jsonl'
 _feedback_write_lock = asyncio.Lock()
 
 
-async def _submit_feedback(persona: str, feedback: PersonaFeedback) -> None:
+async def _submit_feedback(persona: TestPersona, feedback: PersonaFeedback) -> None:
 	"""Append PersonaFeedback as a JSON line to murphy/output/output_feedback/feedback.jsonl.
 
 	Each call adds one line to the shared file. Never raises — errors are logged
