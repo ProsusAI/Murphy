@@ -8,7 +8,7 @@ from murphy.models import PERSONA_REGISTRY, TestPersona, TestScenario, TraitVect
 
 # Percentages for persona distribution in test generation
 _PERSONA_DISTRIBUTION: dict[TestPersona, tuple[int, str]] = {
-	'happy_path': (20, 'Standard user, expected flow. A skilled user who knows exactly what they want.'),
+	'happy_path': (15, 'Standard user, expected flow. A skilled user who knows exactly what they want.'),
 	'confused_novice': (
 		15,
 		"Simulate someone who doesn't read labels, clicks wrong buttons, submits empty forms, navigates backward repeatedly.",
@@ -18,7 +18,7 @@ _PERSONA_DISTRIBUTION: dict[TestPersona, tuple[int, str]] = {
 		'Try to break things: XSS payloads, SQL injection, navigate to /admin, submit forms with whitespace, paste HTML tags.',
 	),
 	'edge_case': (
-		15,
+		10,
 		'Empty submissions, extremely long inputs (500+ chars), special characters (emoji, RTL text, null bytes, unicode), double-clicking.',
 	),
 	'explorer': (
@@ -32,6 +32,11 @@ _PERSONA_DISTRIBUTION: dict[TestPersona, tuple[int, str]] = {
 	'angry_user': (
 		10,
 		'Rage-clicks buttons repeatedly, force-navigates by typing URLs, submits forms rapidly without waiting, abandons multi-step flows mid-way.',
+	),
+	'design_reviewer': (
+		10,
+		'Evaluate visual design quality: color palette cohesion, typography hierarchy, spacing and whitespace, '
+		'layout composition, visual hierarchy, contrast and readability, and cross-page consistency.',
 	),
 }
 
@@ -227,6 +232,7 @@ PERSONA-SPECIFIC SUCCESS CRITERIA GUIDANCE:
 - explorer (UX): "The website provides ORIENTATION AND FEEDBACK at every step — clear page titles, breadcrumbs, 'no results found' messages, or redirect explanations. Dead ends with no feedback, blank pages, or silent failures are FAILURES"
 - impatient_user (UX): "The website provides VISIBLE STATE FEEDBACK during rapid interactions — loading indicators, 'please wait' messages, queued-action confirmation, or duplicate-prevention messages. Silent deduplication with no user-facing signal is a FAILURE"
 - angry_user (Security): "The website absorbs the hostile interaction gracefully — no crash, no broken state from force-navigation, no infinite loops from rapid clicks"
+- design_reviewer (Design): "The page demonstrates cohesive visual design — consistent color palette, clear typography hierarchy, effective use of whitespace, strong visual hierarchy, and sufficient contrast. Cross-page consistency is maintained"
 
 Each test should have:
 - A clear name reflecting the persona behavior (e.g. "Novice submits empty search form" not "Test search functionality")
@@ -234,7 +240,7 @@ Each test should have:
 - Priority level (critical, high, medium, low)
 - feature_category (navigation, search, forms, content_display, filtering_sorting, media, authentication, ecommerce, social, other)
 - target_feature (the Feature.name this test exercises)
-- test_persona (one of: happy_path, confused_novice, adversarial, edge_case, explorer, impatient_user, angry_user)
+- test_persona (one of: happy_path, confused_novice, adversarial, edge_case, explorer, impatient_user, angry_user, design_reviewer)
 - Step-by-step instructions (steps_description) — see STEP WRITING RULES below
 - Concrete success criteria (success_criteria) — see SUCCESS CRITERIA RULES below
 
@@ -319,7 +325,7 @@ def build_plan_synthesis_prompt(
 		f'EXPLORATION CONTEXT (observed UI evidence):\n{exploration_context}\n\n'
 		f'REQUIREMENTS:\n'
 		f'- Generate exactly {max_scenarios} scenarios (minimum 5 if max allows).\n'
-		f'- Must include these personas: happy_path, confused_novice, adversarial, edge_case, explorer.\n'
+		f'- Must include these personas: happy_path, confused_novice, adversarial, edge_case, explorer, design_reviewer.\n'
 		f'- At least one scenario must be happy_path with priority=critical.\n'
 		f'- The happy_path scenario must describe the chosen route AND mention alternatives considered.\n'
 		+ step_rule
@@ -329,13 +335,14 @@ def build_plan_synthesis_prompt(
 		'- For security-oriented personas (adversarial, edge_case, angry_user): evaluate how the website HANDLES unexpected behavior. Any graceful handling (including silent sanitization) is a pass; only crash/leak/corruption is a fail.\n'
 		'- For UX-oriented personas (happy_path, confused_novice, impatient_user, explorer): the site MUST provide visible feedback. Silent handling, disabled buttons with no explanation, or forms that do nothing are FAILURES.\n\n'
 		'PERSONA DISTRIBUTION:\n'
-		'- happy_path (~20%): Standard user completing the expected flow. Success requires visible confirmation feedback.\n'
+		'- happy_path (~15%): Standard user completing the expected flow. Success requires visible confirmation feedback.\n'
 		'- confused_novice (~15%): Misclicks, wrong inputs, backtracking. Success requires visible guidance — error messages, tooltips, inline hints. Silent rejection is a FAIL.\n'
 		'- adversarial (~15%): XSS payloads, SQL injection, probing /admin. Silent sanitization is a valid PASS.\n'
-		'- edge_case (~15%): Empty inputs, special chars, long strings. Graceful degradation (even silent) is a PASS.\n'
+		'- edge_case (~10%): Empty inputs, special chars, long strings. Graceful degradation (even silent) is a PASS.\n'
 		'- explorer (~10%): Unusual navigation, unexpected feature combos. Success requires orientation feedback — page titles, breadcrumbs, "no results" messages. Dead ends with no feedback are FAILS.\n'
 		'- impatient_user (~15%): Rapid clicks, skipping steps. Success requires visible state feedback — loading indicators, "please wait" messages. Silent deduplication is a FAIL.\n'
 		'- angry_user (~10%): Rage-clicks, force-navigation, rapid form submissions, abandoning flows. Absorbing hostility without crash is a PASS.\n'
+		'- design_reviewer (~10%): Evaluate visual design — color palette, typography, spacing, layout, visual hierarchy, contrast, consistency. Cohesive design is a PASS.\n'
 	)
 
 
@@ -359,6 +366,7 @@ _PERSONA_DESCRIPTIONS: dict[TestPersona, str] = {
 	'explorer': 'A curious user who takes unexpected paths: visits pages out of order, uses features in unintended combinations, clicks decorative elements.',
 	'impatient_user': 'A rushed user who clicks rapidly without waiting, skips required steps, submits forms immediately, navigates away mid-action.',
 	'angry_user': 'A frustrated user who rage-clicks buttons repeatedly, force-navigates by typing URLs, submits forms rapidly without waiting, and abandons multi-step flows mid-way.',
+	'design_reviewer': 'A visual design critic who evaluates the aesthetic quality of every page. Examines color palette cohesion, typography hierarchy, spacing and whitespace usage, layout composition, visual hierarchy, contrast ratios, and cross-page consistency. Does not test functionality — focuses purely on how the site looks and feels visually.',
 }
 
 
@@ -386,6 +394,8 @@ def _render_persona_for_execution(persona: TestPersona) -> str:
 			lines.append('→ You actively wander off the expected path. Try unexpected navigation, unusual feature combinations.')
 		if traits.intent == 'adversarial':
 			lines.append('→ You are actively trying to break things. Use XSS payloads, SQL fragments, probe hidden endpoints.')
+		if test_type == 'design':
+			lines.append('→ You are a visual design critic. Evaluate color scheme, typography, spacing, layout composition, visual hierarchy, contrast, and consistency across pages. Do not report functional bugs — focus purely on design quality.')
 	return '\n'.join(lines)
 
 
@@ -393,14 +403,29 @@ def build_persona_feedback_prompt(
 	scenario: TestScenario,
 	start_url: str,
 ) -> str:
-	"""Lean execution prompt for the news-app feedback loop.
+	"""Lean execution prompt for the persona feedback loop.
 
 	The agent browses as the persona and returns a single PersonaFeedback.
 	If it hits a critical blocking issue early it should stop immediately and report.
 	"""
 	persona_block = _render_persona_for_execution(scenario.test_persona)
+
+	if scenario.test_persona == 'design_reviewer':
+		comments_instruction = (
+			'- comments: describe the visual design quality of the pages you visited. '
+			'Evaluate color scheme, typography, spacing, layout composition, visual hierarchy, '
+			'contrast, and cross-page consistency. Include specific actionable suggestions '
+			'(e.g. "increase contrast on secondary text", "add more padding between cards", '
+			'"heading font weight does not differentiate from body text").\n'
+		)
+	else:
+		comments_instruction = (
+			'- comments: one concise sentence describing what you observed as this persona. '
+			'If you have an improvement suggestion, include it directly in this field.\n'
+		)
+
 	return (
-		f'You are evaluating a news app as a real user.\n\n'
+		f'You are evaluating a web application as a real user.\n\n'
 		f'{persona_block}\n\n'
 		f'TASK: {scenario.description}\n\n'
 		f'STEPS (intent-based — adapt as needed):\n{scenario.steps_description}\n\n'
@@ -413,7 +438,7 @@ def build_persona_feedback_prompt(
 		f'FEEDBACK:\n'
 		f'Return a single PersonaFeedback object reflecting your experience:\n'
 		f'- grade: integer 1–10 (1 = terrible, 10 = excellent)\n'
-		f'- comments: one concise sentence describing what you observed as this persona. If you have an improvement suggestion, include it directly in this field.\n'
+		f'{comments_instruction}'
 	)
 
 

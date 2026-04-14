@@ -49,6 +49,7 @@ TEST_TYPE_RULES: dict[TestType, str] = {
 	'ux': 'Silent handling with no visible feedback is a FAIL. The user must understand what happened.',
 	'security': 'Silent sanitization is CORRECT behavior. Only fail on crash, data leak, or code execution.',
 	'boundary': 'Graceful degradation (even silent) is a PASS. Only fail on unhandled exception or corrupted state.',
+	'design': 'Evaluate visual design quality. Functional correctness is not in scope. Poor visual hierarchy, inconsistent styling, low contrast, or cramped layouts are failures.',
 }
 
 

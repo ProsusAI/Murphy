@@ -30,6 +30,7 @@ TestPersona = Literal[
 	'explorer',  # goes off the beaten path, tries unexpected combinations
 	'impatient_user',  # clicks rapidly, doesn't wait for loads, skips steps
 	'angry_user',  # rage-clicks, force-navigates, rapid form submissions, abandons flows mid-way
+	'design_reviewer',  # evaluates visual design: color, typography, layout, hierarchy, consistency
 ]
 
 
@@ -46,6 +47,7 @@ TestPersona = Literal[
 #   ux       — silent handling with no visible feedback is a FAIL
 #   security — silent sanitization is CORRECT; only crashes/leaks fail
 #   boundary — graceful degradation is a PASS; only unhandled exceptions fail
+#   design   — evaluates visual design quality; functional correctness is not in scope
 #
 # See core/judge.py (TRAIT_JUDGE_QUESTIONS, TEST_TYPE_RULES) for the full
 # mapping from trait levels to evaluation questions.
@@ -72,7 +74,7 @@ class TraitVector(BaseModel):
 	reading_comprehension: TraitLevel = TraitLevel.medium
 
 
-TestType = Literal['ux', 'security', 'boundary']
+TestType = Literal['ux', 'security', 'boundary', 'design']
 
 PERSONA_REGISTRY: dict[TestPersona, tuple[TraitVector, TestType]] = {
 	'happy_path': (
@@ -145,7 +147,19 @@ PERSONA_REGISTRY: dict[TestPersona, tuple[TraitVector, TestType]] = {
 		),
 		'security',
 	),
+	'design_reviewer': (
+		TraitVector(
+			technical_literacy=TraitLevel.high,
+			patience=TraitLevel.high,
+			intent='benign',
+			exploration=TraitLevel.high,
+			reading_comprehension=TraitLevel.high,
+		),
+		'design',
+	),
 }
+
+DEFAULT_MAX_TESTS: int = len(PERSONA_REGISTRY)
 
 
 class FeedbackQualityScore(BaseModel):

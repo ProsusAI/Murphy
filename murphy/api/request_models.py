@@ -7,7 +7,7 @@ from typing import Annotated, Any
 
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field
 
-from murphy.models import ReportSummary, TestPlan, TestResult, WebsiteAnalysis
+from murphy.models import DEFAULT_MAX_TESTS, ReportSummary, TestPlan, TestResult, WebsiteAnalysis
 
 
 def _parse_json_string(v: Any) -> Any:
@@ -34,7 +34,7 @@ class GeneratePlanRequest(BaseModel):
 
 	url: str
 	analysis: Annotated[WebsiteAnalysis, BeforeValidator(_parse_json_string)]
-	max_tests: int = 8
+	max_tests: int = DEFAULT_MAX_TESTS
 	goal: str | None = None
 	provider: str = 'openai'
 	model: str = 'gpt-5-mini'
@@ -64,7 +64,7 @@ class EvaluateRequest(BaseModel):
 
 	url: str
 	goal: str | None = None
-	max_tests: int = 8
+	max_tests: int = DEFAULT_MAX_TESTS
 	provider: str = 'openai'
 	model: str = 'gpt-5-mini'
 	judge_provider: str | None = None

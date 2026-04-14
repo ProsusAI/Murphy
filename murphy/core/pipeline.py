@@ -24,7 +24,7 @@ from murphy.evaluate import (
 )
 from murphy.io.fixtures import ensure_dummy_fixture_files
 from murphy.llm import create_llm
-from murphy.models import ReportSummary, TestPlan, TestResult, WebsiteAnalysis
+from murphy.models import DEFAULT_MAX_TESTS, ReportSummary, TestPlan, TestResult, WebsiteAnalysis
 
 
 async def run_analyze(
@@ -53,7 +53,7 @@ async def run_generate_plan(
 	analysis: WebsiteAnalysis,
 	model: str,
 	provider: str = 'openai',
-	max_tests: int = 8,
+	max_tests: int = DEFAULT_MAX_TESTS,
 	goal: str | None = None,
 ) -> TestPlan:
 	"""Generate test plan from analysis."""
@@ -114,7 +114,7 @@ async def run_evaluate(
 	url: str,
 	model: str,
 	provider: str = 'openai',
-	max_tests: int = 8,
+	max_tests: int = DEFAULT_MAX_TESTS,
 	goal: str | None = None,
 	browser_session: BrowserSession | None = None,
 ) -> TestPlan:
