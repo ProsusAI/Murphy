@@ -117,8 +117,40 @@ FEEDBACK_FILE = FEEDBACK_OUTPUT_DIR / 'feedback.jsonl'
 _feedback_write_lock = asyncio.Lock()
 
 
+async def _append_feedback_to_blob(entry: dict) -> None:
+	"""Read the existing feedback.jsonl blob, append one line, and re-upload.
+
+	Uses the asyncio lock (held by the caller) for thread-safety within a
+	single process. Never raises — errors are logged so a blob outage does
+	not interrupt local execution.
+	"""
+	from murphy.config import BLOB_FEEDBACK_PATH, BLOB_READ_WRITE_TOKEN
+
+	if not BLOB_READ_WRITE_TOKEN:
+		return
+	try:
+		from vercel.blob import AsyncBlobClient  # type: ignore[import]
+		from vercel.blob.errors import BlobNotFoundError  # type: ignore[import]
+
+		async with AsyncBlobClient() as client:
+			# Fetch existing content; start with empty bytes if blob does not exist yet
+			existing: bytes = b''
+			try:
+				result = await client.get(BLOB_FEEDBACK_PATH, access='private')
+				existing = result.content
+			except BlobNotFoundError:
+				pass
+
+			new_content = existing + (json.dumps(entry) + '\n').encode('utf-8')
+			await client.put(BLOB_FEEDBACK_PATH, new_content, access='private', add_random_suffix=False, overwrite=True)
+		logger.info('  Feedback uploaded to blob: %s', BLOB_FEEDBACK_PATH)
+	except Exception as exc:
+		logger.warning('  Failed to upload feedback to blob: %s', exc)
+
+
 async def _submit_feedback(persona: TestPersona, feedback: PersonaFeedback) -> None:
-	"""Append PersonaFeedback as a JSON line to murphy/output/output_feedback/feedback.jsonl.
+	"""Append PersonaFeedback as a JSON line to murphy/output/output_feedback/feedback.jsonl
+	and to the shared Vercel Blob Storage file.
 
 	Each call adds one line to the shared file. Never raises — errors are logged
 	so concurrent runs are not interrupted.
@@ -138,6 +170,7 @@ async def _submit_feedback(persona: TestPersona, feedback: PersonaFeedback) -> N
 		async with _feedback_write_lock:
 			with FEEDBACK_FILE.open('a', encoding='utf-8') as f:
 				f.write(json.dumps(entry, indent=2) + '\n')
+			await _append_feedback_to_blob(entry)
 		logger.info('  Feedback saved for %s (grade=%d) → %s', persona, feedback.grade, FEEDBACK_FILE)
 	except Exception as exc:
 		logger.warning('  Failed to save feedback for %s: %s', persona, exc)

@@ -28,17 +28,25 @@ UI_READY_MIN_TEXT_LENGTH = 120
 
 # ─── Per-endpoint job timeouts (seconds) ──────────────────────────────────────
 
-JOB_TIMEOUT_ANALYZE = 300  # 5 min — single browser exploration
-JOB_TIMEOUT_GENERATE_PLAN = 180  # 3 min — pure LLM, no browser
-JOB_TIMEOUT_EXECUTE = 1800  # 30 min — runs multiple tests (160-621s each)
-JOB_TIMEOUT_EVALUATE = 600  # 10 min — exploration + plan synthesis
+JOB_TIMEOUT_ANALYZE = 3600  # 60 min
+JOB_TIMEOUT_GENERATE_PLAN = 3600  # 60 min
+JOB_TIMEOUT_EXECUTE = 3600  # 60 min
+JOB_TIMEOUT_EVALUATE = 3600  # 60 min
+
+# ─── Vercel Blob Storage ──────────────────────────────────────────────────────
+
+BLOB_READ_WRITE_TOKEN = os.environ.get('BLOB_READ_WRITE_TOKEN', '')
+# Path within the blob store where feedback JSONL is written.
+# Set BLOB_FEEDBACK_PATH in the environment to override the default.
+# The blob is uploaded with access='private' — requires a signed URL to read.
+BLOB_FEEDBACK_PATH = os.environ.get('BLOB_FEEDBACK_PATH', 'feedback/news/feedback.jsonl')
 
 # ─── REST API configuration ───────────────────────────────────────────────────
 
 MURPHY_API_KEY = os.environ.get('MURPHY_API_KEY', '')
 MURPHY_MAX_CONCURRENT_JOBS = int(os.environ.get('MURPHY_MAX_CONCURRENT_JOBS', '2'))
 MURPHY_JOB_TIMEOUT_OVERRIDE = os.environ.get('MURPHY_JOB_TIMEOUT_OVERRIDE')
-MURPHY_REQUEST_TIMEOUT = int(os.environ.get('MURPHY_REQUEST_TIMEOUT', '1800'))
+MURPHY_REQUEST_TIMEOUT = int(os.environ.get('MURPHY_REQUEST_TIMEOUT', '3600'))
 MURPHY_API_HOST = os.environ.get('MURPHY_API_HOST', '0.0.0.0')
 MURPHY_API_PORT = int(os.environ.get('MURPHY_API_PORT', '8000'))
 SEMAPHORE_ACQUIRE_TIMEOUT = 30

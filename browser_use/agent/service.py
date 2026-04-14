@@ -3038,7 +3038,7 @@ class Agent(Generic[Context, AgentStructuredOutput]):
 		try:
 			import asyncio
 
-			response = await asyncio.wait_for(llm.ainvoke([SystemMessage(content=system_prompt), user_message]), timeout=120.0)
+			response = await asyncio.wait_for(llm.ainvoke([SystemMessage(content=system_prompt), user_message]), timeout=3600.0)
 
 			current_url = await self.browser_session.get_current_page_url()
 			extracted_content = (
