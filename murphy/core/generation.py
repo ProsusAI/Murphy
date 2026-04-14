@@ -20,13 +20,17 @@ async def generate_tests(
 	llm: BaseChatModel,
 	max_tests: int,
 	goal: str | None = None,
+	concise: bool = False,
 ) -> TestPlan:
-	"""Feature-discovery test generation: analysis → test plan with quality checks."""
+	"""Feature-discovery test generation: analysis → test plan with quality checks.
+
+	When concise=True, generates lean scenarios with ≤3 steps and 1-sentence criteria.
+	"""
 	logger.info('\n%s', '=' * 60)
 	logger.info('Generating test scenarios')
 	logger.info('%s\n', '=' * 60)
 
-	prompt = build_test_generation_prompt(url, analysis, max_tests, goal)
+	prompt = build_test_generation_prompt(url, analysis, max_tests, goal, concise=concise)
 	system_msg = SystemMessage(content=build_test_generation_system_message())
 
 	quality_task = goal or f'evaluate {url}'
@@ -82,8 +86,12 @@ async def explore_and_generate_plan(
 	session: BrowserSession,
 	max_scenarios: int = 8,
 	max_steps: int = 30,
+	concise: bool = False,
 ) -> TestPlan:
-	"""Exploration-first plan generation: explore → summarize → synthesize with quality checks."""
+	"""Exploration-first plan generation: explore → summarize → synthesize with quality checks.
+
+	When concise=True, generates lean scenarios with ≤3 steps and 1-sentence criteria.
+	"""
 	from murphy.browser.actions import register_domain_access_action, register_refresh_dom_action
 	from murphy.browser.session_utils import prepare_session_for_task
 	from murphy.prompts import build_exploration_prompt
@@ -122,7 +130,7 @@ async def explore_and_generate_plan(
 
 	# Step 4: Generate plan with quality checks
 	logger.info('Synthesizing test plan...')
-	synthesis_prompt = build_plan_synthesis_prompt(task, url, exploration_context, max_scenarios)
+	synthesis_prompt = build_plan_synthesis_prompt(task, url, exploration_context, max_scenarios, concise=concise)
 
 	best_plan: TestPlan | None = None
 

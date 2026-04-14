@@ -7,6 +7,7 @@ Usage:
     murphy --url https://example.com --features features.md     # skip analysis, load features from file
     murphy --url https://example.com --plan plan.yaml           # skip analysis + generation, load test plan
     murphy --url https://example.com --goal "test the checkout flow"
+    murphy --url https://example.com --feedback                                        # persona feedback mode
 """
 
 from __future__ import annotations
@@ -77,6 +78,11 @@ def main() -> int:
 		default=3,
 		metavar='N',
 		help='Number of tests to run concurrently (default: 3)',
+	)
+	parser.add_argument(
+		'--feedback',
+		action='store_true',
+		help='Enable persona feedback mode: POST {sessionId, grade, comments, suggestion} to the feedback API after each persona finishes. Skips full report generation.',
 	)
 	args = parser.parse_args()
 
@@ -168,6 +174,8 @@ async def _async_main(args: argparse.Namespace) -> None:
 
 		# ── Phase 1–2: Discover features & generate plan ──
 		use_exploration_first = bool(args.goal and not args.features and not args.plan)
+		use_feedback: bool = args.feedback
+		concise_plan = use_feedback
 
 		if args.plan:
 			# Skip both analysis and test generation
@@ -186,6 +194,7 @@ async def _async_main(args: argparse.Namespace) -> None:
 				session=browser_session,
 				max_scenarios=args.max_tests,
 				max_steps=args.max_steps,
+				concise=concise_plan,
 			)
 
 			# Save test plan to YAML
@@ -225,7 +234,7 @@ async def _async_main(args: argparse.Namespace) -> None:
 				logger.info('  Using %d features for test generation.\n', len(analysis.features))
 
 			# ── Generate tests ──
-			test_plan = await generate_tests(args.url, analysis, llm, args.max_tests, goal=args.goal)
+			test_plan = await generate_tests(args.url, analysis, llm, args.max_tests, goal=args.goal, concise=concise_plan)
 
 			# Save test plan to YAML
 			plan_path = save_test_plan(args.url, test_plan, output_dir)
@@ -259,7 +268,8 @@ async def _async_main(args: argparse.Namespace) -> None:
 
 		# ── Phase 3: Execute ──
 		def _on_test_complete(results: list[TestResult]) -> None:
-			if analysis:
+			# In feedback mode, skip incremental report writes — feedback already POSTed per persona.
+			if not use_feedback and analysis:
 				write_reports_and_print(args.url, analysis, results, output_dir)
 
 		if not args.ui:
@@ -275,8 +285,12 @@ async def _async_main(args: argparse.Namespace) -> None:
 				max_concurrent=args.parallel,
 				judge_llm=judge_llm,
 				output_dir=output_dir,
+				use_feedback=use_feedback,
 			)
-			if analysis:
+			if use_feedback:
+				# Feedback already POSTed per persona — just summarise to stdout.
+				_log_feedback_summary(results)
+			elif analysis:
 				write_reports_and_print(args.url, analysis, results, output_dir)
 			else:
 				_log_results_summary(results)
@@ -301,6 +315,7 @@ async def _async_main(args: argparse.Namespace) -> None:
 				max_concurrent=args.parallel,
 				judge_llm=judge_llm,
 				output_dir=output_dir,
+				use_feedback=use_feedback,
 			)
 
 		state = ServerState(
@@ -319,7 +334,9 @@ async def _async_main(args: argparse.Namespace) -> None:
 			while True:
 				await asyncio.sleep(1)
 				if state.done and state.results and not getattr(state, '_reports_written', False):
-					if analysis:
+					if use_feedback:
+						_log_feedback_summary(state.results)
+					elif analysis:
 						write_reports_and_print(args.url, analysis, state.results, output_dir)
 					else:
 						_log_results_summary(state.results)
@@ -364,6 +381,15 @@ async def _open_mode(output_dir: Path) -> None:
 		pass
 	finally:
 		await runner.cleanup()
+
+
+def _log_feedback_summary(results: list[TestResult]) -> None:
+	"""Print a concise per-persona feedback summary to stdout (feedback mode)."""
+	logger.info('\n%s', '=' * 60)
+	logger.info('Persona Feedback Complete — %d persona(s)', len(results))
+	logger.info('%s', '=' * 60)
+	for r in results:
+		logger.info('  [%s] grade=%s — %s', r.scenario.test_persona, r.success, r.reason or '(no comment)')
 
 
 def _log_results_summary(results: list[TestResult]) -> None:

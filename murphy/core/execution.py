@@ -6,6 +6,7 @@ import logging
 import re
 import traceback
 from collections.abc import Callable
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -17,12 +18,13 @@ from murphy.core.judge import murphy_judge
 from murphy.core.summary import classify_failure
 from murphy.io.report_helpers import _slugify
 from murphy.models import (
+	PersonaFeedback,
 	ScenarioExecutionVerdict,
 	TestPlan,
 	TestResult,
 	TestScenario,
 )
-from murphy.prompts import build_execution_prompt
+from murphy.prompts import build_execution_prompt, build_persona_feedback_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +104,40 @@ async def _collect_session_urls(browser_session: BrowserSession) -> list[str]:
 	return urls
 
 
+# ─── Persona feedback submission ──────────────────────────────────────────────
+
+
+FEEDBACK_OUTPUT_DIR = Path(__file__).parent.parent / 'output' / 'output_feedback'
+FEEDBACK_FILE = FEEDBACK_OUTPUT_DIR / 'feedback.jsonl'
+
+# Asyncio lock — prevents concurrent personas from interleaving writes to the same file
+_feedback_write_lock = asyncio.Lock()
+
+
+async def _submit_feedback(persona: str, feedback: PersonaFeedback) -> None:
+	"""Append PersonaFeedback as a JSON line to murphy/output/output_feedback/feedback.jsonl.
+
+	Each call adds one line to the shared file. Never raises — errors are logged
+	so concurrent runs are not interrupted.
+	"""
+	entry = {
+		'timestamp': datetime.now(timezone.utc).isoformat(),
+		'sessionId': persona,
+		'grade': feedback.grade,
+		'comments': feedback.comments,
+		'processed': False,
+		'processedAt': None,
+	}
+	try:
+		FEEDBACK_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+		async with _feedback_write_lock:
+			with FEEDBACK_FILE.open('a', encoding='utf-8') as f:
+				f.write(json.dumps(entry, indent=2) + '\n')
+		logger.info('  Feedback saved for %s (grade=%d) → %s', persona, feedback.grade, FEEDBACK_FILE)
+	except Exception as exc:
+		logger.warning('  Failed to save feedback for %s: %s', persona, exc)
+
+
 # ─── Single-test execution helper ──────────────────────────────────────────────
 
 
@@ -117,10 +153,14 @@ async def _execute_single_test(
 	total: int,
 	judge_llm: BaseChatModel | None = None,
 	output_dir: Path | None = None,
+	use_feedback: bool = False,
 ) -> TestResult:
 	"""Execute one test scenario and return its TestResult.
 
 	Shared by both sequential and parallel execution paths.
+
+	When use_feedback=True, the agent uses PersonaFeedback as its output model,
+	the murphy judge is skipped, and the feedback is POSTed to FEEDBACK_API_URL immediately.
 	"""
 	from murphy.browser.actions import register_domain_access_action, register_refresh_dom_action
 	from murphy.browser.session_utils import prepare_session_for_task
@@ -132,11 +172,54 @@ async def _execute_single_test(
 		await prepare_session_for_task(browser_session, url, force_navigate=True)
 
 		file_paths_str = [str(p) for p in fixture_paths] if fixture_paths else []
+
+		# ── Feedback mode: lean prompt + PersonaFeedback output, no judge ──
+		if use_feedback:
+			task_prompt = build_persona_feedback_prompt(scenario, url)
+			agent_kwargs: dict[str, Any] = {
+				'task': task_prompt,
+				'llm': llm,
+				'browser_session': browser_session,
+				'use_judge': False,
+				'max_actions_per_step': 3,
+				'output_model_schema': PersonaFeedback,
+			}
+			agent = Agent(**agent_kwargs)
+			register_domain_access_action(agent.tools, browser_session)
+			register_refresh_dom_action(agent.tools, browser_session)
+
+			history = await agent.run(max_steps=max_steps)
+			duration = history.total_duration_seconds()
+			all_actions = history.model_actions()
+			errors = history.errors()
+
+			persona_feedback: PersonaFeedback | None = _parse_structured_output(history, PersonaFeedback)  # type: ignore[assignment]
+
+			if persona_feedback is None:
+				# Fallback: neutral grade if agent failed to produce structured output
+				persona_feedback = PersonaFeedback(grade=5, comments='Agent did not produce structured feedback.')
+
+			logger.info('  Feedback: grade=%d — %s (%.1fs)', persona_feedback.grade, persona_feedback.comments, duration)
+
+			await _submit_feedback(scenario.test_persona, persona_feedback)
+
+			test_result = TestResult(
+				scenario=scenario,
+				success=persona_feedback.grade >= 5,
+				judgement=None,
+				actions=all_actions,
+				errors=errors,
+				duration=duration,
+				reason=persona_feedback.comments,
+			)
+			return test_result
+
+		# ── Standard mode: full ScenarioExecutionVerdict + murphy_judge ──
 		task_prompt = build_execution_prompt(
 			goal or f'Evaluate {url}', scenario, url, available_file_paths=file_paths_str or None
 		)
 
-		agent_kwargs: dict[str, Any] = {
+		agent_kwargs = {
 			'task': task_prompt,
 			'llm': llm,
 			'browser_session': browser_session,
@@ -367,6 +450,7 @@ async def execute_tests(
 	save_callback: Callable[[list[TestResult]], None] | None = None,
 	judge_llm: BaseChatModel | None = None,
 	output_dir: Path | None = None,
+	use_feedback: bool = False,
 ) -> list[TestResult]:
 	"""Execute tests without a pre-existing session (creates its own)."""
 	from browser_use.browser.profile import BrowserProfile
@@ -385,6 +469,7 @@ async def execute_tests(
 			max_concurrent=1,
 			judge_llm=judge_llm,
 			output_dir=output_dir,
+			use_feedback=use_feedback,
 		)
 	finally:
 		await browser_session.kill()
@@ -403,6 +488,7 @@ async def execute_tests_with_session(
 	max_concurrent: int = 3,
 	judge_llm: BaseChatModel | None = None,
 	output_dir: Path | None = None,
+	use_feedback: bool = False,
 ) -> list[TestResult]:
 	"""Phase 3 execution reusing an existing browser session.
 
@@ -443,6 +529,7 @@ async def execute_tests_with_session(
 				total=total,
 				judge_llm=judge_llm,
 				output_dir=output_dir,
+				use_feedback=use_feedback,
 			)
 			results.append(test_result)
 
@@ -491,6 +578,7 @@ async def execute_tests_with_session(
 					total=total,
 					judge_llm=judge_llm,
 					output_dir=output_dir,
+					use_feedback=use_feedback,
 				)
 				results_slots[index_0] = result
 
