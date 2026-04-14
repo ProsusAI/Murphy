@@ -537,6 +537,8 @@ def build_persona_feedback_prompt(
 		f'START HERE: {start_url}\n\n'
 		f'RULES:\n'
 		f'- Stay on the same domain as {start_url}.\n'
+		f'- NEVER click any "Submit feedback", "Send feedback", "Give feedback", or similar feedback submission buttons on the site. '
+		f'You are here to observe and evaluate — do not submit any feedback forms on the site itself.\n'
 		f'- If you encounter a critical blocking issue (app crashes, content never loads, core feature completely broken), '
 		f'stop immediately and report it — do not keep exploring.\n'
 		f'- Otherwise complete the steps above, then produce your feedback.\n\n'

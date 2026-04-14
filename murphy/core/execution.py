@@ -33,6 +33,10 @@ logger = logging.getLogger(__name__)
 
 from murphy.config import MAX_PARALLEL_SESSIONS
 
+# ANSI colour for feedback log lines
+_PINK = '\033[95m'
+_RESET = '\033[0m'
+
 # ─── Structured output parsing ────────────────────────────────────────────────
 
 
@@ -117,23 +121,22 @@ FEEDBACK_FILE = FEEDBACK_OUTPUT_DIR / 'feedback.jsonl'
 _feedback_write_lock = asyncio.Lock()
 
 
-async def _append_feedback_to_blob(entry: dict) -> None:
-	"""Read the existing feedback.jsonl blob, append one line, and re-upload.
+async def _upload_all_feedback_to_blob(entries: list[dict]) -> None:
+	"""Upload all feedback entries to Vercel Blob Storage in a single PUT.
 
-	Uses the asyncio lock (held by the caller) for thread-safety within a
-	single process. Never raises — errors are logged so a blob outage does
-	not interrupt local execution.
+	Reads the existing blob first to preserve feedback from previous runs,
+	then appends this session's entries and writes everything back at once.
+	Never raises — errors are logged so a blob outage does not interrupt execution.
 	"""
 	from murphy.config import BLOB_FEEDBACK_PATH, BLOB_READ_WRITE_TOKEN
 
-	if not BLOB_READ_WRITE_TOKEN:
+	if not BLOB_READ_WRITE_TOKEN or not entries:
 		return
 	try:
 		from vercel.blob import AsyncBlobClient  # type: ignore[import]
 		from vercel.blob.errors import BlobNotFoundError  # type: ignore[import]
 
 		async with AsyncBlobClient() as client:
-			# Fetch existing content; start with empty bytes if blob does not exist yet
 			existing: bytes = b''
 			try:
 				result = await client.get(BLOB_FEEDBACK_PATH, access='private')
@@ -141,19 +144,19 @@ async def _append_feedback_to_blob(entry: dict) -> None:
 			except BlobNotFoundError:
 				pass
 
-			new_content = existing + (json.dumps(entry) + '\n').encode('utf-8')
-			await client.put(BLOB_FEEDBACK_PATH, new_content, access='private', add_random_suffix=False, overwrite=True)
-		logger.info('  Feedback uploaded to blob: %s', BLOB_FEEDBACK_PATH)
+			new_lines = ''.join(json.dumps(e) + '\n' for e in entries).encode('utf-8')
+			await client.put(BLOB_FEEDBACK_PATH, existing + new_lines, access='private', add_random_suffix=False, overwrite=True)
+		logger.info('  Feedback batch uploaded to blob (%d entries): %s', len(entries), BLOB_FEEDBACK_PATH)
 	except Exception as exc:
-		logger.warning('  Failed to upload feedback to blob: %s', exc)
+		logger.warning('  Failed to upload feedback batch to blob: %s', exc)
 
 
-async def _submit_feedback(persona: TestPersona, feedback: PersonaFeedback) -> None:
-	"""Append PersonaFeedback as a JSON line to murphy/output/output_feedback/feedback.jsonl
-	and to the shared Vercel Blob Storage file.
+async def _save_feedback_locally(persona: TestPersona, feedback: PersonaFeedback) -> dict | None:
+	"""Append PersonaFeedback as a JSON line to the local feedback.jsonl file.
 
-	Each call adds one line to the shared file. Never raises — errors are logged
-	so concurrent runs are not interrupted.
+	Returns the entry dict so the caller can collect entries for a bulk blob upload
+	once all agents have finished. Never raises — errors are logged so concurrent
+	runs are not interrupted.
 	"""
 	traits, test_type = PERSONA_REGISTRY[persona]
 	entry = {
@@ -170,10 +173,11 @@ async def _submit_feedback(persona: TestPersona, feedback: PersonaFeedback) -> N
 		async with _feedback_write_lock:
 			with FEEDBACK_FILE.open('a', encoding='utf-8') as f:
 				f.write(json.dumps(entry, indent=2) + '\n')
-			await _append_feedback_to_blob(entry)
-		logger.info('  Feedback saved for %s (grade=%d) → %s', persona, feedback.grade, FEEDBACK_FILE)
+		logger.info('  Feedback saved locally for %s (grade=%d) → %s', persona, feedback.grade, FEEDBACK_FILE)
+		return entry
 	except Exception as exc:
 		logger.warning('  Failed to save feedback for %s: %s', persona, exc)
+		return None
 
 
 # ─── Single-test execution helper ──────────────────────────────────────────────
@@ -192,6 +196,7 @@ async def _execute_single_test(
 	judge_llm: BaseChatModel | None = None,
 	output_dir: Path | None = None,
 	use_feedback: bool = False,
+	feedback_collector: list[dict] | None = None,
 ) -> TestResult:
 	"""Execute one test scenario and return its TestResult.
 
@@ -237,9 +242,14 @@ async def _execute_single_test(
 				# Fallback: neutral grade if agent failed to produce structured output
 				persona_feedback = PersonaFeedback(grade=5, comments='Agent did not produce structured feedback.')
 
-			logger.info('  Feedback: grade=%d — %s (%.1fs)', persona_feedback.grade, persona_feedback.comments, duration)
+			logger.info(
+				'  %sFeedback [Agent %d/%d]: grade=%d — %s (%.1fs)%s',
+				_PINK, index, total, persona_feedback.grade, persona_feedback.comments, duration, _RESET,
+			)
 
-			await _submit_feedback(scenario.test_persona, persona_feedback)
+			entry = await _save_feedback_locally(scenario.test_persona, persona_feedback)
+			if entry is not None and feedback_collector is not None:
+				feedback_collector.append(entry)
 
 			test_result = TestResult(
 				scenario=scenario,
@@ -548,8 +558,10 @@ async def execute_tests_with_session(
 	logger.info('Executing %d tests (%s, max_concurrent=%d)', total, mode, max_concurrent)
 	logger.info('%s\n', '=' * 60)
 
+	feedback_collector: list[dict] = []
+
 	if max_concurrent <= 1:
-		# ── Sequential path (unchanged behavior) ──
+		# ── Sequential path ──
 		results: list[TestResult] = []
 		for i, scenario in enumerate(test_plan.scenarios, 1):
 			if progress_state is not None:
@@ -568,6 +580,7 @@ async def execute_tests_with_session(
 				judge_llm=judge_llm,
 				output_dir=output_dir,
 				use_feedback=use_feedback,
+				feedback_collector=feedback_collector if use_feedback else None,
 			)
 			results.append(test_result)
 
@@ -576,6 +589,9 @@ async def execute_tests_with_session(
 					save_callback(results)
 				except Exception as e:
 					logger.warning('  save_callback failed: %s', e)
+
+		if use_feedback and feedback_collector:
+			await _upload_all_feedback_to_blob(feedback_collector)
 
 		return results
 
@@ -617,6 +633,7 @@ async def execute_tests_with_session(
 					judge_llm=judge_llm,
 					output_dir=output_dir,
 					use_feedback=use_feedback,
+					feedback_collector=feedback_collector if use_feedback else None,
 				)
 				results_slots[index_0] = result
 
@@ -633,6 +650,9 @@ async def execute_tests_with_session(
 		async with asyncio.TaskGroup() as tg:
 			for i, scenario in enumerate(test_plan.scenarios):
 				tg.create_task(_run_one(i, scenario))
+
+		if use_feedback and feedback_collector:
+			await _upload_all_feedback_to_blob(feedback_collector)
 
 		# Return results in plan order
 		return [r for r in results_slots if r is not None]
