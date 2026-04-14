@@ -52,7 +52,7 @@ def _make_scenario(**overrides) -> TestScenario:
 		priority='high',
 		feature_category='search',
 		target_feature='Search bar',
-		test_persona='happy_path',
+		test_persona='first_timer',
 		steps_description='1. Click search\n2. Type query',
 		success_criteria='Results appear',
 	)
@@ -146,7 +146,7 @@ def test_execution_prompt_basic():
 	scenario = _make_scenario()
 	prompt = build_execution_prompt('evaluate site', scenario, 'https://example.com')
 	assert 'Test search' in prompt
-	assert 'happy_path' in prompt
+	assert 'first_timer' in prompt
 	assert 'VALIDATION RULES' in prompt
 
 
@@ -170,10 +170,17 @@ def test_execution_prompt_adversarial_persona():
 	assert 'XSS' in prompt
 
 
-def test_execution_prompt_confused_novice_persona():
-	scenario = _make_scenario(test_persona='confused_novice')
+def test_execution_prompt_first_timer_persona():
+	scenario = _make_scenario(test_persona='first_timer')
 	prompt = build_execution_prompt('evaluate site', scenario, 'https://example.com')
-	assert 'confused_novice' in prompt
+	assert 'first_timer' in prompt
+
+
+def test_execution_prompt_mobile_user_persona():
+	scenario = _make_scenario(test_persona='mobile_user')
+	prompt = build_execution_prompt('evaluate site', scenario, 'https://example.com')
+	assert 'mobile_user' in prompt
+	assert 'mobile' in prompt.lower()
 
 
 # ─── _build_persona_distribution_text ─────────────────────────────────────────
@@ -181,7 +188,7 @@ def test_execution_prompt_confused_novice_persona():
 
 def test_persona_distribution_text_all_personas():
 	text = _build_persona_distribution_text()
-	for persona in ['happy_path', 'confused_novice', 'adversarial', 'edge_case', 'explorer', 'impatient_user', 'angry_user']:
+	for persona in ['first_timer', 'adversarial', 'edge_case', 'explorer', 'impatient_user', 'angry_user', 'mobile_user']:
 		assert persona in text
 
 
@@ -195,7 +202,7 @@ def test_persona_distribution_text_includes_traits():
 
 
 def test_render_all_personas():
-	for persona in ['happy_path', 'confused_novice', 'adversarial', 'edge_case', 'explorer', 'impatient_user', 'angry_user']:
+	for persona in ['first_timer', 'adversarial', 'edge_case', 'explorer', 'impatient_user', 'angry_user', 'mobile_user']:
 		rendered = _render_persona_for_execution(persona)  # type: ignore[arg-type]
 		assert persona in rendered
 		assert 'Trait profile' in rendered

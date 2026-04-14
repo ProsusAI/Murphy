@@ -11,7 +11,7 @@ def _make_scenario(**overrides) -> TestScenario:
 		priority='high',
 		feature_category='search',
 		target_feature='Search bar',
-		test_persona='happy_path',
+		test_persona='first_timer',
 		steps_description='1. Click search\n2. Type query',
 		success_criteria='Results appear',
 	)

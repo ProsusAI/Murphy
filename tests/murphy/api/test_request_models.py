@@ -88,7 +88,7 @@ def test_analyze_request_missing_url():
 
 def test_evaluate_request_defaults():
 	r = EvaluateRequest(url='https://example.com')  # type: ignore[call-arg]
-	assert r.max_tests == 8
+	assert r.max_tests == 10
 	assert r.async_mode is False
 
 
@@ -113,7 +113,7 @@ def test_execute_request_with_json_string_test_plan():
 				'priority': 'high',
 				'feature_category': 'search',
 				'target_feature': 'Search bar',
-				'test_persona': 'happy_path',
+				'test_persona': 'first_timer',
 				'steps_description': '1. Click search\n2. Type query',
 				'success_criteria': 'Results appear',
 			}
@@ -186,7 +186,7 @@ def test_execute_result():
 		priority='high',
 		feature_category='search',
 		target_feature='Search',
-		test_persona='happy_path',
+		test_persona='first_timer',
 		steps_description='1. Do something',
 		success_criteria='Works',
 	)

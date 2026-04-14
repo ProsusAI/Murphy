@@ -32,7 +32,7 @@ def _make_scenario(**overrides) -> TestScenario:
 		priority='high',
 		feature_category='authentication',
 		target_feature='Login form',
-		test_persona='happy_path',
+		test_persona='first_timer',
 		steps_description='1. Open login page\n2. Enter credentials\n3. Click submit',
 		success_criteria='User is logged in',
 	)
@@ -122,14 +122,14 @@ def test_trait_vector_extra_forbidden():
 
 
 def test_persona_registry_completeness():
-	expected_personas = {'happy_path', 'confused_novice', 'adversarial', 'edge_case', 'explorer', 'impatient_user', 'angry_user'}
+	expected_personas = {'first_timer', 'adversarial', 'edge_case', 'explorer', 'impatient_user', 'angry_user', 'boomer_ui', 'genz_ui', 'whitespace_police_ui', 'mobile_user'}
 	assert set(PERSONA_REGISTRY.keys()) == expected_personas
 
 
 def test_persona_registry_values_are_trait_vector_and_test_type():
 	for persona, (traits, test_type) in PERSONA_REGISTRY.items():
 		assert isinstance(traits, TraitVector), f'{persona} traits not TraitVector'
-		assert test_type in ('ux', 'security', 'boundary'), f'{persona} test_type invalid: {test_type}'
+		assert test_type in ('ux', 'security', 'boundary', 'design'), f'{persona} test_type invalid: {test_type}'
 
 
 # ─── ScenarioExecutionVerdict ─────────────────────────────────────────────────

@@ -6,12 +6,12 @@ from murphy.models import TestPlan, TestScenario
 
 def _make_scenario(**overrides) -> TestScenario:
 	defaults = dict(
-		name='Happy path login',
-		description='Test login with valid credentials',
+		name='First-timer login',
+		description='Test login with valid credentials as a first-time visitor',
 		priority='critical',
 		feature_category='authentication',
 		target_feature='Login form',
-		test_persona='happy_path',
+		test_persona='first_timer',
 		steps_description='1. Navigate to login page\n2. Enter valid email\n3. Enter password\n4. Click submit',
 		success_criteria='User is redirected to dashboard and sees confirmation message',
 	)
@@ -22,13 +22,13 @@ def _make_scenario(**overrides) -> TestScenario:
 def _make_diverse_plan(n: int = 6) -> TestPlan:
 	"""Create a plan that passes all quality checks."""
 	scenarios = [
-		_make_scenario(name='Happy path login', test_persona='happy_path', priority='critical'),
+		_make_scenario(name='First-timer login', test_persona='first_timer', priority='critical'),
 		_make_scenario(
-			name='Confused novice tries login',
-			test_persona='confused_novice',
+			name='Impatient rapid clicks',
+			test_persona='impatient_user',
 			priority='medium',
-			description='Novice submits empty login form',
-			steps_description='1. Navigate to login page\n2. Click submit without filling fields',
+			description='Click login button rapidly without waiting',
+			steps_description='1. Navigate to login page\n2. Click submit repeatedly',
 		),
 		_make_scenario(
 			name='Adversarial XSS in login',
@@ -52,11 +52,11 @@ def _make_diverse_plan(n: int = 6) -> TestPlan:
 			steps_description='1. Navigate to footer links\n2. Find login link',
 		),
 		_make_scenario(
-			name='Impatient rapid clicks',
-			test_persona='impatient_user',
+			name='Angry user rage-clicks',
+			test_persona='angry_user',
 			priority='medium',
-			description='Click login button rapidly',
-			steps_description='1. Navigate to login page\n2. Click submit repeatedly',
+			description='Rage-click the login button repeatedly',
+			steps_description='1. Navigate to login page\n2. Click submit button many times rapidly',
 		),
 	]
 	return TestPlan(scenarios=scenarios[:n])
@@ -83,22 +83,14 @@ def test_scenario_missing_ui_signals():
 	assert any('observable UI signals' in i for i in issues)
 
 
-def test_scenario_vague_phrasing_outside_novice():
-	s = _make_scenario(
-		test_persona='happy_path',
-		steps_description='1. Click random element\n2. Check results',
-	)
-	issues = scenario_quality_issues('test login', s)
-	assert any('vague' in i for i in issues)
-
-
-def test_scenario_vague_phrasing_allowed_for_novice():
-	s = _make_scenario(
-		test_persona='confused_novice',
-		steps_description='1. Click random element\n2. Check results',
-	)
-	issues = scenario_quality_issues('test login', s)
-	assert not any('vague' in i for i in issues)
+def test_scenario_vague_phrasing_flagged_for_all_personas():
+	for persona in ['first_timer', 'adversarial', 'explorer']:
+		s = _make_scenario(
+			test_persona=persona,
+			steps_description='1. Click random element\n2. Check results',
+		)
+		issues = scenario_quality_issues('test login', s)
+		assert any('vague' in i for i in issues), f'Expected vague phrasing to be flagged for {persona}'
 
 
 # ─── plan_quality_issues ──────────────────────────────────────────────────────
@@ -116,15 +108,15 @@ def test_plan_too_few_scenarios():
 	assert any('minimum 5' in i for i in issues)
 
 
-def test_plan_missing_critical_happy_path():
-	scenarios = [_make_scenario(test_persona='happy_path', priority='medium')]
+def test_plan_missing_critical_first_timer():
+	scenarios = [_make_scenario(test_persona='first_timer', priority='medium')]
 	plan = TestPlan(scenarios=scenarios)
 	issues = plan_quality_issues('test login', plan)
 	assert any('critical' in i for i in issues)
 
 
 def test_plan_missing_trait_coverage():
-	# All happy_path — missing low tech_lit, low patience, adversarial, high exploration
+	# All first_timer — missing low patience, adversarial, high exploration
 	scenarios = [_make_scenario() for _ in range(6)]
 	plan = TestPlan(scenarios=scenarios)
 	issues = plan_quality_issues('test login', plan)
@@ -132,8 +124,8 @@ def test_plan_missing_trait_coverage():
 
 
 def test_plan_persona_dominance():
-	# 5 out of 6 are happy_path — exceeds 40%
-	scenarios = [_make_scenario(test_persona='happy_path') for _ in range(5)]
+	# 5 out of 6 are first_timer — exceeds 40%
+	scenarios = [_make_scenario(test_persona='first_timer') for _ in range(5)]
 	scenarios.append(_make_scenario(test_persona='adversarial'))
 	plan = TestPlan(scenarios=scenarios)
 	issues = plan_quality_issues('test login', plan)
@@ -146,7 +138,7 @@ def test_plan_unrelated_scenarios():
 		_make_scenario(
 			name=f'Xyz scenario {i}',
 			description='Something completely unrelated to task',
-			test_persona='happy_path' if i == 0 else 'adversarial',
+			test_persona='first_timer' if i == 0 else 'adversarial',
 			priority='critical' if i == 0 else 'high',
 		)
 		for i in range(6)

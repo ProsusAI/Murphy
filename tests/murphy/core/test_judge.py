@@ -10,10 +10,10 @@ from murphy.models import PERSONA_REGISTRY, TraitLevel
 # ─── build_judge_trait_context ────────────────────────────────────────────────
 
 
-def test_build_judge_trait_context_happy_path():
-	traits, test_type = PERSONA_REGISTRY['happy_path']
-	context = build_judge_trait_context('happy_path', traits, test_type)
-	assert 'happy_path' in context
+def test_build_judge_trait_context_first_timer():
+	traits, test_type = PERSONA_REGISTRY['first_timer']
+	context = build_judge_trait_context('first_timer', traits, test_type)
+	assert 'first_timer' in context
 	assert test_type in context
 	assert 'technical_literacy' in context
 	assert 'patience' in context
@@ -33,8 +33,8 @@ def test_build_judge_trait_context_exploratory():
 
 
 def test_build_judge_trait_context_benign_intent():
-	traits, test_type = PERSONA_REGISTRY['happy_path']
-	context = build_judge_trait_context('happy_path', traits, test_type)
+	traits, test_type = PERSONA_REGISTRY['first_timer']
+	context = build_judge_trait_context('first_timer', traits, test_type)
 	assert 'benign' in context
 
 

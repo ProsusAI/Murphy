@@ -38,17 +38,17 @@ def _make_analysis() -> WebsiteAnalysis:
 def _make_good_plan() -> TestPlan:
 	"""A plan that passes quality checks."""
 	personas: list[TestPersona] = [
-		'happy_path',
-		'confused_novice',
+		'first_timer',
 		'adversarial',
 		'edge_case',
 		'explorer',
 		'impatient_user',
 		'angry_user',
+		'mobile_user',
 	]
 	scenarios = []
 	for i, persona in enumerate(personas[:6]):
-		priority = 'critical' if persona == 'happy_path' else 'high'
+		priority = 'critical' if persona == 'first_timer' else 'high'
 		scenarios.append(
 			TestScenario(
 				name=f'Test scenario {i + 1} for evaluate example.com',
@@ -99,7 +99,7 @@ async def test_generate_tests_retries_on_quality_issues():
 				priority='high',
 				feature_category='search',
 				target_feature='Search',
-				test_persona='happy_path',
+				test_persona='first_timer',
 				steps_description='1. Do something',
 				success_criteria='It works visible',
 			)

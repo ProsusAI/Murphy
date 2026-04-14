@@ -15,12 +15,21 @@ def _make_scenario(**overrides) -> TestScenario:
 		priority='high',
 		feature_category='search',
 		target_feature='Search bar',
-		test_persona='happy_path',
+		test_persona='first_timer',
 		steps_description='1. Click search\n2. Type query',
 		success_criteria='Results appear',
 	)
 	defaults.update(overrides)
 	return TestScenario.model_validate(defaults)
+
+
+def _make_mock_step(screenshot_b64: str | None = None) -> MagicMock:
+	"""Create a mock agent history step with an optional screenshot."""
+	step = MagicMock()
+	step.state.get_screenshot.return_value = screenshot_b64
+	step.model_output = None  # no actions — score stays 0
+	step.result = []
+	return step
 
 
 def _make_mock_history(
@@ -36,8 +45,13 @@ def _make_mock_history(
 	h.urls.return_value = urls or []
 	h.errors.return_value = errors or []
 	h.final_result.return_value = final_result or ''
-	h.screenshots.return_value = screenshots or []
 	h.agent_steps.return_value = agent_steps or []
+	# _select_key_screenshots reads history.history, not history.screenshots()
+	# Each step must have step.state.get_screenshot(), step.model_output, step.result
+	if screenshots:
+		h.history = [_make_mock_step(s) for s in screenshots]
+	else:
+		h.history = []
 	return h
 
 
@@ -200,5 +214,5 @@ async def test_murphy_judge_unknown_persona_no_trait_context():
 
 	# Use a valid persona — all 7 are in PERSONA_REGISTRY, so test with happy_path
 	# which we know works
-	result = await murphy_judge(history, _make_scenario(test_persona='happy_path'), llm, start_url='https://example.com')
+	result = await murphy_judge(history, _make_scenario(test_persona='first_timer'), llm, start_url='https://example.com')
 	assert result.verdict is True

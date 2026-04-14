@@ -51,7 +51,7 @@ def _make_scenario(**overrides) -> TestScenario:
 		priority='high',
 		feature_category='search',
 		target_feature='Search bar',
-		test_persona='happy_path',
+		test_persona='first_timer',
 		steps_description='1. Click search\n2. Type query',
 		success_criteria='Results appear',
 	)
@@ -153,12 +153,12 @@ def test_render_plan_html_groups_by_persona():
 	analysis = _make_analysis()
 	plan = TestPlan(
 		scenarios=[
-			_make_scenario(name='Test A', test_persona='happy_path'),
+			_make_scenario(name='Test A', test_persona='first_timer'),
 			_make_scenario(name='Test B', test_persona='adversarial'),
 		]
 	)
 	html = render_plan_html('https://example.com', analysis, plan)
-	assert 'Happy Path' in html
+	assert 'First Timer' in html
 	assert 'Adversarial' in html
 
 
@@ -201,7 +201,7 @@ def test_render_results_html_escapes_xss():
 def test_render_results_html_persona_stats():
 	analysis = _make_analysis()
 	results = [
-		_make_result(scenario=_make_scenario(test_persona='happy_path'), success=True),
+		_make_result(scenario=_make_scenario(test_persona='first_timer'), success=True),
 		_make_result(scenario=_make_scenario(test_persona='adversarial'), success=False, failure_category='website_issue'),
 	]
 	html = render_results_html('https://example.com', analysis, results, None)
@@ -212,6 +212,6 @@ def test_render_results_html_persona_stats():
 
 
 def test_persona_labels_completeness():
-	expected = ['happy_path', 'confused_novice', 'adversarial', 'edge_case', 'explorer', 'impatient_user', 'angry_user']
+	expected = ['first_timer', 'adversarial', 'edge_case', 'explorer', 'impatient_user', 'angry_user', 'mobile_user']
 	for persona in expected:
 		assert persona in _PERSONA_LABELS
