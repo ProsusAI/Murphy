@@ -191,6 +191,7 @@ The full JSON report (`evaluation_report.json`) contains structured results, act
 | `--no-highlights` | `false` | Disable bounding boxes on interactive elements in the browser |
 | `--max-steps` | `30` | Max agent steps per exploration/execution phase |
 | `--parallel` | `3` | Number of tests to run concurrently |
+| `--feedback` | `false` | Persona feedback mode (see [docs/FEEDBACK.md](docs/FEEDBACK.md)) |
 
 ## Interactive UI
 
