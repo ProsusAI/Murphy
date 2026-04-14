@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Generic, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, create_model, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, create_model, field_validator, model_validator
 from typing_extensions import TypeVar
 from uuid_extensions import uuid7str
 
@@ -81,11 +81,11 @@ class AgentSettings(BaseModel):
 	page_extraction_llm: BaseChatModel | None = None
 	calculate_cost: bool = False
 	include_tool_call_examples: bool = False
-	llm_timeout: int = 60  # Timeout in seconds for LLM calls (auto-detected: 30s for gemini, 90s for o3, 60s default)
+	llm_timeout: int = 3600  # Timeout in seconds for LLM calls (auto-detected: 30s for gemini, 90s for o3, 60s default)
 	llm_retry_max_attempts: int = (
 		3  # Max retries for transient LLM errors (empty response, provider errors) before falling back or failing
 	)
-	step_timeout: int = 180  # Timeout in seconds for each step
+	step_timeout: int = 3600  # Timeout in seconds for each step
 	final_response_after_failure: bool = True  # If True, attempt one final recovery call after max_failures
 
 	# Loop detection settings
@@ -406,6 +406,19 @@ class AgentOutput(BaseModel):
 		...,
 		json_schema_extra={'min_items': 1},  # Ensure at least one action is provided
 	)
+
+	@field_validator('action', mode='before')
+	@classmethod
+	def _parse_action_string(cls, v: Any) -> Any:
+		"""Sonnet 4.6 sometimes returns action as a JSON-encoded string instead of a list.
+		Parse it back to a list so Pydantic validation doesn't fail and trigger a retry.
+		"""
+		if isinstance(v, str):
+			try:
+				v = json.loads(v)
+			except Exception:
+				pass
+		return v
 
 	@classmethod
 	def model_json_schema(cls, **kwargs):
