@@ -16,7 +16,7 @@ def scenario_quality_issues(task: str, scenario: TestScenario) -> list[str]:
 	scenario_text = f'{scenario.name} {scenario.description} {scenario.steps_description}'.lower()
 	scenario_words = set(re.findall(r'\w+', scenario_text))
 	overlap = task_words & scenario_words - {'the', 'a', 'an', 'to', 'is', 'and', 'or', 'in', 'on', 'for', 'of', 'with'}
-	if len(overlap) < 1 and scenario.test_persona == 'happy_path':
+	if len(overlap) < 1 and scenario.test_persona == 'first_timer':
 		issues.append(f'Scenario "{scenario.name}" has no keyword overlap with task "{task}"')
 
 	# 2. Step clarity — at least 2 numbered/dotted steps
@@ -50,12 +50,11 @@ def scenario_quality_issues(task: str, scenario: TestScenario) -> list[str]:
 		# Only flag if URL doesn't look related to the task
 		pass  # Relaxed — hard to validate without exploration data
 
-	# 5. Generic phrases — flag vague phrasing outside confused_novice persona
+	# 5. Generic phrases — flag vague phrasing in all personas
 	vague_patterns = ['click random', 'click any', 'click something']
-	if scenario.test_persona != 'confused_novice':
-		for pattern in vague_patterns:
-			if pattern in steps.lower():
-				issues.append(f'Scenario "{scenario.name}" uses vague "{pattern}" outside confused_novice persona')
+	for pattern in vague_patterns:
+		if pattern in steps.lower():
+			issues.append(f'Scenario "{scenario.name}" uses vague "{pattern}" — use intent-based step descriptions instead')
 
 	return issues
 
@@ -69,7 +68,6 @@ def plan_quality_issues(task: str, plan: TestPlan) -> list[str]:
 		issues.append(f'Plan has only {len(plan.scenarios)} scenarios (minimum 5)')
 
 	# 2. Trait-space coverage validation
-	has_low_tech_lit = False
 	has_low_patience = False
 	has_adversarial_intent = False
 	has_high_exploration = False
@@ -78,8 +76,6 @@ def plan_quality_issues(task: str, plan: TestPlan) -> list[str]:
 		if not entry:
 			continue
 		traits, _ = entry
-		if traits.technical_literacy == TraitLevel.low:
-			has_low_tech_lit = True
 		if traits.patience == TraitLevel.low:
 			has_low_patience = True
 		if traits.intent == 'adversarial':
@@ -87,8 +83,6 @@ def plan_quality_issues(task: str, plan: TestPlan) -> list[str]:
 		if traits.exploration == TraitLevel.high:
 			has_high_exploration = True
 	coverage_gaps: list[str] = []
-	if not has_low_tech_lit:
-		coverage_gaps.append('low technical_literacy')
 	if not has_low_patience:
 		coverage_gaps.append('low patience')
 	if not has_adversarial_intent:
@@ -98,10 +92,10 @@ def plan_quality_issues(task: str, plan: TestPlan) -> list[str]:
 	if coverage_gaps:
 		issues.append(f'Missing trait coverage: {", ".join(coverage_gaps)}')
 
-	# 3. Critical happy path
-	has_critical_happy = any(s.test_persona == 'happy_path' and s.priority == 'critical' for s in plan.scenarios)
-	if not has_critical_happy:
-		issues.append('No happy_path scenario with priority=critical')
+	# 3. Critical first_timer baseline
+	has_critical_first_timer = any(s.test_persona == 'first_timer' and s.priority == 'critical' for s in plan.scenarios)
+	if not has_critical_first_timer:
+		issues.append('No first_timer scenario with priority=critical')
 
 	# 4. Per-scenario quality
 	for s in plan.scenarios:

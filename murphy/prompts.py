@@ -8,10 +8,10 @@ from murphy.models import PERSONA_REGISTRY, TestPersona, TestScenario, TraitLeve
 
 # Percentages for persona distribution in test generation
 _PERSONA_DISTRIBUTION: dict[TestPersona, tuple[int, str]] = {
-	'happy_path': (15, 'Standard user, expected flow. A skilled user who knows exactly what they want.'),
-	'confused_novice': (
-		15,
-		"Simulate someone who doesn't read labels, clicks wrong buttons, submits empty forms, navigates backward repeatedly.",
+	'first_timer': (
+		20,
+		'Tech-literate but brand new to this site. Relies on onboarding copy, empty states, and visible CTAs to navigate. '
+		'Success requires clear orientation at every step — ambiguous labels, hidden gestures, or missing onboarding are failures.',
 	),
 	'adversarial': (
 		15,
@@ -31,7 +31,8 @@ _PERSONA_DISTRIBUTION: dict[TestPersona, tuple[int, str]] = {
 	),
 	'angry_user': (
 		10,
-		'Rage-clicks buttons repeatedly, force-navigates by typing URLs, submits forms rapidly without waiting, abandons multi-step flows mid-way.',
+		'Rage-clicks buttons repeatedly, force-navigates by typing URLs, submits forms rapidly without waiting, abandons multi-step flows mid-way. '
+		'Evaluates robustness — the site must absorb hostile interactions without crashing or entering broken state. Visible feedback preferred but not required.',
 	),
 	'boomer_ui': (
 		4,
@@ -50,6 +51,12 @@ _PERSONA_DISTRIBUTION: dict[TestPersona, tuple[int, str]] = {
 		'Evaluate spacing discipline: every margin, padding, and gutter must follow a consistent scale. '
 		'Misaligned elements, cramped card layouts, inconsistent vertical rhythm, or irregular gaps '
 		'between sibling components are failures.',
+	),
+	'mobile_user': (
+		6,
+		'Evaluate the site from a mobile browser perspective: touch target sizes, absence of horizontal scroll, '
+		'font readability at small viewport, responsive navigation (hamburger menus reachable, dropdowns usable), '
+		'and overall layout adaptation. Desktop-only layouts, tiny tap targets, or overlapping elements are failures.',
 	),
 }
 
@@ -200,8 +207,8 @@ def build_test_generation_prompt(
 			'- For non-happy-path criteria: list 3+ acceptable alternative outcomes separated by OR.\n'
 			'- NEVER reference specific error message text in quotes as the only acceptable outcome.\n'
 			'- Focus on what SHOULD NOT happen (crash, data leak, unhandled exception) as much as what should.\n'
-			'- "Silent handling" and "graceful degradation" are valid pass conditions ONLY for security-oriented personas (adversarial, edge_case, angry_user).\n'
-			'- For UX-oriented personas (happy_path, confused_novice, impatient_user, explorer), success criteria MUST include visible feedback requirements.\n'
+			'- "Silent handling" and "graceful degradation" are valid pass conditions ONLY for security/boundary personas (adversarial, edge_case, angry_user).\n'
+			'- For UX-oriented personas (first_timer, impatient_user, explorer), success criteria MUST include visible feedback requirements.\n'
 			'- The judge evaluates success by matching the action trace and browser URLs against these criteria.\n\n'
 			'CRITICAL — Security-oriented persona criteria:\n'
 			'- For adversarial tests: if the site accepts the input without crashing, erroring, or exposing sensitive data, that IS a pass. Silent sanitization is valid and correct behavior.\n'
@@ -209,8 +216,7 @@ def build_test_generation_prompt(
 			'- For angry_user tests: if the site absorbs hostile interactions without crashing or exposing errors, that IS a pass.\n'
 			'- Do NOT assume the site has features it has not demonstrated (e.g., injection-specific error messages, input length validators).\n\n'
 			'CRITICAL — UX-oriented persona criteria:\n'
-			'- For happy_path tests: the user must receive visible confirmation that their action succeeded.\n'
-			'- For confused_novice tests: any silent handling (disabled button with no tooltip, form that does nothing, input silently ignored) is a FAIL — the novice needs visible guidance.\n'
+			'- For first_timer tests: the user must be able to orient themselves without prior knowledge of the product. Ambiguous labels, missing onboarding copy, or CTAs that are only clear to existing users are FAILS. Visible confirmation of success is required.\n'
 			'- For impatient_user tests: the user must see visible state feedback (loading, queued, duplicate-prevention). Silent deduplication is a FAIL.\n'
 			'- For explorer tests: the user must never hit a dead end with no feedback. Empty pages, silent redirects with no context, or features that do nothing are FAILS.\n'
 		)
@@ -244,24 +250,24 @@ Each persona has a trait vector that explains WHY it tests different things:
 {_build_persona_distribution_text()}
 
 PERSONA-SPECIFIC SUCCESS CRITERIA GUIDANCE:
-- happy_path (UX): "The agent completes the expected flow, receives clear confirmation feedback (toast, redirect, page update, success message), and arrives at the correct page/state"
-- confused_novice (UX): "The website provides VISIBLE FEEDBACK for the confused interaction — an error message, a tooltip on a disabled control, a redirect with explanation, or an inline hint. Silent rejection, disabled buttons with no explanation, or forms that do nothing on submit are FAILURES — the confused user must understand what to do next"
+- first_timer (UX): "The user can orient and complete the flow without any prior product knowledge — clear onboarding copy, self-evident CTAs, and visible confirmation. Ambiguous labels, insider-only navigation, or missing empty states are FAILURES"
 - adversarial (Security): "The website does NOT execute injected scripts, does NOT expose debug info, shows an appropriate error or sanitizes the input"
-- edge_case (Security): "The website handles the edge case without crashing — shows a validation message, truncates gracefully, or ignores invalid input"
+- edge_case (Boundary): "The website handles the edge case without crashing — shows a validation message, truncates gracefully, or ignores invalid input"
 - explorer (UX): "The website provides ORIENTATION AND FEEDBACK at every step — clear page titles, breadcrumbs, 'no results found' messages, or redirect explanations. Dead ends with no feedback, blank pages, or silent failures are FAILURES"
 - impatient_user (UX): "The website provides VISIBLE STATE FEEDBACK during rapid interactions — loading indicators, 'please wait' messages, queued-action confirmation, or duplicate-prevention messages. Silent deduplication with no user-facing signal is a FAILURE"
-- angry_user (Security): "The website absorbs the hostile interaction gracefully — no crash, no broken state from force-navigation, no infinite loops from rapid clicks"
+- angry_user (Boundary): "The website absorbs the hostile interaction gracefully — no crash, no broken state from force-navigation, no infinite loops from rapid clicks"
 - boomer_ui (Design): "Text is large and readable, labels are explicit (not icon-only), interactive controls are clearly labeled with familiar patterns (visible buttons, top nav), and contrast is high enough for comfortable reading. Novel hidden gestures or ambiguous icons without text labels are FAILURES"
 - genz_ui (Design): "The site feels visually current and engaging — bold palette, modern type, dark mode awareness, smooth transitions, expressive identity. Bland stock aesthetics, dated gradients, or zero visual personality are FAILURES"
 - whitespace_police_ui (Design): "Spacing follows a consistent scale — margins, padding, and gutters are uniform across sibling components. Misaligned elements, irregular vertical rhythm, cramped card layouts, or inconsistent gaps are FAILURES"
+- mobile_user (Design): "Layout adapts to small viewport with no horizontal scroll, touch targets are large enough to tap, fonts are readable without zooming, and navigation is operable by touch. Desktop-only layouts or overlapping elements are FAILURES"
 
 Each test should have:
-- A clear name reflecting the persona behavior (e.g. "Novice submits empty search form" not "Test search functionality")
+- A clear name reflecting the persona behavior (e.g. "First-timer discovers search feature" not "Test search functionality")
 - What it verifies (description) — describe the REALISTIC USER BEHAVIOR being simulated
 - Priority level (critical, high, medium, low)
 - feature_category (navigation, search, forms, content_display, filtering_sorting, media, authentication, ecommerce, social, other)
 - target_feature (the Feature.name this test exercises)
-- test_persona (one of: happy_path, confused_novice, adversarial, edge_case, explorer, impatient_user, angry_user, boomer_ui, genz_ui, whitespace_police_ui)
+- test_persona (one of: first_timer, adversarial, edge_case, explorer, impatient_user, angry_user, boomer_ui, genz_ui, whitespace_police_ui, mobile_user)
 - Step-by-step instructions (steps_description) — see STEP WRITING RULES below
 - Concrete success criteria (success_criteria) — see SUCCESS CRITERIA RULES below
 
@@ -346,26 +352,26 @@ def build_plan_synthesis_prompt(
 		f'EXPLORATION CONTEXT (observed UI evidence):\n{exploration_context}\n\n'
 		f'REQUIREMENTS:\n'
 		f'- Generate exactly {max_scenarios} scenarios (minimum 5 if max allows).\n'
-		f'- Must include these personas: happy_path, confused_novice, adversarial, edge_case, explorer, boomer_ui, genz_ui, whitespace_police_ui.\n'
-		f'- At least one scenario must be happy_path with priority=critical.\n'
-		f'- The happy_path scenario must describe the chosen route AND mention alternatives considered.\n'
+		f'- Must include these personas: first_timer, adversarial, edge_case, explorer, boomer_ui, genz_ui, whitespace_police_ui, mobile_user.\n'
+		f'- At least one scenario must be first_timer with priority=critical.\n'
+		f'- The first_timer scenario must describe the chosen route AND note what onboarding cues or labels made it discoverable (or not).\n'
 		+ step_rule
 		+ criteria_rule
 		+ '- Do NOT fabricate URLs — only reference pages/paths observed in the exploration context.\n'
 		'- Do NOT assume UI elements exist that were not observed during exploration (e.g., do not assume a search bar, filter, or input field exists unless one was seen). If a persona needs to interact with an input field but none was observed, write the scenario to: (a) look for the expected element, (b) note its absence, (c) use whatever elements ARE present to achieve the task intent, and (d) recommend the missing element as a UX improvement in the final assessment.\n'
-		'- For security-oriented personas (adversarial, edge_case, angry_user): evaluate how the website HANDLES unexpected behavior. Any graceful handling (including silent sanitization) is a pass; only crash/leak/corruption is a fail.\n'
-		'- For UX-oriented personas (happy_path, confused_novice, impatient_user, explorer): the site MUST provide visible feedback. Silent handling, disabled buttons with no explanation, or forms that do nothing are FAILURES.\n\n'
+		'- For security/boundary personas (adversarial, edge_case, angry_user): evaluate how the website HANDLES unexpected behavior. Any graceful handling (including silent sanitization) is a pass; only crash/leak/corruption is a fail.\n'
+		'- For UX-oriented personas (first_timer, impatient_user, explorer): the site MUST provide visible feedback. Silent handling, disabled buttons with no explanation, or forms that do nothing are FAILURES.\n\n'
 		'PERSONA DISTRIBUTION:\n'
-		'- happy_path (~15%): Standard user completing the expected flow. Success requires visible confirmation feedback.\n'
-		'- confused_novice (~15%): Misclicks, wrong inputs, backtracking. Success requires visible guidance — error messages, tooltips, inline hints. Silent rejection is a FAIL.\n'
+		'- first_timer (~20%): Tech-literate but new to this site. Success requires self-evident navigation, onboarding cues, and visible confirmation. Insider-only labels or hidden gestures are FAILS.\n'
 		'- adversarial (~15%): XSS payloads, SQL injection, probing /admin. Silent sanitization is a valid PASS.\n'
 		'- edge_case (~10%): Empty inputs, special chars, long strings. Graceful degradation (even silent) is a PASS.\n'
 		'- explorer (~10%): Unusual navigation, unexpected feature combos. Success requires orientation feedback — page titles, breadcrumbs, "no results" messages. Dead ends with no feedback are FAILS.\n'
 		'- impatient_user (~15%): Rapid clicks, skipping steps. Success requires visible state feedback — loading indicators, "please wait" messages. Silent deduplication is a FAIL.\n'
-		'- angry_user (~10%): Rage-clicks, force-navigation, rapid form submissions, abandoning flows. Absorbing hostility without crash is a PASS.\n'
+		'- angry_user (~10%): Rage-clicks, force-navigation, rapid form submissions, abandoning flows. Absorbing hostility without crash or broken state is a PASS.\n'
 		'- boomer_ui (~4%): Evaluate readability and familiarity — large fonts, explicit labels, high contrast, conventional layouts. Icon-only controls or hidden gestures are FAILS.\n'
 		'- genz_ui (~4%): Evaluate visual currency — bold colors, modern type, dark mode, transitions, visual personality. Dated or bland aesthetics are FAILS.\n'
 		'- whitespace_police_ui (~4%): Evaluate spacing discipline — consistent margins, padding, gutters, vertical rhythm, grid alignment. Misaligned or cramped layouts are FAILS.\n'
+		'- mobile_user (~6%): Evaluate mobile layout — touch targets, no horizontal scroll, readable fonts, reachable navigation. Desktop-only layouts or tiny tap targets are FAILS.\n'
 	)
 
 
@@ -386,8 +392,11 @@ def _render_trait_vector(traits: TraitVector) -> str:
 
 # Character descriptions for vivid role-playing
 _PERSONA_DESCRIPTIONS: dict[TestPersona, str] = {
-	'happy_path': 'A skilled, patient user who knows exactly what they want. Follows the expected flow directly and efficiently.',
-	'confused_novice': "A first-time user who doesn't read labels carefully, clicks wrong buttons, submits forms without filling them, and navigates backward repeatedly. Needs the site to actively guide them.",
+	'first_timer': (
+		'A tech-literate user visiting this specific site for the first time. Knows how websites work in general but has no prior knowledge of this product. '
+		'Relies entirely on onboarding copy, empty states, tooltips, and self-evident CTAs to navigate. '
+		'Anything that requires inside knowledge, domain familiarity, or undiscoverable gestures is a failure.'
+	),
 	'adversarial': 'A security tester probing for vulnerabilities. Types XSS payloads, SQL injection fragments, navigates to /admin, and tries to bypass validation.',
 	'edge_case': 'A methodical tester exercising boundary conditions: empty fields, max-length strings, special characters (emoji, RTL text, null bytes), double-clicks.',
 	'explorer': 'A curious user who takes unexpected paths: visits pages out of order, uses features in unintended combinations, clicks decorative elements.',
@@ -396,6 +405,12 @@ _PERSONA_DESCRIPTIONS: dict[TestPersona, str] = {
 	'boomer_ui': 'An older user who values readability and familiarity above all else. Needs large, legible fonts, high-contrast text, explicitly labeled buttons (not icon-only), and conventional layouts they have seen for decades (top nav bar, visible sidebar links). Anything that requires guessing — hidden hamburger menus, swipe gestures, unlabeled icon buttons — is a problem. Does not test functionality — focuses purely on whether the design is comfortable and clear for someone with aging eyes and traditional expectations.',
 	'genz_ui': 'A young, design-conscious user who grew up on TikTok, Instagram, and modern SaaS apps. Expects bold color palettes, expressive typography, dark mode support, smooth micro-interactions, and a distinct visual identity. Bland corporate aesthetics, dated skeuomorphic patterns, or sites that look like they were designed in 2010 are failures. Does not test functionality — focuses purely on whether the design feels current, engaging, and visually appealing.',
 	'whitespace_police_ui': 'A meticulous spacing perfectionist who evaluates every margin, padding, and gutter. Checks that sibling components share identical spacing, vertical rhythm is consistent across sections, card grids align to an implicit baseline grid, and no element feels cramped or adrift. Misaligned buttons, irregular gaps between list items, or inconsistent padding inside cards are immediate red flags. Does not test functionality — focuses purely on spatial consistency and breathing room.',
+	'mobile_user': (
+		'A user on a mobile device (small viewport, touch input). Evaluates whether the site is genuinely usable on mobile: '
+		'touch targets are large enough to tap accurately, text is readable without zooming, layout does not overflow horizontally, '
+		'navigation menus are reachable and operable by touch, and interactive elements do not overlap. '
+		'Does not test functionality — focuses purely on mobile layout and touch usability.'
+	),
 }
 
 
@@ -423,6 +438,12 @@ def _render_persona_for_execution(persona: TestPersona) -> str:
 			lines.append('→ You actively wander off the expected path. Try unexpected navigation, unusual feature combinations.')
 		if traits.intent == 'adversarial':
 			lines.append('→ You are actively trying to break things. Use XSS payloads, SQL fragments, probe hidden endpoints.')
+		if persona == 'mobile_user':
+			lines.append(
+				'→ You are on a mobile device. Evaluate touch target sizes, absence of horizontal scroll, '
+				'font readability at small viewport, and whether navigation is reachable and operable by touch. '
+				'Flag any element that would be difficult to tap or any layout that overflows the screen.'
+			)
 		if test_type == 'design':
 			if traits.aesthetic_era == 'classic':
 				lines.append(
@@ -462,7 +483,22 @@ def build_persona_feedback_prompt(
 	"""
 	persona_block = _render_persona_for_execution(scenario.test_persona)
 
-	if scenario.test_persona == 'boomer_ui':
+	if scenario.test_persona == 'first_timer':
+		comments_instruction = (
+			'- comments: describe how easy it was to orient yourself as a brand-new visitor with no prior knowledge of this product. '
+			'Evaluate clarity of onboarding copy, self-evidence of CTAs, helpfulness of empty states, and visibility of confirmation feedback. '
+			'Include specific actionable suggestions (e.g. "the primary CTA label \'Get Started\' does not explain what will happen", '
+			'"empty dashboard shows no guidance on what to create first", "success message after form submit is absent").\n'
+		)
+	elif scenario.test_persona == 'mobile_user':
+		comments_instruction = (
+			'- comments: describe mobile usability of the pages you visited. '
+			'Evaluate touch target sizes, presence of horizontal scroll, font readability at small viewport, '
+			'and whether navigation menus are reachable and operable by touch. '
+			'Include specific actionable suggestions (e.g. "the top nav hamburger icon is 20×20px — too small to tap reliably", '
+			'"product grid overflows horizontally on narrow viewport", "filter dropdown is unscrollable on mobile").\n'
+		)
+	elif scenario.test_persona == 'boomer_ui':
 		comments_instruction = (
 			'- comments: describe readability and familiarity of the pages you visited. '
 			'Evaluate font size, label clarity, contrast for aging eyes, control labeling '

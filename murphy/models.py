@@ -5,7 +5,7 @@ import json
 from enum import IntEnum
 from typing import Annotated, Any, Literal
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 # ─── Shared types ─────────────────────────────────────────────────────────────
 
@@ -25,8 +25,7 @@ FeatureCategory = Literal[
 ScenarioPriority = Literal['critical', 'high', 'medium', 'low']
 
 TestPersona = Literal[
-	'happy_path',  # standard user, expected flow
-	'confused_novice',  # clicks wrong things, gets lost, misuses features
+	'first_timer',  # tech-literate but brand new to this specific site; tests onboarding and discoverability
 	'adversarial',  # tries to break things: XSS, injection, invalid inputs
 	'edge_case',  # empty forms, special chars, long inputs, double-clicks
 	'explorer',  # goes off the beaten path, tries unexpected combinations
@@ -35,6 +34,7 @@ TestPersona = Literal[
 	'boomer_ui',  # readability, font size, clear labels, familiar patterns, contrast for aging eyes
 	'genz_ui',  # trendy aesthetics, dark mode vibes, visual appeal, engagement, micro-interactions
 	'whitespace_police_ui',  # spacing consistency, breathing room, alignment, padding regularity, grid adherence
+	'mobile_user',  # responsive layout, touch targets, no horizontal scroll, mobile-accessible navigation
 ]
 
 
@@ -107,23 +107,13 @@ def agent_config_session_id(traits: TraitVector, test_type: TestType) -> str:
 
 
 PERSONA_REGISTRY: dict[TestPersona, tuple[TraitVector, TestType]] = {
-	'happy_path': (
+	'first_timer': (
 		TraitVector(
 			technical_literacy=TraitLevel.high,
-			patience=TraitLevel.high,
-			intent='benign',
-			exploration=TraitLevel.low,
-			reading_comprehension=TraitLevel.high,
-		),
-		'ux',
-	),
-	'confused_novice': (
-		TraitVector(
-			technical_literacy=TraitLevel.low,
 			patience=TraitLevel.medium,
 			intent='benign',
 			exploration=TraitLevel.medium,
-			reading_comprehension=TraitLevel.low,
+			reading_comprehension=TraitLevel.high,
 		),
 		'ux',
 	),
@@ -175,7 +165,7 @@ PERSONA_REGISTRY: dict[TestPersona, tuple[TraitVector, TestType]] = {
 			exploration=TraitLevel.low,
 			reading_comprehension=TraitLevel.low,
 		),
-		'security',
+		'boundary',
 	),
 	'boomer_ui': (
 		TraitVector(
@@ -210,6 +200,19 @@ PERSONA_REGISTRY: dict[TestPersona, tuple[TraitVector, TestType]] = {
 			intent='benign',
 			exploration=TraitLevel.high,
 			reading_comprehension=TraitLevel.high,
+			visual_density_preference=TraitLevel.low,
+			aesthetic_era='modern',
+			layout_strictness=TraitLevel.high,
+		),
+		'design',
+	),
+	'mobile_user': (
+		TraitVector(
+			technical_literacy=TraitLevel.medium,
+			patience=TraitLevel.low,
+			intent='benign',
+			exploration=TraitLevel.low,
+			reading_comprehension=TraitLevel.medium,
 			visual_density_preference=TraitLevel.low,
 			aesthetic_era='modern',
 			layout_strictness=TraitLevel.high,
@@ -385,6 +388,29 @@ class JudgeVerdict(BaseModel):
 			'Report for UX improvement only — never used to fail the test.'
 		),
 	)
+
+	@field_validator('trait_evaluations', mode='before')
+	@classmethod
+	def _coerce_trait_evaluations(cls, v: Any) -> dict[str, str] | None:
+		"""Flatten nested dicts to strings.
+
+		Sonnet 4.6 sometimes returns structured objects like {'score': 'pass', 'notes': '...'}
+		instead of plain strings. Normalise them so validation never crashes.
+		"""
+		if v is None or not isinstance(v, dict):
+			return v
+		result: dict[str, str] = {}
+		for k, val in v.items():
+			if isinstance(val, dict):
+				status = val.get('passed') or val.get('score') or val.get('rating') or val.get('result') or val.get('pass')
+				notes = val.get('notes') or val.get('note') or val.get('reason') or val.get('reasoning') or ''
+				if status is not None:
+					result[k] = f'{status}: {notes}'.strip(': ')
+				else:
+					result[k] = str(notes or val)
+			else:
+				result[k] = str(val)
+		return result
 
 
 # ─── Phase 3: Results ──────────────────────────────────────────────────────────

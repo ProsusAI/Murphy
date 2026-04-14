@@ -86,13 +86,13 @@ h2 { font-family: Georgia, 'Times New Roman', serif; font-size: 1.3rem; font-wei
 	margin-left: .25rem; }
 .expand-link:hover { opacity: .7; }
 .badge-persona { font-size: .6rem; letter-spacing: .06em; }
-.badge-happy_path { background: #16a34a; color: #fff; }
-.badge-confused_novice { background: #7c3aed; color: #fff; }
+.badge-first_timer { background: #16a34a; color: #fff; }
 .badge-adversarial { background: #dc2626; color: #fff; }
 .badge-edge_case { background: #d97706; color: #fff; }
 .badge-explorer { background: #0891b2; color: #fff; }
 .badge-impatient_user { background: #e11d48; color: #fff; }
 .badge-angry_user { background: #9f1239; color: #fff; }
+.badge-mobile_user { background: #0369a1; color: #fff; }
 .persona-label { font-size: .7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: .06em; }
 .trace-link { color: var(--accent); font-size: .8rem; text-decoration: none; margin-left: .5rem; }
 .trace-link:hover { text-decoration: underline; }
@@ -112,13 +112,16 @@ h2 { font-family: Georgia, 'Times New Roman', serif; font-size: 1.3rem; font-wei
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
 _PERSONA_LABELS: dict[str, str] = {
-	'happy_path': 'Happy Path',
-	'confused_novice': 'Confused Novice',
+	'first_timer': 'First Timer',
 	'adversarial': 'Adversarial',
 	'edge_case': 'Edge Case',
 	'explorer': 'Explorer',
 	'impatient_user': 'Impatient User',
 	'angry_user': 'Angry User',
+	'boomer_ui': 'Boomer UI',
+	'genz_ui': 'Gen-Z UI',
+	'whitespace_police_ui': 'Whitespace Police',
+	'mobile_user': 'Mobile User',
 }
 
 _PERSONA_ORDER = list(_PERSONA_LABELS.keys())

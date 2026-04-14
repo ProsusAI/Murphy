@@ -179,7 +179,7 @@ def suggest_fix(result: TestResult) -> str:
 			)
 
 	# Agent got stuck / looping
-	if persona in ('confused_novice', 'impatient_user'):
+	if persona in ('first_timer', 'impatient_user'):
 		if result.duration > 200 or (len(result.actions) > 25):
 			return (
 				f'The agent ran {len(result.actions)} actions over {result.duration:.0f}s, suggesting it got stuck '
