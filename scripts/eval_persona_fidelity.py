@@ -7,6 +7,9 @@ For each Murphy test that used a discovered persona, this script:
   4. Compares the scores to the persona centroid (real-user average for that cluster).
   5. Writes persona_fidelity_report.json and persona_fidelity_report.md.
 
+The persona centroid is the mean trait score of all real PostHog sessions in that
+cluster, so comparing Murphy against it is comparing against real users (in aggregate).
+
 Usage (single run):
     uv run python scripts/eval_persona_fidelity.py \\
         --output-dir murphy/output \\
@@ -22,9 +25,14 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import logging
+import re
 import sys
+from collections import defaultdict
+from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
@@ -37,10 +45,107 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 logger = logging.getLogger(__name__)
 
+_RUN_DIR_RE = re.compile(r'^run_(\d+)$')
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+
+def _discover_run_dirs(output_dir: Path) -> list[tuple[int, Path]]:
+	"""Return (run_index, run_dir) pairs sorted by run_index."""
+	runs: list[tuple[int, Path]] = []
+	for p in output_dir.iterdir():
+		if not p.is_dir():
+			continue
+		m = _RUN_DIR_RE.fullmatch(p.name)
+		if m:
+			runs.append((int(m.group(1)), p))
+	return sorted(runs, key=lambda x: x[0])
+
+
+def _resolve_agent_history(run_dir: Path, scenario_index: int) -> Path | None:
+	"""Find the agent_history file for scenario N inside run_dir."""
+	adir = run_dir / 'agent_history'
+	if not adir.is_dir():
+		return None
+	matches = sorted(adir.glob(f'test_{scenario_index:02d}_*.json'))
+	return matches[0] if matches else None
+
+
+def _fidelity_label(score: float) -> str:
+	if score >= 0.85:
+		return 'HIGH'
+	if score >= 0.70:
+		return 'MEDIUM'
+	return 'LOW'
+
+
+# ── Report generation ─────────────────────────────────────────────────────────
+
+
+def _build_markdown(report_data: dict[str, Any]) -> str:
+	lines: list[str] = []
+	lines.append('# Persona Fidelity Report')
+	lines.append(f'Generated: {report_data["timestamp"]}')
+	lines.append(f'Personas file: {report_data["personas_file"]}')
+	lines.append(f'Output dir: {report_data["output_dir"]}')
+	lines.append('')
+
+	results: list[dict[str, Any]] = report_data.get('results', [])
+	if not results:
+		lines.append('No discovered-persona tests found.')
+		lines.append('')
+		lines.append('Make sure you ran Murphy with `--personas <path>` so that')
+		lines.append('test scenarios are assigned to discovered personas.')
+		return '\n'.join(lines)
+
+	# Summary table
+	by_persona: dict[str, list[float]] = defaultdict(list)
+	for r in results:
+		by_persona[r['persona_name']].append(r['overall_fidelity_score'])
+
+	lines.append('## Summary')
+	lines.append('')
+	lines.append('| Persona | Tests | Avg Fidelity | Rating |')
+	lines.append('|---------|-------|-------------|--------|')
+	for persona_name, scores in sorted(by_persona.items()):
+		avg = sum(scores) / len(scores)
+		lines.append(f'| {persona_name} | {len(scores)} | {avg:.2f} | {_fidelity_label(avg)} |')
+	lines.append('')
+
+	# Detail per test
+	lines.append('## Detailed Results')
+	lines.append('')
+	for r in results:
+		overall = r['overall_fidelity_score']
+		label = _fidelity_label(overall)
+		lines.append(f'### {r["test_scenario_name"]}')
+		lines.append(f'**Persona:** `{r["persona_slug"]}`  |  **Overall fidelity:** {overall:.2f} ({label})')
+		lines.append('')
+		lines.append('| Trait Dimension | Murphy | Real Users | Delta |')
+		lines.append('|----------------|--------|-----------|-------|')
+		for dim in r['dimensions']:
+			delta = dim['delta']
+			sign = '+' if delta >= 0 else ''
+			lines.append(f'| {dim["trait_name"]} | {dim["murphy_score"]:.1f} | {dim["persona_score"]:.1f} | {sign}{delta:.1f} |')
+		lines.append('')
+		reasoning = r.get('scoring_reasoning', '').strip()
+		if reasoning:
+			lines.append(f'**Scoring rationale:** {reasoning}')
+			lines.append('')
+
+	return '\n'.join(lines)
+
+
+# ── Main ──────────────────────────────────────────────────────────────────────
+
 
 async def _async_main(args: argparse.Namespace) -> int:
 	from browser_use.llm import ChatOpenAI
-	from murphy.eval.runner import _fidelity_label, run_fidelity_eval, write_fidelity_reports
+	from murphy.eval.fidelity import evaluate_fidelity
+	from murphy.eval.models import FidelityReport
+	from murphy.models import EvaluationReport
+	from murphy.personas.bridge import lookup_persona_by_slug
 	from murphy.personas.storage import load_personas
 
 	output_dir = args.output_dir.resolve()
@@ -55,21 +160,85 @@ async def _async_main(args: argparse.Namespace) -> int:
 
 	llm = ChatOpenAI(model=args.model)
 
-	report = await run_fidelity_eval(output_dir, schema, persona_result, llm)
+	# Support both single-run (evaluation_report.json at root) and
+	# batch-run (run_1/, run_2/, ... subdirs) layouts.
+	if (output_dir / 'evaluation_report.json').is_file():
+		run_dirs: list[tuple[int, Path]] = [(1, output_dir)]
+	else:
+		run_dirs = _discover_run_dirs(output_dir)
+		if not run_dirs:
+			logger.error('No evaluation_report.json found in %s or its run_* subdirs', output_dir)
+			return 2
 
-	if report is None:
+	fidelity_results = []
+
+	for _run_idx, run_dir in run_dirs:
+		report_path = run_dir / 'evaluation_report.json'
+		if not report_path.is_file():
+			logger.warning('Skipping %s: no evaluation_report.json', run_dir.name)
+			continue
+
+		report = EvaluationReport.model_validate_json(report_path.read_text(encoding='utf-8'))
+		logger.info('Processing %s (%d scenarios)', run_dir.name, len(report.results))
+
+		for scenario_idx, result in enumerate(report.results, start=1):
+			persona_slug = result.scenario.test_persona
+			persona = lookup_persona_by_slug(persona_slug, persona_result)
+			if persona is None:
+				# Predefined persona (happy_path, etc.) — not scoreable against centroid
+				logger.debug('Skipping predefined persona: %s', persona_slug)
+				continue
+
+			history_path = _resolve_agent_history(run_dir, scenario_idx)
+			if history_path is None:
+				logger.warning(
+					'No agent history for scenario %d (%s) in %s',
+					scenario_idx,
+					result.scenario.name,
+					run_dir.name,
+				)
+				continue
+
+			logger.info('Evaluating fidelity: "%s" (persona=%s)', result.scenario.name, persona_slug)
+			try:
+				fidelity = await evaluate_fidelity(
+					persona=persona,
+					schema=schema,
+					history_path=history_path,
+					scenario_name=result.scenario.name,
+					scenario_steps=result.scenario.steps_description,
+					llm=llm,
+				)
+				fidelity_results.append(fidelity)
+			except Exception:
+				logger.exception('Failed fidelity eval for "%s"', result.scenario.name)
+
+	if not fidelity_results:
 		logger.warning('No discovered-persona tests found. Run Murphy with --personas to use discovered personas.')
 		return 0
 
-	report.personas_file = str(personas_path)
-	json_path, md_path = write_fidelity_reports(report, output_dir)
+	report_obj = FidelityReport(
+		personas_file=str(personas_path),
+		output_dir=str(output_dir),
+		timestamp=datetime.now().isoformat(timespec='seconds'),
+		results=fidelity_results,
+	)
+
+	# Write JSON
+	json_path = output_dir / 'persona_fidelity_report.json'
+	json_path.write_text(report_obj.model_dump_json(indent=2), encoding='utf-8')
 	logger.info('Wrote %s', json_path)
+
+	# Write markdown
+	md_path = output_dir / 'persona_fidelity_report.md'
+	md_path.write_text(_build_markdown(json.loads(report_obj.model_dump_json())), encoding='utf-8')
 	logger.info('Wrote %s', md_path)
 
-	total = len(report.results)
-	avg = sum(r.overall_fidelity_score for r in report.results) / total
+	# Print summary
+	total = len(fidelity_results)
+	avg_fidelity = sum(r.overall_fidelity_score for r in fidelity_results) / total
 	print(f'\nEvaluated {total} test(s).')
-	print(f'Average fidelity: {avg:.2f} ({_fidelity_label(avg)})')
+	print(f'Average fidelity: {avg_fidelity:.2f} ({_fidelity_label(avg_fidelity)})')
 	print(f'Report: {md_path}')
 	return 0
 
