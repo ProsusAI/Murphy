@@ -65,3 +65,8 @@ PERSONA_MONTHS_BACK = int(os.environ.get('PERSONA_MONTHS_BACK', '2'))
 PERSONA_MAX_CLUSTERS = int(os.environ.get('PERSONA_MAX_CLUSTERS', '10'))
 # Fixed K for K-Means in the persona pipeline; ``0`` = auto-select via silhouette
 PERSONA_NUM_CLUSTERS = int(os.environ.get('PERSONA_NUM_CLUSTERS', '8'))
+
+# ─── Embedding model ─────────────────────────────────────────────────────────
+
+EMBEDDING_MODEL = os.environ.get('EMBEDDING_MODEL', 'Qwen/Qwen3-Embedding-0.6B')
+EMBEDDING_DEVICE = os.environ.get('EMBEDDING_DEVICE', 'cpu')

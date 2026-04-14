@@ -9,14 +9,16 @@ Two steps:
 from __future__ import annotations
 
 import asyncio
+import functools
 import logging
 from typing import Any
 
 import numpy as np
-from openai import AsyncOpenAI
+from sentence_transformers import SentenceTransformer
 from sklearn.cluster import KMeans
 
 from browser_use.llm import ChatOpenAI, SystemMessage, UserMessage
+from murphy.config import EMBEDDING_DEVICE, EMBEDDING_MODEL
 from murphy.personas.clustering import find_optimal_k
 from murphy.personas.compressor import compress_session
 from murphy.personas.models import AnalyticsSession
@@ -74,8 +76,10 @@ Trait labels in this cluster:
 {trait_list}
 {paths_block}"""
 
-EMBEDDING_MODEL = 'text-embedding-3-small'
-EMBEDDING_BATCH_SIZE = 2048
+EMBEDDING_INSTRUCTION = (
+	'Classify this behavioral trait for clustering with semantically similar '
+	'user behavior traits observed in web application sessions'
+)
 
 
 # ── LLM calls ────────────────────────────────────────────────────────────────
@@ -99,18 +103,24 @@ async def observe_session(llm: ChatOpenAI, timeline: str, session_id: str) -> Se
 # ── Embedding + clustering ───────────────────────────────────────────────────
 
 
+@functools.lru_cache(maxsize=1)
+def _get_embedding_model() -> SentenceTransformer:
+	"""Lazy-load and cache the sentence-transformer embedding model."""
+	logger.info('Loading embedding model %s on device=%s', EMBEDDING_MODEL, EMBEDDING_DEVICE)
+	return SentenceTransformer(EMBEDDING_MODEL, device=EMBEDDING_DEVICE)
+
+
+def _embed_traits_sync(traits: list[str]) -> np.ndarray:
+	"""Embed trait strings using a local sentence-transformer model. Returns (N, dim) array."""
+	model = _get_embedding_model()
+	formatted = [f'Instruct: {EMBEDDING_INSTRUCTION}\nQuery: {t}' for t in traits]
+	embeddings = model.encode(formatted, normalize_embeddings=True, show_progress_bar=False)
+	return np.array(embeddings, dtype=np.float64)
+
+
 async def _embed_traits(traits: list[str]) -> np.ndarray:
-	"""Embed trait strings using OpenAI text embeddings. Returns (N, dim) array."""
-	client = AsyncOpenAI()
-	all_embeddings: list[list[float]] = []
-
-	for i in range(0, len(traits), EMBEDDING_BATCH_SIZE):
-		batch = traits[i : i + EMBEDDING_BATCH_SIZE]
-		resp = await client.embeddings.create(model=EMBEDDING_MODEL, input=batch)
-		for item in sorted(resp.data, key=lambda x: x.index):
-			all_embeddings.append(item.embedding)
-
-	return np.array(all_embeddings, dtype=np.float64)
+	"""Embed trait strings using a local sentence-transformer model. Returns (N, dim) array."""
+	return await asyncio.to_thread(_embed_traits_sync, traits)
 
 
 def _deduplicate_traits(observations: list[SessionObservation]) -> list[str]:
@@ -159,7 +169,7 @@ async def cluster_trait_dimensions(
 	"""Cluster observed traits into canonical dimensions via embedding similarity.
 
 	1. Deduplicate trait strings across all observations.
-	2. Embed via OpenAI text-embedding-3-small.
+	2. Embed via local Qwen3-Embedding model (instruction-aware).
 	3. Find optimal k with silhouette sweep (reuses find_optimal_k from clustering.py).
 	4. K-Means cluster with best k.
 	5. LLM-name each cluster into a TraitDimension.
