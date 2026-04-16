@@ -475,64 +475,105 @@ def _render_persona_for_execution(persona: TestPersona) -> str:
 def build_persona_feedback_prompt(
 	scenario: TestScenario,
 	start_url: str,
+	analysis: WebsiteAnalysis | None = None,
 ) -> str:
 	"""Lean execution prompt for the persona feedback loop.
 
 	The agent browses as the persona and returns a single PersonaFeedback.
 	If it hits a critical blocking issue early it should stop immediately and report.
+	When analysis is provided, a SITE CONTEXT block is injected so personas know what
+	the site does before they start exploring.
 	"""
 	persona_block = _render_persona_for_execution(scenario.test_persona)
 
+	# ── Site context block (injected when analysis is available) ──
+	if analysis:
+		core_feature_names = [f.name for f in analysis.features if f.importance == 'core']
+		core_features_str = ', '.join(core_feature_names) if core_feature_names else 'not specified'
+		flows_str = (
+			'\n'.join(f'  - {flow}' for flow in analysis.identified_user_flows)
+			if analysis.identified_user_flows
+			else '  - (none identified)'
+		)
+		site_context_block = (
+			f'SITE CONTEXT:\nCategory: {analysis.category}\nCore features: {core_features_str}\nKey user flows:\n{flows_str}\n'
+		)
+	else:
+		site_context_block = ''
+
+	# ── Per-persona comments instruction (includes observation + suggestions) ──
 	if scenario.test_persona == 'first_timer':
 		comments_instruction = (
 			'- comments: describe how easy it was to orient yourself as a brand-new visitor with no prior knowledge of this product. '
 			'Evaluate clarity of onboarding copy, self-evidence of CTAs, helpfulness of empty states, and visibility of confirmation feedback. '
-			'Include specific actionable suggestions (e.g. "the primary CTA label \'Get Started\' does not explain what will happen", '
-			'"empty dashboard shows no guidance on what to create first", "success message after form submit is absent").\n'
+			'Then include 1–3 concrete suggestions for features that would have made your experience easier '
+			'(e.g. missing onboarding checklists, guided tours, empty-state guidance, clearer CTAs).\n'
 		)
 	elif scenario.test_persona == 'mobile_user':
 		comments_instruction = (
 			'- comments: describe mobile usability of the pages you visited. '
 			'Evaluate touch target sizes, presence of horizontal scroll, font readability at small viewport, '
 			'and whether navigation menus are reachable and operable by touch. '
-			'Include specific actionable suggestions (e.g. "the top nav hamburger icon is 20×20px — too small to tap reliably", '
-			'"product grid overflows horizontally on narrow viewport", "filter dropdown is unscrollable on mobile").\n'
+			'Then include 1–3 concrete mobile-specific suggestions '
+			'(e.g. bottom navigation bar, sticky header, pull-to-refresh, larger touch targets).\n'
 		)
 	elif scenario.test_persona == 'boomer_ui':
 		comments_instruction = (
 			'- comments: describe readability and familiarity of the pages you visited. '
-			'Evaluate font size, label clarity, contrast for aging eyes, control labeling '
-			'(icon-only vs. text labels), and layout conventionality. Include specific actionable '
-			'suggestions (e.g. "increase body font to at least 16px", "add text labels to icon-only '
-			'toolbar buttons", "nav menu should be visible by default, not hidden behind hamburger").\n'
+			'Evaluate font size, label clarity, contrast for aging eyes, control labeling (icon-only vs. text labels), and layout conventionality. '
+			'Then include 1–3 concrete accessibility or legibility suggestions '
+			'(e.g. font-size control, high-contrast mode, larger buttons with text labels, persistent visible navigation).\n'
 		)
 	elif scenario.test_persona == 'genz_ui':
 		comments_instruction = (
 			'- comments: describe visual appeal and modernity of the pages you visited. '
-			'Evaluate color boldness, typography expressiveness, dark mode support, micro-interactions '
-			'and transitions, and overall visual personality. Include specific actionable '
-			'suggestions (e.g. "add dark mode toggle", "replace generic stock imagery with branded '
-			'illustrations", "add hover transitions to interactive cards").\n'
+			'Evaluate color boldness, typography expressiveness, dark mode support, micro-interactions, and overall visual personality. '
+			'Then include 1–3 concrete suggestions to make the design feel more current and engaging '
+			'(e.g. dark mode toggle, micro-interactions, expressive typography, gamification, branded illustrations).\n'
 		)
 	elif scenario.test_persona == 'whitespace_police_ui':
 		comments_instruction = (
 			'- comments: describe spacing consistency of the pages you visited. '
-			'Evaluate margin uniformity, padding regularity inside cards/containers, vertical rhythm '
-			'between sections, grid alignment, and overall breathing room. Include specific actionable '
-			'suggestions (e.g. "card padding is 16px on left but 12px on right — normalize to 16px", '
-			'"gap between section heading and first item varies from 8px to 24px — standardize", '
-			'"list items have inconsistent vertical spacing").\n'
+			'Evaluate margin uniformity, padding regularity, vertical rhythm, and grid alignment. '
+			'Then include 1–3 concrete design-system suggestions to resolve spacing issues '
+			'(e.g. a spacing scale with 4/8/16/24/32px tokens, a consistent grid, component-level padding standards).\n'
+		)
+	elif scenario.test_persona == 'adversarial':
+		comments_instruction = (
+			'- comments: describe what security weaknesses or unhandled error states you observed. '
+			'Report any XSS reflection, SQL error messages, exposed admin routes, or missing input validation. '
+			'Then include 1–3 concrete security UX suggestions '
+			'(e.g. 2FA prompts, rate-limit feedback, error messaging that does not leak internals, CAPTCHA on sensitive actions).\n'
+		)
+	elif scenario.test_persona in ('edge_case', 'angry_user'):
+		comments_instruction = (
+			'- comments: describe how the site handled boundary inputs or repeated rapid interactions. '
+			'Report any crashes, broken states, missing validation, or unrecoverable flows. '
+			'Then include 1–3 concrete error-recovery suggestions '
+			'(e.g. auto-save, progress persistence, undo/redo, clear recovery paths after errors).\n'
+		)
+	elif scenario.test_persona == 'impatient_user':
+		comments_instruction = (
+			'- comments: describe how fast and responsive the site felt. '
+			'Report slow pages, missing loading indicators, or dead-end waits with no feedback. '
+			'Then include 1–3 concrete speed or feedback suggestions '
+			'(e.g. skeleton loaders, optimistic UI updates, progress bars, reduced click-depth, prefetching on hover).\n'
+		)
+	elif scenario.test_persona == 'explorer':
+		comments_instruction = (
+			'- comments: describe how discoverable and navigable the site was when taking unexpected paths. '
+			'Report dead-ends, missing breadcrumbs, or broken flows from unusual entry points. '
+			'Then include 1–3 concrete discoverability suggestions '
+			'(e.g. global search, keyboard shortcuts, breadcrumb navigation, contextual related-feature links).\n'
 		)
 	else:
 		comments_instruction = (
-			'- comments: one concise sentence describing what you observed as this persona. '
-			'If you have an improvement suggestion, include it directly in this field.\n'
+			'- comments: describe what you observed as this persona, then include 1–3 concrete improvement suggestions.\n'
 		)
 
 	return (
 		f'You are evaluating a web application as a real user.\n\n'
-		f'{persona_block}\n\n'
-		f'TASK: {scenario.description}\n\n'
+		f'{persona_block}\n\n' + (f'{site_context_block}\n' if site_context_block else '') + f'TASK: {scenario.description}\n\n'
 		f'STEPS (intent-based — adapt as needed):\n{scenario.steps_description}\n\n'
 		f'START HERE: {start_url}\n\n'
 		f'RULES:\n'
@@ -556,12 +597,13 @@ def build_execution_prompt(
 	available_file_paths: list[str] | None = None,
 ) -> str:
 	"""Build execution prompt with validation rules."""
+	criteria_block = f'Success criteria: {scenario.success_criteria}\n\n' if scenario.success_criteria else ''
 	return (
 		f'Test: {scenario.name}\n\n'
 		f'Global task context: {global_task}\n\n'
 		f'Description: {scenario.description}\n\n'
 		f'Steps:\n{scenario.steps_description}\n\n'
-		f'Success criteria: {scenario.success_criteria}\n\n'
+		f'{criteria_block}'
 		f'IMPORTANT: You are already logged in. Be direct and efficient. '
 		f'Complete the test as fast as possible with minimal steps.\n\n'
 		f'ADAPTATION RULES:\n'

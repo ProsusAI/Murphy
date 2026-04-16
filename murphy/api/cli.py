@@ -113,7 +113,7 @@ async def _async_main(args: argparse.Namespace) -> None:
 	from murphy.browser.patches import apply as apply_patches
 	from murphy.core.analysis import analyze_website
 	from murphy.core.execution import execute_tests_with_session
-	from murphy.core.generation import explore_and_generate_plan, generate_tests
+	from murphy.core.generation import explore_and_generate_plan, make_scenarios_from_analysis
 	from murphy.core.summary import build_summary, write_reports_and_print
 	from murphy.io.features_io import read_features_markdown, write_features_markdown
 	from murphy.io.fixtures import ensure_dummy_fixture_files
@@ -236,20 +236,8 @@ async def _async_main(args: argparse.Namespace) -> None:
 				analysis = read_features_markdown(features_path)
 				logger.info('  Using %d features for test generation.\n', len(analysis.features))
 
-			# ── Generate tests ──
-			test_plan = await generate_tests(args.url, analysis, llm, args.max_tests, goal=args.goal, concise=concise_plan)
-
-			# Save test plan to YAML
-			plan_path = save_test_plan(args.url, test_plan, output_dir)
-			logger.info('\n  Test plan saved: %s', plan_path)
-			print('  Review and edit the file, then press Enter to continue.')
-			print('  (Add, remove, or modify test scenarios as needed.)\n')
-
-			loop = asyncio.get_event_loop()
-			await loop.run_in_executor(None, lambda: input('  Press Enter to continue...  '))
-
-			# Re-read in case user edited
-			_, test_plan = load_test_plan(plan_path)
+			# ── Build scenarios directly from features — no LLM, no YAML ──
+			test_plan = make_scenarios_from_analysis(analysis, max_tests=args.max_tests)
 			logger.info('  Using %d test scenarios.\n', len(test_plan.scenarios))
 
 		# Ensure analysis exists for report writing (--goal and --plan paths skip feature discovery)
@@ -289,6 +277,7 @@ async def _async_main(args: argparse.Namespace) -> None:
 				judge_llm=judge_llm,
 				output_dir=output_dir,
 				use_feedback=use_feedback,
+				analysis=analysis,
 			)
 			if use_feedback:
 				# Feedback already POSTed per persona — just summarise to stdout.
@@ -319,6 +308,7 @@ async def _async_main(args: argparse.Namespace) -> None:
 				judge_llm=judge_llm,
 				output_dir=output_dir,
 				use_feedback=use_feedback,
+				analysis=analysis,
 			)
 
 		state = ServerState(

@@ -8,10 +8,86 @@ from browser_use.browser.session import BrowserSession
 from browser_use.llm import BaseChatModel, SystemMessage, UserMessage
 from murphy.config import EXPLORE_MAX_STEPS, QUALITY_MAX_RETRIES
 from murphy.core.quality import plan_quality_issues
-from murphy.models import TestPlan
+from murphy.models import PERSONA_REGISTRY, FeatureCategory, TestPlan, TestScenario, WebsiteAnalysis
 from murphy.prompts import build_plan_synthesis_prompt, build_test_generation_prompt, build_test_generation_system_message
 
 logger = logging.getLogger(__name__)
+
+
+def make_scenarios_from_analysis(
+	analysis: WebsiteAnalysis,
+	max_tests: int | None = None,
+) -> TestPlan:
+	"""Create one TestScenario per persona directly from a WebsiteAnalysis — no LLM, no YAML.
+
+	Every persona receives the full site context (all core features + all identified user flows).
+	Each persona's character and trait profile steers what they actually focus on during execution.
+	"""
+	_PRIORITY: dict[str, str] = {
+		'first_timer': 'critical',
+		'adversarial': 'high',
+		'edge_case': 'high',
+		'explorer': 'high',
+		'impatient_user': 'high',
+		'angry_user': 'high',
+		'boomer_ui': 'medium',
+		'genz_ui': 'medium',
+		'whitespace_police_ui': 'medium',
+		'mobile_user': 'medium',
+	}
+
+	# Map test_type to a sensible FeatureCategory
+	_CATEGORY_BY_TYPE: dict[str, FeatureCategory] = {
+		'ux': 'navigation',
+		'security': 'authentication',
+		'boundary': 'forms',
+		'design': 'content_display',
+	}
+
+	# Build the shared steps_description from the analysis — every persona sees the full map
+	core_features = [f.name for f in analysis.features if f.importance == 'core']
+	flows = analysis.identified_user_flows
+
+	steps_lines: list[str] = []
+	if flows:
+		steps_lines.append('Explore these key user flows (focus on those relevant to your persona):')
+		for flow in flows:
+			steps_lines.append(f'  - {flow}')
+	if core_features:
+		steps_lines.append('Core features available on the site:')
+		for feature in core_features:
+			steps_lines.append(f'  - {feature}')
+	if not steps_lines:
+		steps_lines.append(f'Explore {analysis.site_name} as your persona and evaluate the experience.')
+
+	steps_description = '\n'.join(steps_lines)
+
+	personas = list(PERSONA_REGISTRY.keys())
+	if max_tests is not None:
+		personas = personas[:max_tests]
+
+	scenarios: list[TestScenario] = []
+	for persona in personas:
+		_, test_type = PERSONA_REGISTRY[persona]
+		scenarios.append(
+			TestScenario(
+				name=f'{persona.replace("_", " ").title()} — {analysis.site_name}'[:100],
+				description=f'Explore {analysis.site_name} as your persona. Focus on what matters to you.',
+				priority=_PRIORITY[persona],  # type: ignore[arg-type]
+				feature_category=_CATEGORY_BY_TYPE[test_type],
+				target_feature='overall site experience',
+				test_persona=persona,
+				steps_description=steps_description,
+			)
+		)
+
+	logger.info('\n%s', '=' * 60)
+	logger.info('Built %d scenarios directly from analysis (no LLM)', len(scenarios))
+	logger.info('%s\n', '=' * 60)
+	for i, s in enumerate(scenarios, 1):
+		logger.info('  %d. [%s] [%s] %s', i, s.priority.upper(), s.test_persona, s.name)
+
+	return TestPlan(scenarios=scenarios)
 
 
 async def generate_tests(

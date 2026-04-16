@@ -247,7 +247,10 @@ class PersonaFeedback(BaseModel):
 
 	grade: int = Field(ge=1, le=10, description='Overall experience score from 1 (terrible) to 10 (excellent).')
 	comments: str = Field(
-		description='Concise observation about the experience as this persona. Include any improvement suggestions directly in this field.'
+		description=(
+			'Observation about the experience as this persona, followed by 1–3 concrete feature suggestions. '
+			'Include both what you observed and what improvements you would want, all in this single field.'
+		),
 	)
 
 
@@ -324,7 +327,7 @@ class TestScenario(BaseModel):
 	target_feature: str
 	test_persona: TestPersona
 	steps_description: str = Field(min_length=1)
-	success_criteria: str = Field(min_length=1)
+	success_criteria: str = Field(default='')
 
 
 class TestPlan(BaseModel):

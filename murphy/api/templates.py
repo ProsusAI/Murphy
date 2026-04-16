@@ -267,7 +267,7 @@ def render_plan_html(url: str, analysis: WebsiteAnalysis, test_plan: TestPlan) -
 		<div class="detail"><strong>Target feature:</strong> {_e(s.target_feature)}</div>
 		<div class="detail"><strong>Persona:</strong> {_e(_PERSONA_LABELS.get(s.test_persona) or s.test_persona)}</div>
 		<div class="detail"><strong>Description:</strong> {_e(s.description)}</div>
-		<div class="detail"><strong>Success criteria:</strong> {_e(s.success_criteria)}</div>
+		{f'<div class="detail"><strong>Success criteria:</strong> {_e(s.success_criteria)}</div>' if s.success_criteria else ''}
 		<div class="steps">{_e(s.steps_description)}</div>
 	</div>
 </div>\n"""

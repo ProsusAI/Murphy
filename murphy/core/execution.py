@@ -25,6 +25,7 @@ from murphy.models import (
 	TestPlan,
 	TestResult,
 	TestScenario,
+	WebsiteAnalysis,
 	agent_config_session_id,
 )
 from murphy.prompts import build_execution_prompt, build_persona_feedback_prompt
@@ -197,6 +198,7 @@ async def _execute_single_test(
 	output_dir: Path | None = None,
 	use_feedback: bool = False,
 	feedback_collector: list[dict] | None = None,
+	analysis: WebsiteAnalysis | None = None,
 ) -> TestResult:
 	"""Execute one test scenario and return its TestResult.
 
@@ -218,7 +220,7 @@ async def _execute_single_test(
 
 		# ── Feedback mode: lean prompt + PersonaFeedback output, no judge ──
 		if use_feedback:
-			task_prompt = build_persona_feedback_prompt(scenario, url)
+			task_prompt = build_persona_feedback_prompt(scenario, url, analysis=analysis)
 			agent_kwargs: dict[str, Any] = {
 				'task': task_prompt,
 				'llm': llm,
@@ -244,7 +246,13 @@ async def _execute_single_test(
 
 			logger.info(
 				'  %sFeedback [Agent %d/%d]: grade=%d — %s (%.1fs)%s',
-				_PINK, index, total, persona_feedback.grade, persona_feedback.comments, duration, _RESET,
+				_PINK,
+				index,
+				total,
+				persona_feedback.grade,
+				persona_feedback.comments,
+				duration,
+				_RESET,
 			)
 
 			entry = await _save_feedback_locally(scenario.test_persona, persona_feedback)
@@ -537,6 +545,7 @@ async def execute_tests_with_session(
 	judge_llm: BaseChatModel | None = None,
 	output_dir: Path | None = None,
 	use_feedback: bool = False,
+	analysis: WebsiteAnalysis | None = None,
 ) -> list[TestResult]:
 	"""Phase 3 execution reusing an existing browser session.
 
@@ -581,6 +590,7 @@ async def execute_tests_with_session(
 				output_dir=output_dir,
 				use_feedback=use_feedback,
 				feedback_collector=feedback_collector if use_feedback else None,
+				analysis=analysis,
 			)
 			results.append(test_result)
 
@@ -634,6 +644,7 @@ async def execute_tests_with_session(
 					output_dir=output_dir,
 					use_feedback=use_feedback,
 					feedback_collector=feedback_collector if use_feedback else None,
+					analysis=analysis,
 				)
 				results_slots[index_0] = result
 
