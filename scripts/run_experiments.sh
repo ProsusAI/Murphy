@@ -11,7 +11,7 @@ set -euo pipefail
 URL="https://work.toqan.ai/"
 PERSONAS="./output/personas.json"
 PLAN_PATH="./output/plan/test_plan.yaml"
-EXPERIMENTS_DIR="./output/experiments_evaluation"
+EXPERIMENTS_DIR="./output/experiments_evaluation_2"
 
 if [[ ! -f "$PLAN_PATH" ]]; then
   echo "ERROR: test plan not found at ${PLAN_PATH}." >&2
