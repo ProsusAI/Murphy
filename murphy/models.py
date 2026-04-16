@@ -243,7 +243,7 @@ class FeedbackQualityScore(BaseModel):
 
 
 class PersonaFeedback(BaseModel):
-	"""Lightweight per-persona feedback for the news app self-improvement loop."""
+	"""Lightweight per-persona feedback for the weather app self-improvement loop."""
 
 	grade: int = Field(ge=1, le=10, description='Overall experience score from 1 (terrible) to 10 (excellent).')
 	comments: str = Field(

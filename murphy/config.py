@@ -39,7 +39,7 @@ BLOB_READ_WRITE_TOKEN = os.environ.get('BLOB_READ_WRITE_TOKEN', '')
 # Path within the blob store where feedback JSONL is written.
 # Set BLOB_FEEDBACK_PATH in the environment to override the default.
 # The blob is uploaded with access='private' — requires a signed URL to read.
-BLOB_FEEDBACK_PATH = os.environ.get('BLOB_FEEDBACK_PATH', 'feedback/news/feedback.jsonl')
+BLOB_FEEDBACK_PATH = os.environ.get('BLOB_FEEDBACK_PATH', 'feedback/weather/feedback.jsonl')
 
 # ─── REST API configuration ───────────────────────────────────────────────────
 

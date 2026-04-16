@@ -1,3 +1,4 @@
+import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any, Literal, TypeVar, overload
@@ -19,6 +20,56 @@ from browser_use.llm.schema import SchemaOptimizer
 from browser_use.llm.views import ChatInvokeCompletion, ChatInvokeUsage
 
 T = TypeVar('T', bound=BaseModel)
+
+_THINK_TAG_RE = re.compile(r'<think>.*?</think>', re.DOTALL)
+_STRAY_CLOSE_TAG_RE = re.compile(r'.*?</think>', re.DOTALL)
+
+
+def _extract_json_from_content(content: str) -> str:
+	"""Strip <think> blocks and trailing non-JSON text from model output.
+
+	Some OpenAI-compatible providers (DeepSeek, Qwen, etc.) emit reasoning
+	wrapped in <think>…</think> tags either before or mixed into the JSON.
+	Pydantic's model_validate_json rejects trailing characters, so we extract
+	just the balanced JSON object before parsing.
+	"""
+	# Remove well-formed <think>…</think> blocks
+	content = _THINK_TAG_RE.sub('', content)
+	# Remove any stray opening tag that was never closed (e.g. <think> at EOF)
+	content = _STRAY_CLOSE_TAG_RE.sub('', content)
+	content = content.strip()
+
+	# Advance to the first '{' in case there's still a preamble
+	brace_start = content.find('{')
+	if brace_start == -1:
+		return content
+	content = content[brace_start:]
+
+	# Use brace-counting to find the end of the top-level JSON object,
+	# discarding any trailing text the model appended after it.
+	depth = 0
+	in_string = False
+	escaped = False
+	for i, ch in enumerate(content):
+		if escaped:
+			escaped = False
+			continue
+		if ch == '\\' and in_string:
+			escaped = True
+			continue
+		if ch == '"':
+			in_string = not in_string
+			continue
+		if in_string:
+			continue
+		if ch == '{':
+			depth += 1
+		elif ch == '}':
+			depth -= 1
+			if depth == 0:
+				return content[: i + 1]
+
+	return content
 
 
 @dataclass
@@ -281,7 +332,7 @@ class ChatOpenAI(BaseChatModel):
 
 				usage = self._get_usage(response)
 
-				parsed = output_format.model_validate_json(choice.message.content)
+				parsed = output_format.model_validate_json(_extract_json_from_content(choice.message.content))
 
 				return ChatInvokeCompletion(
 					completion=parsed,

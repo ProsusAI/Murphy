@@ -17,7 +17,7 @@ Feedback mode is a lightweight alternative to Murphy's full evaluation pipeline.
 uv run murphy --url https://example.com --feedback
 
 # Combine with --goal for targeted feedback
-uv run murphy --url "https://auto-pmf.vercel.app/" --goal "save a news article" --feedback
+uv run murphy --url "https://autopmf-weather.vercel.app/" --goal "check the weather forecast" --feedback
 
 # Resume from an existing plan
 uv run murphy --url https://example.com --plan murphy/output/test_plan.yaml --feedback
