@@ -254,24 +254,28 @@ Also assess feedback quality (response_present, response_timely, response_clear,
 
 
 # Actions that produce meaningful visual state changes worth showing the judge
-_HIGH_SIGNAL_ACTIONS = frozenset({
-	'navigate',
-	'input_text',
-	'done',
-	'select_dropdown_option',
-	'upload_file',
-	'evaluate',  # JS execution often mutates state
-})
+_HIGH_SIGNAL_ACTIONS = frozenset(
+	{
+		'navigate',
+		'input_text',
+		'done',
+		'select_dropdown_option',
+		'upload_file',
+		'evaluate',  # JS execution often mutates state
+	}
+)
 
 # Actions that rarely change what the judge needs to see
-_LOW_SIGNAL_ACTIONS = frozenset({
-	'scroll',
-	'refresh_dom_state',
-	'search_page',
-	'find_elements',
-	'switch_tab',
-	'wait',
-})
+_LOW_SIGNAL_ACTIONS = frozenset(
+	{
+		'scroll',
+		'refresh_dom_state',
+		'search_page',
+		'find_elements',
+		'switch_tab',
+		'wait',
+	}
+)
 
 
 def _select_key_screenshots(history: AgentHistoryList, max_screenshots: int = 3) -> list[str]:

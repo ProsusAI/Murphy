@@ -122,7 +122,18 @@ def test_trait_vector_extra_forbidden():
 
 
 def test_persona_registry_completeness():
-	expected_personas = {'first_timer', 'adversarial', 'edge_case', 'explorer', 'impatient_user', 'angry_user', 'boomer_ui', 'genz_ui', 'whitespace_police_ui', 'mobile_user'}
+	expected_personas = {
+		'first_timer',
+		'adversarial',
+		'edge_case',
+		'explorer',
+		'impatient_user',
+		'angry_user',
+		'boomer_ui',
+		'genz_ui',
+		'whitespace_police_ui',
+		'mobile_user',
+	}
 	assert set(PERSONA_REGISTRY.keys()) == expected_personas
 
 
