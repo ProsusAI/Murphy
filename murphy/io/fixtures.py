@@ -8,6 +8,7 @@ DUMMY_CSV_PATH = FIXTURES_DIR / 'dummy.csv'
 DUMMY_PDF_PATH = FIXTURES_DIR / 'dummy.pdf'
 DUMMY_EXE_PATH = FIXTURES_DIR / 'dummy.exe'
 DUMMY_DOCX_PATH = FIXTURES_DIR / 'dummy.docx'
+STARTUP_HANDBOOK_PATH = FIXTURES_DIR / 'startup_handbook.pdf'
 
 
 def ensure_dummy_fixture_files() -> list[Path]:
@@ -33,4 +34,7 @@ def ensure_dummy_fixture_files() -> list[Path]:
 			'This is a dummy fixture file for murphy upload scenarios.\nIt can be used safely for upload-field testing.\n',
 			encoding='utf-8',
 		)
-	return [DUMMY_FILE_PATH, DUMMY_CSV_PATH, DUMMY_PDF_PATH, DUMMY_EXE_PATH, DUMMY_DOCX_PATH]
+	paths = [DUMMY_FILE_PATH, DUMMY_CSV_PATH, DUMMY_PDF_PATH, DUMMY_EXE_PATH, DUMMY_DOCX_PATH]
+	if STARTUP_HANDBOOK_PATH.exists():
+		paths.append(STARTUP_HANDBOOK_PATH)
+	return paths

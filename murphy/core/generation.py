@@ -145,6 +145,8 @@ async def explore_and_generate_plan(
 
 	best_plan: TestPlan | None = None
 
+	last_exc: Exception | None = None
+
 	for attempt in range(QUALITY_MAX_RETRIES + 1):
 		retry_hint = ''
 		if attempt > 0 and best_plan is not None:
@@ -158,21 +160,30 @@ async def explore_and_generate_plan(
 			else:
 				break  # No issues, accept the plan
 
-		response = await llm.ainvoke(
-			messages=[
-				SystemMessage(
-					content=(
-						'You are a QA strategist. Produce valid structured test plans from observed UI evidence. '
-						'Every scenario must reference concrete UI elements observed during exploration.'
-					)
-				),
-				UserMessage(content=synthesis_prompt + retry_hint),
-			],
-			output_format=TestPlan,
-		)
+		if attempt > 0:
+			logger.info('  Synthesis attempt %d/%d...', attempt + 1, QUALITY_MAX_RETRIES + 1)
 
-		plan = response.completion
-		assert isinstance(plan, TestPlan), f'Expected TestPlan, got {type(plan)}'
+		try:
+			response = await llm.ainvoke(
+				messages=[
+					SystemMessage(
+						content=(
+							'You are a QA strategist. Produce valid structured test plans from observed UI evidence. '
+							'Every scenario must reference concrete UI elements observed during exploration.'
+						)
+					),
+					UserMessage(content=synthesis_prompt + retry_hint),
+				],
+				output_format=TestPlan,
+			)
+			plan = response.completion
+			assert isinstance(plan, TestPlan), f'Expected TestPlan, got {type(plan)}'
+		except Exception as exc:
+			last_exc = exc
+			logger.warning('  Synthesis attempt %d failed (%s), retrying...', attempt + 1, exc)
+			if attempt < QUALITY_MAX_RETRIES:
+				continue
+			break
 
 		# If empty, retry with explicit instruction
 		if not plan.scenarios and attempt < QUALITY_MAX_RETRIES:
@@ -180,6 +191,7 @@ async def explore_and_generate_plan(
 			continue
 
 		best_plan = plan
+		last_exc = None
 
 		# Check quality on first attempt — retry if issues found
 		if attempt == 0:
@@ -190,7 +202,12 @@ async def explore_and_generate_plan(
 		else:
 			break
 
-	assert best_plan is not None and best_plan.scenarios, 'Failed to generate any test scenarios'
+	if best_plan is None or not best_plan.scenarios:
+		if last_exc is not None:
+			raise RuntimeError(
+				f'Plan synthesis failed after {QUALITY_MAX_RETRIES + 1} attempts. Last error: {last_exc}'
+			) from last_exc
+		raise AssertionError('Failed to generate any test scenarios')
 
 	_log_plan_summary(best_plan)
 	return best_plan
