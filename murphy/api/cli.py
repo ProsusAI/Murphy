@@ -87,6 +87,11 @@ def main() -> int:
 		action='store_true',
 		help='Enable persona feedback mode: write {sessionId (hash of agent config), persona, grade, comments} to feedback JSONL after each persona finishes. Skips full report generation.',
 	)
+	parser.add_argument(
+		'--auto',
+		action='store_true',
+		help='Skip the manual review pause after features.md is saved and run end-to-end automatically.',
+	)
 	args = parser.parse_args()
 
 	if not args.open and not args.url:
@@ -226,15 +231,16 @@ async def _async_main(args: argparse.Namespace) -> None:
 				# Save features markdown
 				features_path = write_features_markdown(analysis, output_dir)
 				logger.info('\n  Features saved: %s', features_path)
-				print('  Review and edit the file, then press Enter to continue.')
-				print('  (Add, remove, or modify features as needed.)\n')
 
-				loop = asyncio.get_event_loop()
-				await loop.run_in_executor(None, lambda: input('  Press Enter to continue...  '))
+				if not args.auto:
+					print('  Review and edit the file, then press Enter to continue.')
+					print('  (Add, remove, or modify features as needed.)\n')
+					loop = asyncio.get_event_loop()
+					await loop.run_in_executor(None, lambda: input('  Press Enter to continue...  '))
+					# Re-read in case user edited
+					analysis = read_features_markdown(features_path)
 
-				# Re-read in case user edited
-				analysis = read_features_markdown(features_path)
-				logger.info('  Using %d features for test generation.\n', len(analysis.features))
+				logger.info('  Using %d features.\n', len(analysis.features))
 
 			# ── Build scenarios directly from features — no LLM, no YAML ──
 			test_plan = make_scenarios_from_analysis(analysis, max_tests=args.max_tests)
