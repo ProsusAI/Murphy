@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 - Dynamic personas generated from real user sessions and events via PostHog integration, replacing static persona definitions during evaluation runs
+- `--discover-personas` CLI flag to run the persona discovery pipeline before test generation and save results to `{output_dir}/personas.json`
+- `--personas [PATH]` CLI flag to reuse previously discovered personas (defaults to `{output_dir}/personas.json`)
+- Token usage reporting: persona-discovery and Murphy-execution token totals are now tracked via `TokenCost`, logged at the end of a run, and included in the JSON/Markdown evaluation reports (new `TokenUsage` model on `EvaluationReport`)
+- Configurable persona pipeline: trait schema and personas are discovered from real sessions, each session is scored against those traits, and the resulting trait vectors are clustered to produce personas; all stages are tunable via environment variables (`PERSONA_DISCOVERY_SESSIONS`, `PERSONA_SCORING_SESSIONS`, `PERSONA_MIN_EVENTS`, `PERSONA_NUM_CLUSTERS`, `PERSONA_MAX_CLUSTERS`, `PERSONA_LLM_CONCURRENCY`, `PERSONA_MONTHS_BACK`, `EMBEDDING_MODEL`, `EMBEDDING_DEVICE`, `POSTHOG_*`)
 - Multi-provider LLM support: `--provider` and `--model` flags for OpenAI, Google Gemini, Anthropic Claude, Azure OpenAI, Mistral, Groq, DeepSeek, Cerebras, Ollama, OpenRouter, and Browser Use
 - Separate `--judge-provider` and `--judge-model` flags for using a different model for verdicts
 - `provider` field in REST API request models (`/analyze`, `/generate-plan`, `/execute`, `/evaluate`)

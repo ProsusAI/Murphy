@@ -51,8 +51,8 @@ POSTHOG_HOST = os.environ.get('POSTHOG_HOST', 'https://eu.posthog.com')
 
 # ─── Persona sampling defaults ───────────────────────────────────────────────
 
-PERSONA_SAMPLE_SESSIONS = int(os.environ.get('PERSONA_SAMPLE_SESSIONS', '30'))
-PERSONA_MIN_EVENTS_PER_SESSION = int(os.environ.get('PERSONA_MIN_EVENTS_PER_SESSION', '30'))
+PERSONA_SAMPLE_SESSIONS = int(os.environ.get('PERSONA_SAMPLE_SESSIONS', '200'))
+PERSONA_MIN_EVENTS_PER_SESSION = int(os.environ.get('PERSONA_MIN_EVENTS_PER_SESSION', '60'))
 
 # ─── Persona pipeline defaults ──────────────────────────────────────────────
 
