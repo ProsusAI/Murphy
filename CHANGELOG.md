@@ -23,6 +23,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Pages URL incorrect in reporting and trace visualization
 - Angry user persona double-click test failing due to unidentified element ID
 - Agent not reporting missing validation indicators
+- Stale Murphy runs left behind after aborting previous runs are now cleaned up on startup
 
 ### Changed
 - Removed actions column from results main page in the UI
