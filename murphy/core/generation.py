@@ -6,11 +6,19 @@ from typing import Any
 from browser_use import Agent
 from browser_use.browser.session import BrowserSession
 from browser_use.llm import BaseChatModel, SystemMessage, UserMessage
+from murphy.browser.actions import register_domain_access_action, register_refresh_dom_action
+from murphy.browser.session_utils import prepare_session_for_task
 from murphy.config import EXPLORE_MAX_STEPS, QUALITY_MAX_RETRIES
 from murphy.core.quality import plan_quality_issues
 from murphy.models import TestPlan
+from murphy.personas.bridge import get_discovered_persona_names
 from murphy.personas.pipeline_models import PersonaResult, TraitSchema
-from murphy.prompts import build_plan_synthesis_prompt, build_test_generation_prompt, build_test_generation_system_message
+from murphy.prompts import (
+	build_exploration_prompt,
+	build_plan_synthesis_prompt,
+	build_test_generation_prompt,
+	build_test_generation_system_message,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -34,8 +42,6 @@ async def generate_tests(
 	# Build valid persona names set for quality checks
 	valid_persona_names: set[str] | None = None
 	if discovered_personas:
-		from murphy.personas.bridge import get_discovered_persona_names
-
 		valid_persona_names = set(get_discovered_persona_names(discovered_personas[0]))
 
 	quality_task = goal or f'evaluate {url}'
@@ -94,10 +100,6 @@ async def explore_and_generate_plan(
 	discovered_personas: tuple[PersonaResult, TraitSchema] | None = None,
 ) -> TestPlan:
 	"""Exploration-first plan generation: explore → summarize → synthesize with quality checks."""
-	from murphy.browser.actions import register_domain_access_action, register_refresh_dom_action
-	from murphy.browser.session_utils import prepare_session_for_task
-	from murphy.prompts import build_exploration_prompt
-
 	logger.info('\n%s', '=' * 60)
 	logger.info('Exploration-first plan generation')
 	logger.info('  Task: %s', task)
@@ -139,8 +141,6 @@ async def explore_and_generate_plan(
 	# Build valid persona names set for quality checks
 	valid_persona_names: set[str] | None = None
 	if discovered_personas:
-		from murphy.personas.bridge import get_discovered_persona_names
-
 		valid_persona_names = set(get_discovered_persona_names(discovered_personas[0]))
 
 	best_plan: TestPlan | None = None

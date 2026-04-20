@@ -21,6 +21,7 @@ from murphy.models import (
 	TraitLevel,
 	TraitVector,
 )
+from murphy.personas.bridge import build_discovered_judge_context
 from murphy.personas.pipeline_models import PersonaResult, TraitSchema
 
 TRAIT_JUDGE_QUESTIONS: dict[str, dict[TraitLevel, str]] = {
@@ -366,8 +367,6 @@ async def murphy_judge(
 		traits, test_type = persona_entry
 		trait_context = build_judge_trait_context(scenario.test_persona, traits, test_type)
 	elif discovered_personas:
-		from murphy.personas.bridge import build_discovered_judge_context
-
 		persona_result, trait_schema = discovered_personas
 		trait_context = build_discovered_judge_context(scenario.test_persona, persona_result, trait_schema)
 
