@@ -1,22 +1,22 @@
-"""Evaluate how faithfully Murphy mimics the behavior of discovered user personas.
+"""Evaluate how closely Murphy mimics the behavior of discovered user personas.
 
 For each Murphy test that used a discovered persona, this script:
   1. Loads the agent_history trace from the output directory.
   2. Converts it to a behavioral timeline (same format as real PostHog sessions).
   3. Scores it with score_session() against the trait schema.
   4. Compares the scores to the persona centroid (real-user average for that cluster).
-  5. Writes persona_fidelity_report.json and persona_fidelity_report.md.
+  5. Writes persona_similarity_report.json and persona_similarity_report.md.
 
 The persona centroid is the mean trait score of all real PostHog sessions in that
 cluster, so comparing Murphy against it is comparing against real users (in aggregate).
 
 Usage (single run):
-    uv run python scripts/eval_persona_fidelity.py \\
+    uv run python scripts/eval_persona_similarity.py \\
         --output-dir murphy/output \\
         --personas-file output/personas.json
 
 Usage (batch runs in run_1/, run_2/, ...):
-    uv run python scripts/eval_persona_fidelity.py \\
+    uv run python scripts/eval_persona_similarity.py \\
         --output-dir murphy/output \\
         --personas-file output/personas.json
 """
@@ -72,7 +72,7 @@ def _resolve_agent_history(run_dir: Path, scenario_index: int) -> Path | None:
 	return matches[0] if matches else None
 
 
-def _fidelity_label(score: float) -> str:
+def _similarity_label(score: float) -> str:
 	if score >= 0.85:
 		return 'HIGH'
 	if score >= 0.70:
@@ -85,7 +85,7 @@ def _fidelity_label(score: float) -> str:
 
 def _build_markdown(report_data: dict[str, Any]) -> str:
 	lines: list[str] = []
-	lines.append('# Persona Fidelity Report')
+	lines.append('# Persona Similarity Report')
 	lines.append(f'Generated: {report_data["timestamp"]}')
 	lines.append(f'Personas file: {report_data["personas_file"]}')
 	lines.append(f'Output dir: {report_data["output_dir"]}')
@@ -102,25 +102,25 @@ def _build_markdown(report_data: dict[str, Any]) -> str:
 	# Summary table
 	by_persona: dict[str, list[float]] = defaultdict(list)
 	for r in results:
-		by_persona[r['persona_name']].append(r['overall_fidelity_score'])
+		by_persona[r['persona_name']].append(r['overall_similarity_score'])
 
 	lines.append('## Summary')
 	lines.append('')
-	lines.append('| Persona | Tests | Avg Fidelity | Rating |')
-	lines.append('|---------|-------|-------------|--------|')
+	lines.append('| Persona | Tests | Avg Similarity | Rating |')
+	lines.append('|---------|-------|---------------|--------|')
 	for persona_name, scores in sorted(by_persona.items()):
 		avg = sum(scores) / len(scores)
-		lines.append(f'| {persona_name} | {len(scores)} | {avg:.2f} | {_fidelity_label(avg)} |')
+		lines.append(f'| {persona_name} | {len(scores)} | {avg:.2f} | {_similarity_label(avg)} |')
 	lines.append('')
 
 	# Detail per test
 	lines.append('## Detailed Results')
 	lines.append('')
 	for r in results:
-		overall = r['overall_fidelity_score']
-		label = _fidelity_label(overall)
+		overall = r['overall_similarity_score']
+		label = _similarity_label(overall)
 		lines.append(f'### {r["test_scenario_name"]}')
-		lines.append(f'**Persona:** `{r["persona_slug"]}`  |  **Overall fidelity:** {overall:.2f} ({label})')
+		lines.append(f'**Persona:** `{r["persona_slug"]}`  |  **Overall similarity:** {overall:.2f} ({label})')
 		lines.append('')
 		lines.append('| Trait Dimension | Murphy | Real Users | Delta |')
 		lines.append('|----------------|--------|-----------|-------|')
@@ -142,8 +142,8 @@ def _build_markdown(report_data: dict[str, Any]) -> str:
 
 async def _async_main(args: argparse.Namespace) -> int:
 	from browser_use.llm import ChatOpenAI
-	from murphy.eval.fidelity import evaluate_fidelity
-	from murphy.eval.models import FidelityReport
+	from murphy.eval.models import SimilarityReport
+	from murphy.eval.similarity import evaluate_similarity
 	from murphy.models import EvaluationReport
 	from murphy.personas.bridge import lookup_persona_by_slug
 	from murphy.personas.storage import load_personas
@@ -170,7 +170,7 @@ async def _async_main(args: argparse.Namespace) -> int:
 			logger.error('No evaluation_report.json found in %s or its run_* subdirs', output_dir)
 			return 2
 
-	fidelity_results = []
+	similarity_results = []
 
 	for _run_idx, run_dir in run_dirs:
 		report_path = run_dir / 'evaluation_report.json'
@@ -199,9 +199,9 @@ async def _async_main(args: argparse.Namespace) -> int:
 				)
 				continue
 
-			logger.info('Evaluating fidelity: "%s" (persona=%s)', result.scenario.name, persona_slug)
+			logger.info('Evaluating similarity: "%s" (persona=%s)', result.scenario.name, persona_slug)
 			try:
-				fidelity = await evaluate_fidelity(
+				similarity = await evaluate_similarity(
 					persona=persona,
 					schema=schema,
 					history_path=history_path,
@@ -209,43 +209,43 @@ async def _async_main(args: argparse.Namespace) -> int:
 					scenario_steps=result.scenario.steps_description,
 					llm=llm,
 				)
-				fidelity_results.append(fidelity)
+				similarity_results.append(similarity)
 			except Exception:
-				logger.exception('Failed fidelity eval for "%s"', result.scenario.name)
+				logger.exception('Failed similarity eval for "%s"', result.scenario.name)
 
-	if not fidelity_results:
+	if not similarity_results:
 		logger.warning('No discovered-persona tests found. Run Murphy with --personas to use discovered personas.')
 		return 0
 
-	report_obj = FidelityReport(
+	report_obj = SimilarityReport(
 		personas_file=str(personas_path),
 		output_dir=str(output_dir),
 		timestamp=datetime.now().isoformat(timespec='seconds'),
-		results=fidelity_results,
+		results=similarity_results,
 	)
 
 	# Write JSON
-	json_path = output_dir / 'persona_fidelity_report.json'
+	json_path = output_dir / 'persona_similarity_report.json'
 	json_path.write_text(report_obj.model_dump_json(indent=2), encoding='utf-8')
 	logger.info('Wrote %s', json_path)
 
 	# Write markdown
-	md_path = output_dir / 'persona_fidelity_report.md'
+	md_path = output_dir / 'persona_similarity_report.md'
 	md_path.write_text(_build_markdown(json.loads(report_obj.model_dump_json())), encoding='utf-8')
 	logger.info('Wrote %s', md_path)
 
 	# Print summary
-	total = len(fidelity_results)
-	avg_fidelity = sum(r.overall_fidelity_score for r in fidelity_results) / total
+	total = len(similarity_results)
+	avg_similarity = sum(r.overall_similarity_score for r in similarity_results) / total
 	print(f'\nEvaluated {total} test(s).')
-	print(f'Average fidelity: {avg_fidelity:.2f} ({_fidelity_label(avg_fidelity)})')
+	print(f'Average similarity: {avg_similarity:.2f} ({_similarity_label(avg_similarity)})')
 	print(f'Report: {md_path}')
 	return 0
 
 
 def main() -> int:
 	parser = argparse.ArgumentParser(
-		description='Evaluate how faithfully Murphy mimics discovered user personas.',
+		description='Evaluate how closely Murphy mimics discovered user personas.',
 		formatter_class=argparse.ArgumentDefaultsHelpFormatter,
 	)
 	parser.add_argument(
@@ -262,7 +262,7 @@ def main() -> int:
 	)
 	parser.add_argument(
 		'--model',
-		default='gpt-5-mini',
+		default='gpt-4o-mini',
 		help='LLM model for behavioral scoring',
 	)
 	args = parser.parse_args()

@@ -1,7 +1,7 @@
-"""Orchestrate the persona fidelity eval for a single Murphy output directory.
+"""Orchestrate the persona similarity eval for a single Murphy output directory.
 
-Used by both the CLI (--eval-fidelity flag) and the standalone
-scripts/eval_persona_fidelity.py runner.
+Used by both the CLI (--eval-similarity flag) and the standalone
+scripts/eval_persona_similarity.py runner.
 """
 
 from __future__ import annotations
@@ -15,8 +15,8 @@ from pathlib import Path
 from typing import Any
 
 from browser_use.llm import ChatOpenAI
-from murphy.eval.fidelity import evaluate_fidelity
-from murphy.eval.models import FidelityReport, PersonaFidelityResult
+from murphy.eval.models import PersonaSimilarityResult, SimilarityReport
+from murphy.eval.similarity import evaluate_similarity
 from murphy.models import EvaluationReport
 from murphy.personas.bridge import lookup_persona_by_slug
 from murphy.personas.pipeline_models import PersonaResult, TraitSchema
@@ -52,7 +52,7 @@ def resolve_agent_history(run_dir: Path, scenario_index: int) -> Path | None:
 # ── Markdown ──────────────────────────────────────────────────────────────────
 
 
-def _fidelity_label(score: float) -> str:
+def _similarity_label(score: float) -> str:
 	if score >= 0.85:
 		return 'HIGH'
 	if score >= 0.70:
@@ -62,7 +62,7 @@ def _fidelity_label(score: float) -> str:
 
 def build_markdown_report(report_data: dict[str, Any]) -> str:
 	lines: list[str] = []
-	lines.append('# Persona Fidelity Report')
+	lines.append('# Persona Similarity Report')
 	lines.append(f'Generated: {report_data["timestamp"]}')
 	lines.append(f'Personas file: {report_data["personas_file"]}')
 	lines.append(f'Output dir: {report_data["output_dir"]}')
@@ -79,24 +79,24 @@ def build_markdown_report(report_data: dict[str, Any]) -> str:
 
 	by_persona: dict[str, list[float]] = defaultdict(list)
 	for r in results:
-		by_persona[r['persona_name']].append(r['overall_fidelity_score'])
+		by_persona[r['persona_name']].append(r['overall_similarity_score'])
 
 	lines.append('## Summary')
 	lines.append('')
-	lines.append('| Persona | Tests | Avg Fidelity | Rating |')
-	lines.append('|---------|-------|-------------|--------|')
+	lines.append('| Persona | Tests | Avg Similarity | Rating |')
+	lines.append('|---------|-------|---------------|--------|')
 	for persona_name, scores in sorted(by_persona.items()):
 		avg = sum(scores) / len(scores)
-		lines.append(f'| {persona_name} | {len(scores)} | {avg:.2f} | {_fidelity_label(avg)} |')
+		lines.append(f'| {persona_name} | {len(scores)} | {avg:.2f} | {_similarity_label(avg)} |')
 	lines.append('')
 
 	lines.append('## Detailed Results')
 	lines.append('')
 	for r in results:
-		overall = r['overall_fidelity_score']
-		label = _fidelity_label(overall)
+		overall = r['overall_similarity_score']
+		label = _similarity_label(overall)
 		lines.append(f'### {r["test_scenario_name"]}')
-		lines.append(f'**Persona:** `{r["persona_slug"]}`  |  **Overall fidelity:** {overall:.2f} ({label})')
+		lines.append(f'**Persona:** `{r["persona_slug"]}`  |  **Overall similarity:** {overall:.2f} ({label})')
 		lines.append('')
 		lines.append('| Trait Dimension | Murphy | Real Users | Delta |')
 		lines.append('|----------------|--------|-----------|-------|')
@@ -116,18 +116,18 @@ def build_markdown_report(report_data: dict[str, Any]) -> str:
 # ── Orchestrator ──────────────────────────────────────────────────────────────
 
 
-async def run_fidelity_eval(
+async def run_similarity_eval(
 	output_dir: Path,
 	schema: TraitSchema,
 	persona_result: PersonaResult,
 	llm: ChatOpenAI,
-) -> FidelityReport | None:
-	"""Evaluate persona fidelity for all discovered-persona tests in output_dir.
+) -> SimilarityReport | None:
+	"""Evaluate persona similarity for all discovered-persona tests in output_dir.
 
 	Supports both single-run layout (evaluation_report.json at root) and
 	batch-run layout (run_1/, run_2/, ... subdirs).
 
-	Returns the FidelityReport, or None if no matching tests were found.
+	Returns the SimilarityReport, or None if no matching tests were found.
 	"""
 	if (output_dir / 'evaluation_report.json').is_file():
 		run_dirs: list[tuple[int, Path]] = [(1, output_dir)]
@@ -137,7 +137,7 @@ async def run_fidelity_eval(
 			logger.warning('No evaluation_report.json found in %s or its run_* subdirs', output_dir)
 			return None
 
-	fidelity_results: list[PersonaFidelityResult] = []
+	similarity_results: list[PersonaSimilarityResult] = []
 
 	for _run_idx, run_dir in run_dirs:
 		report_path = run_dir / 'evaluation_report.json'
@@ -146,7 +146,7 @@ async def run_fidelity_eval(
 			continue
 
 		report = EvaluationReport.model_validate_json(report_path.read_text(encoding='utf-8'))
-		logger.info('Scoring fidelity for %s (%d scenarios)', run_dir.name, len(report.results))
+		logger.info('Scoring similarity for %s (%d scenarios)', run_dir.name, len(report.results))
 
 		for scenario_idx, result in enumerate(report.results, start=1):
 			persona_slug = result.scenario.test_persona
@@ -161,7 +161,7 @@ async def run_fidelity_eval(
 
 			logger.info('  Evaluating "%s" (persona=%s)', result.scenario.name, persona_slug)
 			try:
-				fidelity = await evaluate_fidelity(
+				similarity = await evaluate_similarity(
 					persona=persona,
 					schema=schema,
 					history_path=history_path,
@@ -169,26 +169,26 @@ async def run_fidelity_eval(
 					scenario_steps=result.scenario.steps_description,
 					llm=llm,
 				)
-				fidelity_results.append(fidelity)
+				similarity_results.append(similarity)
 			except Exception:
-				logger.exception('Fidelity eval failed for "%s"', result.scenario.name)
+				logger.exception('Similarity eval failed for "%s"', result.scenario.name)
 
-	if not fidelity_results:
+	if not similarity_results:
 		return None
 
-	return FidelityReport(
+	return SimilarityReport(
 		personas_file='',  # caller can set this
 		output_dir=str(output_dir),
 		timestamp=datetime.now().isoformat(timespec='seconds'),
-		results=fidelity_results,
+		results=similarity_results,
 	)
 
 
-def write_fidelity_reports(report: FidelityReport, output_dir: Path) -> tuple[Path, Path]:
-	"""Write persona_fidelity_report.json and .md to output_dir. Returns (json_path, md_path)."""
-	json_path = output_dir / 'persona_fidelity_report.json'
+def write_similarity_reports(report: SimilarityReport, output_dir: Path) -> tuple[Path, Path]:
+	"""Write persona_similarity_report.json and .md to output_dir. Returns (json_path, md_path)."""
+	json_path = output_dir / 'persona_similarity_report.json'
 	json_path.write_text(report.model_dump_json(indent=2), encoding='utf-8')
 
-	md_path = output_dir / 'persona_fidelity_report.md'
+	md_path = output_dir / 'persona_similarity_report.md'
 	md_path.write_text(build_markdown_report(json.loads(report.model_dump_json())), encoding='utf-8')
 	return json_path, md_path

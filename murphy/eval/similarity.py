@@ -1,4 +1,4 @@
-"""Compute persona fidelity: how closely Murphy's behavior matches a discovered persona.
+"""Compute persona similarity: how closely Murphy's behavior matches a discovered persona.
 
 Core logic:
 1. Format Murphy's agent_history as a behavioral timeline (history_adapter).
@@ -6,8 +6,8 @@ Core logic:
    function used on real PostHog sessions — this puts Murphy and real users in
    the same scoring space.
 3. Compare Murphy's scores against the persona centroid (= real-user average
-   for that cluster) to produce a per-dimension fidelity score and an overall
-   0–1 fidelity score.
+   for that cluster) to produce a per-dimension similarity score and an overall
+   0–1 similarity score.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ from pathlib import Path
 
 from browser_use.llm import ChatOpenAI
 from murphy.eval.history_adapter import format_agent_history_as_timeline
-from murphy.eval.models import DimensionFidelity, PersonaFidelityResult
+from murphy.eval.models import DimensionSimilarity, PersonaSimilarityResult
 from murphy.personas.bridge import slugify_persona_name
 from murphy.personas.pipeline_models import Persona, TraitSchema
 from murphy.personas.scoring import score_session
@@ -25,14 +25,14 @@ from murphy.personas.scoring import score_session
 logger = logging.getLogger(__name__)
 
 
-async def evaluate_fidelity(
+async def evaluate_similarity(
 	persona: Persona,
 	schema: TraitSchema,
 	history_path: Path,
 	scenario_name: str,
 	scenario_steps: str,
 	llm: ChatOpenAI,
-) -> PersonaFidelityResult:
+) -> PersonaSimilarityResult:
 	"""Score Murphy's behavior against a persona's expected trait profile.
 
 	Args:
@@ -44,7 +44,7 @@ async def evaluate_fidelity(
 	    llm:            LLM used for scoring (same as used in the pipeline).
 
 	Returns:
-	    PersonaFidelityResult with per-dimension scores and an overall 0–1 fidelity.
+	    PersonaSimilarityResult with per-dimension scores and an overall 0–1 similarity.
 	"""
 	timeline = format_agent_history_as_timeline(
 		history_path,
@@ -64,12 +64,12 @@ async def evaluate_fidelity(
 	centroid = {d.trait_name: d.score for d in persona.centroid}
 	murphy_scores = session_score.scores_as_dict()
 
-	dimensions: list[DimensionFidelity] = []
+	dimensions: list[DimensionSimilarity] = []
 	for trait_name, persona_score in centroid.items():
 		murphy_score = float(murphy_scores.get(trait_name, 3.0))
 		persona_score_f = float(persona_score)
 		dimensions.append(
-			DimensionFidelity(
+			DimensionSimilarity(
 				trait_name=trait_name,
 				murphy_score=murphy_score,
 				persona_score=persona_score_f,
@@ -77,7 +77,7 @@ async def evaluate_fidelity(
 			)
 		)
 
-	# Overall fidelity: 1 - mean(|delta| / max_possible_delta)
+	# Overall similarity: 1 - mean(|delta| / max_possible_delta)
 	# Score range is 1–5, so max possible delta is 4.
 	if dimensions:
 		mean_normalized_delta = sum(abs(d.delta) / 4.0 for d in dimensions) / len(dimensions)
@@ -85,13 +85,13 @@ async def evaluate_fidelity(
 	else:
 		overall = 0.0
 
-	return PersonaFidelityResult(
+	return PersonaSimilarityResult(
 		persona_id=persona.persona_id,
 		persona_name=persona.name,
 		persona_slug=slugify_persona_name(persona.name),
 		test_scenario_name=scenario_name,
 		agent_history_path=str(history_path),
 		dimensions=dimensions,
-		overall_fidelity_score=round(overall, 3),
+		overall_similarity_score=round(overall, 3),
 		scoring_reasoning=session_score.reasoning,
 	)

@@ -89,9 +89,9 @@ def main() -> int:
 		help='Use discovered personas (default: {output_dir}/personas.json, or specify a path)',
 	)
 	parser.add_argument(
-		'--eval-fidelity',
+		'--eval-similarity',
 		action='store_true',
-		help='After tests complete, score Murphy behavior against discovered persona centroids and write persona_fidelity_report.{json,md}',
+		help='After tests complete, score Murphy behavior against discovered persona centroids and write persona_similarity_report.{json,md}',
 	)
 	args = parser.parse_args()
 
@@ -355,8 +355,8 @@ async def _async_main(args: argparse.Namespace) -> None:
 				)
 			else:
 				_log_results_summary(results)
-			if args.eval_fidelity:
-				await _run_fidelity_eval(output_dir, discovered_personas, llm)
+			if args.eval_similarity:
+				await _run_similarity_eval(output_dir, discovered_personas, llm)
 			return
 
 		# ── Server UI mode (--ui) ──
@@ -408,8 +408,8 @@ async def _async_main(args: argparse.Namespace) -> None:
 						)
 					else:
 						_log_results_summary(state.results)
-					if args.eval_fidelity:
-						await _run_fidelity_eval(output_dir, discovered_personas, llm)
+					if args.eval_similarity:
+						await _run_similarity_eval(output_dir, discovered_personas, llm)
 					state._reports_written = True  # type: ignore[attr-defined]
 		except KeyboardInterrupt:
 			pass
@@ -422,35 +422,35 @@ async def _async_main(args: argparse.Namespace) -> None:
 		clear_browser_pid()
 
 
-async def _run_fidelity_eval(
+async def _run_similarity_eval(
 	output_dir: Path,
 	discovered_personas: tuple[PersonaResult, TraitSchema] | None,
 	llm: ChatOpenAI,
 ) -> None:
-	"""Run the persona fidelity eval after tests complete and print a summary."""
+	"""Run the persona similarity eval after tests complete and print a summary."""
 	if discovered_personas is None:
-		logger.warning('--eval-fidelity requires --personas or --discover-personas; skipping.')
+		logger.warning('--eval-similarity requires --personas or --discover-personas; skipping.')
 		return
 
-	from murphy.eval.runner import _fidelity_label, run_fidelity_eval, write_fidelity_reports
+	from murphy.eval.runner import _similarity_label, run_similarity_eval, write_similarity_reports
 
 	persona_result, schema = discovered_personas
-	logger.info('\nRunning persona fidelity evaluation...')
-	report = await run_fidelity_eval(output_dir, schema, persona_result, llm)
+	logger.info('\nRunning persona similarity evaluation...')
+	report = await run_similarity_eval(output_dir, schema, persona_result, llm)
 
 	if report is None:
-		logger.info('No discovered-persona tests found for fidelity eval.')
+		logger.info('No discovered-persona tests found for similarity eval.')
 		return
 
-	_, md_path = write_fidelity_reports(report, output_dir)
+	_, md_path = write_similarity_reports(report, output_dir)
 
 	total = len(report.results)
-	avg = sum(r.overall_fidelity_score for r in report.results) / total
+	avg = sum(r.overall_similarity_score for r in report.results) / total
 	logger.info(
-		'Persona fidelity: %d test(s), avg %.2f (%s) — %s',
+		'Persona similarity: %d test(s), avg %.2f (%s) — %s',
 		total,
 		avg,
-		_fidelity_label(avg),
+		_similarity_label(avg),
 		md_path,
 	)
 
