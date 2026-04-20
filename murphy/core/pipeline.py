@@ -14,7 +14,6 @@ from typing import Any
 
 from browser_use.browser.profile import BrowserProfile
 from browser_use.browser.session import BrowserSession
-from browser_use.llm import ChatOpenAI
 from murphy.browser.cleanup import clear_browser_pid, get_browser_pid_from_session, kill_stale_browser, record_browser_pid
 from murphy.browser.patches import apply as apply_patches
 from murphy.evaluate import (

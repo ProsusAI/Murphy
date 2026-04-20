@@ -117,7 +117,7 @@ async def _execute_single_test(
 	index: int,
 	total: int,
 	judge_llm: BaseChatModel | None = None,
-	discovered_personas: tuple["PersonaResult", "TraitSchema"] | None = None,
+	discovered_personas: tuple['PersonaResult', 'TraitSchema'] | None = None,
 	output_dir: Path | None = None,
 ) -> TestResult:
 	"""Execute one test scenario and return its TestResult.
