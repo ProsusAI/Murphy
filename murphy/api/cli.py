@@ -126,6 +126,8 @@ async def _async_main(args: argparse.Namespace) -> None:
 	from murphy.io.test_plan_io import load_test_plan, save_test_plan
 	from murphy.llm import create_llm
 	from murphy.models import TokenUsage, WebsiteAnalysis
+	from murphy.personas.pipeline_models import PersonaResult, TraitSchema
+	from murphy.personas.storage import load_personas, save_personas
 
 	# Kill any orphan browser from a previous crashed run
 	kill_stale_browser()
