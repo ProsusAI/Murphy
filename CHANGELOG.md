@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [1.1.0] - 2026-04-07
 
 ### Added
+- Dynamic personas generated from real user sessions and events via PostHog integration, replacing static persona definitions during evaluation runs
 - Multi-provider LLM support: `--provider` and `--model` flags for OpenAI, Google Gemini, Anthropic Claude, Azure OpenAI, Mistral, Groq, DeepSeek, Cerebras, Ollama, OpenRouter, and Browser Use
 - Separate `--judge-provider` and `--judge-model` flags for using a different model for verdicts
 - `provider` field in REST API request models (`/analyze`, `/generate-plan`, `/execute`, `/evaluate`)
@@ -25,11 +26,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 - Removed actions column from results main page in the UI
-
-## [2.0.0] - 2026-03-31
-
-### Added
-- Persona discovery and persona assignment, now used directly by Murphy during evaluation runs
 
 ## [1.0.0] - 2026-03-05
 
