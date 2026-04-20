@@ -11,7 +11,7 @@ import logging
 
 import numpy as np
 
-from browser_use.llm import ChatOpenAI, SystemMessage, UserMessage
+from browser_use.llm import BaseChatModel, SystemMessage, UserMessage
 from murphy.personas.clustering import ClusteringResult
 from murphy.personas.pipeline_models import (
 	DimensionScore,
@@ -99,7 +99,7 @@ def _format_clusters(
 
 
 async def label_personas(
-	llm: ChatOpenAI,
+	llm: BaseChatModel,
 	schema: TraitSchema,
 	centroids: np.ndarray,
 	cluster_sizes: list[int],

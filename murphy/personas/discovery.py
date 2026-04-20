@@ -17,7 +17,7 @@ import numpy as np
 from sentence_transformers import SentenceTransformer
 from sklearn.cluster import KMeans
 
-from browser_use.llm import ChatOpenAI, SystemMessage, UserMessage
+from browser_use.llm import BaseChatModel, SystemMessage, UserMessage
 from murphy.config import EMBEDDING_DEVICE, EMBEDDING_MODEL
 from murphy.personas.clustering import find_optimal_k
 from murphy.personas.compressor import compress_session
@@ -85,7 +85,7 @@ EMBEDDING_INSTRUCTION = (
 # ── LLM calls ────────────────────────────────────────────────────────────────
 
 
-async def observe_session(llm: ChatOpenAI, timeline: str, session_id: str) -> SessionObservation:
+async def observe_session(llm: BaseChatModel, timeline: str, session_id: str) -> SessionObservation:
 	"""Ask the LLM to freely describe behavioral traits observed in one session."""
 	response = await llm.ainvoke(
 		messages=[
@@ -137,7 +137,7 @@ def _deduplicate_traits(observations: list[SessionObservation]) -> list[str]:
 
 
 async def _name_cluster(
-	llm: ChatOpenAI,
+	llm: BaseChatModel,
 	cluster_traits: list[str],
 	population_paths: str | None = None,
 ) -> TraitDimension:
@@ -161,7 +161,7 @@ async def _name_cluster(
 
 
 async def cluster_trait_dimensions(
-	llm: ChatOpenAI,
+	llm: BaseChatModel,
 	observations: list[SessionObservation],
 	population_paths: str | None = None,
 	k_range: tuple[int, int] = (4, 10),
@@ -217,7 +217,7 @@ async def cluster_trait_dimensions(
 
 
 async def run_discovery(
-	llm: ChatOpenAI,
+	llm: BaseChatModel,
 	sessions: list[AnalyticsSession],
 	person_contexts: dict[str, dict[str, Any]],
 	population_paths: str | None = None,

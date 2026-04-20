@@ -10,7 +10,7 @@ import asyncio
 import logging
 from typing import Any
 
-from browser_use.llm import ChatOpenAI, SystemMessage, UserMessage
+from browser_use.llm import BaseChatModel, SystemMessage, UserMessage
 from murphy.personas.compressor import compress_session
 from murphy.personas.models import AnalyticsSession
 from murphy.personas.pipeline_models import SessionScore, TraitSchema
@@ -55,7 +55,7 @@ def _format_schema(schema: TraitSchema) -> str:
 
 
 async def score_session(
-	llm: ChatOpenAI,
+	llm: BaseChatModel,
 	schema: TraitSchema,
 	timeline: str,
 	session_id: str,
@@ -86,7 +86,7 @@ async def score_session(
 
 
 async def run_scoring(
-	llm: ChatOpenAI,
+	llm: BaseChatModel,
 	schema: TraitSchema,
 	sessions: list[AnalyticsSession],
 	person_contexts: dict[str, dict[str, Any]],

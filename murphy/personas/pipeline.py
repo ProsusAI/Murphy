@@ -9,7 +9,6 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from browser_use.llm import ChatOpenAI
 from browser_use.tokens.service import TokenCost
 from murphy.config import (
 	PERSONA_DISCOVERY_SESSIONS,
@@ -23,6 +22,7 @@ from murphy.config import (
 	POSTHOG_HOST,
 	POSTHOG_PROJECT_ID,
 )
+from murphy.llm import create_llm
 from murphy.models import TokenUsage
 from murphy.personas.clustering import cluster_sessions
 from murphy.personas.compressor import compress_session
@@ -143,6 +143,7 @@ def _effective_num_clusters(num_clusters: int | None) -> int | None:
 
 async def run_persona_pipeline(
 	model: str = 'gpt-5-mini',
+	provider: str = 'openai',
 	discovery_sessions: int = PERSONA_DISCOVERY_SESSIONS,
 	scoring_sessions: int = PERSONA_SCORING_SESSIONS,
 	min_events: int = PERSONA_MIN_EVENTS,
@@ -169,7 +170,7 @@ async def run_persona_pipeline(
 		host=POSTHOG_HOST,
 	) as client:
 		adapter = PostHogAdapter(client)
-		llm = ChatOpenAI(model=model, temperature=0.3)
+		llm = create_llm(model, provider=provider)
 
 		token_cost = TokenCost()
 		token_cost.register_llm(llm)
