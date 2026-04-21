@@ -71,6 +71,13 @@ def _render_test_detail(r: TestResult, index: int, lines: list[str]) -> None:
 			lines.append(f'- **{trait_name}**: {assessment}')
 		lines.append('')
 
+	# ── Feature suggestions ──
+	if r.feature_suggestions:
+		lines += ['**Feature suggestions:**']
+		for s in r.feature_suggestions:
+			lines.append(f'- {s}')
+		lines.append('')
+
 	# ── Pages visited ──
 	if r.pages_visited:
 		lines += ['**Pages visited:**']
@@ -177,6 +184,24 @@ def write_markdown_report(report: EvaluationReport, output_dir: Path) -> Path:
 				f'| {r.scenario.name[:40]} | {persona_label} | {yes_no(fq.response_present)} | {yes_no(fq.response_timely)} | '
 				f'{yes_no(fq.response_clear)} | {yes_no(fq.response_actionable)} | {fq.feedback_type} | {score}/4 |'
 			)
+
+	# ── Feature Suggestions (aggregated) ─────────────────────────────────────
+	all_suggestions: list[tuple[str, str]] = []
+	for r in report.results:
+		if r.feature_suggestions:
+			persona_label = r.scenario.test_persona.replace('_', ' ').title()
+			for s in r.feature_suggestions:
+				all_suggestions.append((persona_label, s))
+	if all_suggestions:
+		lines += [
+			'',
+			'### Feature Suggestions',
+			'',
+			'| Persona | Suggestion |',
+			'|---------|------------|',
+		]
+		for persona_label, suggestion in all_suggestions:
+			lines.append(f'| {persona_label} | {suggestion} |')
 
 	lines += ['', '---', '']
 
