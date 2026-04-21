@@ -310,7 +310,7 @@ Set the API key for whichever provider you use (at least one is required):
 
 ### Persona Discovery
 
-Required when using `--discover-personas`. Murphy queries PostHog to pull user sessions and events, which it uses to derive realistic personas.
+Required when using `--discover-personas`. Murphy queries PostHog to pull user sessions and events, which it uses to derive realistic personas. Requires a PostHog instance with posthog-js >= 1.93.0 (the client-side `$elements_chain` string format).
 
 | Variable | Default | Description |
 |----------|---------|-------------|

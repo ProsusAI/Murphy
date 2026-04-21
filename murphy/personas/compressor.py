@@ -220,6 +220,11 @@ def _extract_pathname(url_or_path: str) -> str:
 	return url_or_path or '/'
 
 
+# PostHog elements_chain serialisation format (introduced in posthog-js 1.93.0,
+# Nov 2023; unchanged through posthog-js 1.369.x as of Apr 2026).  Each element
+# is semicolon-delimited; attributes are stored as attr__<name>="value", text
+# as text="value", tag name is the leading token.
+# Ref: https://github.com/PostHog/posthog-js/pull/823
 _ELEMENTS_CHAIN_TEXT_RE = re.compile(r'text="([^"]*)"')
 _ELEMENTS_CHAIN_ARIA_LABEL_RE = re.compile(r'attr__aria-label="([^"]*)"')
 _ELEMENTS_CHAIN_TAG_RE = re.compile(r'^([a-z][a-z0-9]*)')
