@@ -65,8 +65,8 @@ class PostHogAdapter:
 	async def get_sessions(
 		self,
 		*,
-		num_sessions: int | None = None,
-		min_events: int | None = None,
+		num_sessions: int,
+		min_events: int,
 		after: str | datetime | None = None,
 		before: str | datetime | None = None,
 		offset: int = 0,

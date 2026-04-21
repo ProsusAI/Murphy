@@ -153,7 +153,7 @@ async def test_get_sessions_maps_fields(adapter: PostHogAdapter, mock_client):
 async def test_get_sessions_empty(adapter: PostHogAdapter, mock_client):
 	mock_client.sample_user_sessions.return_value = {}
 
-	sessions = await adapter.get_sessions()
+	sessions = await adapter.get_sessions(num_sessions=5, min_events=1)
 
 	assert sessions == []
 
@@ -187,7 +187,7 @@ async def test_session_events_get_generated_ids(adapter: PostHogAdapter, mock_cl
 		],
 	}
 
-	sessions = await adapter.get_sessions()
+	sessions = await adapter.get_sessions(num_sessions=5, min_events=1)
 
 	ids = [e.event_id for e in sessions[0].events]
 	assert len(ids) == 2

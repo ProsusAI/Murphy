@@ -16,8 +16,6 @@ from typing import Any
 import httpx
 
 from murphy.config import (
-	PERSONA_MIN_EVENTS_PER_SESSION,
-	PERSONA_SAMPLE_SESSIONS,
 	POSTHOG_API_KEY,
 	POSTHOG_HOST,
 	POSTHOG_PROJECT_ID,
@@ -156,16 +154,13 @@ class PostHogClient:
 	async def sample_user_sessions(
 		self,
 		*,
-		num_sessions: int | None = None,
-		min_events: int | None = None,
+		num_sessions: int,
+		min_events: int,
 		after: str | datetime | None = None,
 		before: str | datetime | None = None,
 		offset: int = 0,
 	) -> dict[str, list[dict[str, Any]]]:
 		"""Sample random sessions that meet the event-count threshold.
-
-		Parameters fall back to the values in ``murphy.config`` when not supplied:
-		``PERSONA_SAMPLE_SESSIONS`` and ``PERSONA_MIN_EVENTS_PER_SESSION``.
 
 		The ``offset`` parameter skips the first N qualifying sessions in the
 		deterministic hash order, allowing callers to fetch distinct batches
@@ -177,8 +172,6 @@ class PostHogClient:
 		event dicts). Only sessions with at least ``min_events`` events are
 		included.
 		"""
-		num_sessions = num_sessions if num_sessions is not None else PERSONA_SAMPLE_SESSIONS
-		min_events = min_events if min_events is not None else PERSONA_MIN_EVENTS_PER_SESSION
 
 		time_filter = ''
 		time_conditions: list[str] = []
