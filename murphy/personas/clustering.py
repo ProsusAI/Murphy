@@ -69,7 +69,12 @@ def find_optimal_k(
 	hi = min(k_range[1], n - 1)
 
 	if lo > hi:
-		return lo, {lo: -1.0}
+		fallback = max(hi, 2)
+		logger.warning(
+			'k_range %s cannot be satisfied with %d samples; falling back to k=%d',
+			k_range, n, fallback,
+		)
+		return fallback, {fallback: -1.0}
 
 	sil_scores: dict[int, float] = {}
 	for k in range(lo, hi + 1):
