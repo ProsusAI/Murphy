@@ -59,7 +59,7 @@ async def run_generate_plan(
 	analysis: WebsiteAnalysis,
 	model: str,
 	provider: str = 'openai',
-	max_tests: int = 8,
+	max_tests: int | None = None,
 	goal: str | None = None,
 ) -> TestPlan:
 	"""Generate test plan from analysis."""
@@ -125,7 +125,7 @@ async def run_evaluate(
 	url: str,
 	model: str,
 	provider: str = 'openai',
-	max_tests: int = 8,
+	max_tests: int | None = None,
 	goal: str | None = None,
 	browser_session: BrowserSession | None = None,
 ) -> TestPlan:

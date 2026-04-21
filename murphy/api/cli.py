@@ -51,7 +51,7 @@ def main() -> int:
 	parser.add_argument('--no-auth', action='store_true', help='Skip auth detection entirely, treat site as public')
 	parser.add_argument('--features', help='Path to existing features markdown (skips analysis, goes to test generation)')
 	parser.add_argument('--plan', help='Path to existing YAML test plan (skips analysis + test generation)')
-	parser.add_argument('--max-tests', type=int, default=8, help='Max test scenarios (default: 8)')
+	parser.add_argument('--max-tests', type=int, default=None, help='Max test scenarios (default: number of personas)')
 	parser.add_argument(
 		'--provider', default='openai', help='LLM provider (default: openai). e.g. google, anthropic, azure, mistral'
 	)

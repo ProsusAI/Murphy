@@ -10,7 +10,7 @@ from murphy.browser.actions import register_domain_access_action, register_refre
 from murphy.browser.session_utils import prepare_session_for_task
 from murphy.config import EXPLORE_MAX_STEPS, QUALITY_MAX_RETRIES
 from murphy.core.quality import plan_quality_issues
-from murphy.models import TestPlan
+from murphy.models import PERSONA_REGISTRY, TestPlan
 from murphy.personas.bridge import get_discovered_persona_names
 from murphy.personas.pipeline_models import PersonaResult, TraitSchema
 from murphy.prompts import (
@@ -27,11 +27,17 @@ async def generate_tests(
 	url: str,
 	analysis: 'Any',
 	llm: BaseChatModel,
-	max_tests: int,
+	max_tests: int | None = None,
 	goal: str | None = None,
 	discovered_personas: tuple[PersonaResult, TraitSchema] | None = None,
 ) -> TestPlan:
-	"""Feature-discovery test generation: analysis → test plan with quality checks."""
+	"""Feature-discovery test generation: analysis → test plan with quality checks.
+
+	``max_tests`` defaults to the number of discovered personas when available,
+	falling back to ``DEFAULT_MAX_TESTS`` when no personas are provided.
+	"""
+	if max_tests is None:
+		max_tests = len(discovered_personas[0].personas) if discovered_personas else len(PERSONA_REGISTRY)
 	logger.info('\n%s', '=' * 60)
 	logger.info('Generating test scenarios')
 	logger.info('%s\n', '=' * 60)
@@ -95,11 +101,17 @@ async def explore_and_generate_plan(
 	url: str,
 	llm: BaseChatModel,
 	session: BrowserSession,
-	max_scenarios: int = 8,
+	max_scenarios: int | None = None,
 	max_steps: int = 30,
 	discovered_personas: tuple[PersonaResult, TraitSchema] | None = None,
 ) -> TestPlan:
-	"""Exploration-first plan generation: explore → summarize → synthesize with quality checks."""
+	"""Exploration-first plan generation: explore → summarize → synthesize with quality checks.
+
+	``max_scenarios`` defaults to the number of discovered personas when available,
+	falling back to ``DEFAULT_MAX_TESTS`` when no personas are provided.
+	"""
+	if max_scenarios is None:
+		max_scenarios = len(discovered_personas[0].personas) if discovered_personas else len(PERSONA_REGISTRY)
 	logger.info('\n%s', '=' * 60)
 	logger.info('Exploration-first plan generation')
 	logger.info('  Task: %s', task)
