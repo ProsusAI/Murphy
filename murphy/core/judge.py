@@ -11,8 +11,10 @@ can't miss navigation proof buried in nested JSON.
 
 from browser_use.agent.views import AgentHistoryList
 from browser_use.llm import BaseChatModel, SystemMessage, UserMessage
+from browser_use.llm.exceptions import ModelProviderError
 from browser_use.llm.messages import ContentPartImageParam, ContentPartTextParam, ImageURL
 from browser_use.utils import sanitize_surrogates
+from murphy.config import QUALITY_MAX_RETRIES
 from murphy.models import (
 	PERSONA_REGISTRY,
 	JudgeVerdict,
@@ -45,12 +47,23 @@ TRAIT_JUDGE_QUESTIONS: dict[str, dict[TraitLevel, str]] = {
 		TraitLevel.medium: 'Did the site handle minor path deviations gracefully?',
 		TraitLevel.low: 'Did the expected path work without requiring exploration?',
 	},
+	'visual_density_preference': {
+		TraitLevel.low: 'Is the layout spacious and uncluttered? This user needs generous whitespace, large tap targets, and no more than one primary action per screen region. Dense dashboards or multi-column data grids feel overwhelming.',
+		TraitLevel.medium: 'Is content density balanced? A reasonable amount of information per viewport with clear grouping and breathing room between sections.',
+		TraitLevel.high: 'Is the layout information-dense and efficient? This user wants maximum data per screen — compact rows, minimal padding, and no wasted space. Sparse layouts feel empty.',
+	},
+	'layout_strictness': {
+		TraitLevel.low: 'Is the overall layout coherent and usable? Minor spacing inconsistencies are acceptable as long as the layout does not feel broken.',
+		TraitLevel.medium: 'Is spacing generally consistent? Obvious misalignments or irregular padding between clearly related components should be flagged.',
+		TraitLevel.high: 'Does every margin, padding, and gutter follow a consistent scale? Flag any misaligned elements, irregular gaps between sibling components, or inconsistent padding inside cards — even subtle deviations.',
+	},
 }
 
 TEST_TYPE_RULES: dict[TestType, str] = {
 	'ux': 'Silent handling with no visible feedback is a FAIL. The user must understand what happened.',
 	'security': 'Silent sanitization is CORRECT behavior. Only fail on crash, data leak, or code execution.',
 	'boundary': 'Graceful degradation (even silent) is a PASS. Only fail on unhandled exception or corrupted state.',
+	'design': 'Evaluate visual design quality only — functional correctness is not in scope. Judge based on the persona\'s aesthetic expectations and trait vector.',
 }
 
 
@@ -64,12 +77,15 @@ def build_judge_trait_context(persona: str, traits: TraitVector, test_type: Test
 	lines.append('## Per-trait evaluation questions (evaluate each independently):')
 	lines.append('')
 
-	trait_fields = {
+	trait_fields: dict[str, TraitLevel] = {
 		'technical_literacy': traits.technical_literacy,
 		'patience': traits.patience,
 		'reading_comprehension': traits.reading_comprehension,
 		'exploration': traits.exploration,
 	}
+	if test_type == 'design':
+		trait_fields['visual_density_preference'] = traits.visual_density_preference
+		trait_fields['layout_strictness'] = traits.layout_strictness
 	for trait_name, level in trait_fields.items():
 		assert isinstance(level, TraitLevel)
 		question = TRAIT_JUDGE_QUESTIONS[trait_name][level]
