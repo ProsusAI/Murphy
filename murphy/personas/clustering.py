@@ -72,7 +72,9 @@ def find_optimal_k(
 		fallback = max(hi, 2)
 		logger.warning(
 			'k_range %s cannot be satisfied with %d samples; falling back to k=%d',
-			k_range, n, fallback,
+			k_range,
+			n,
+			fallback,
 		)
 		return fallback, {fallback: -1.0}
 
