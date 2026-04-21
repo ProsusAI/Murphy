@@ -414,9 +414,7 @@ def render_results_html(
 
 			if r.feature_suggestions:
 				suggestions_html = ''.join(f'<li>{_e(s)}</li>' for s in r.feature_suggestions)
-				body_parts.append(
-					f'<div class="detail"><strong>Feature suggestions:</strong><ul>{suggestions_html}</ul></div>'
-				)
+				body_parts.append(f'<div class="detail"><strong>Feature suggestions:</strong><ul>{suggestions_html}</ul></div>')
 
 			if not r.success:
 				suggestion = suggest_fix(r)

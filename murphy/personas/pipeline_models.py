@@ -92,7 +92,7 @@ class PersonaDescription(BaseModel):
 	)
 	suggestion_instruction: str = Field(
 		description=(
-			'Instruction for generating feature suggestions from this persona\'s perspective. '
+			"Instruction for generating feature suggestions from this persona's perspective. "
 			'Format: "As a <role>, suggest 1-3 <category> improvements (e.g. <2-3 concrete examples>)."'
 		),
 	)

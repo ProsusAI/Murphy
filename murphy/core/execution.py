@@ -195,7 +195,7 @@ async def _execute_single_test(
 		# Merge feature suggestions: prefer judge (authoritative), deduplicate with agent's
 		judge_suggestions = judgement.feature_suggestions or []
 		agent_suggestions = (verdict.feature_suggestions if verdict else []) or []
-		seen_suggestions: set[str] = set(s.lower().strip() for s in judge_suggestions)
+		seen_suggestions: set[str] = {s.lower().strip() for s in judge_suggestions}
 		merged_suggestions = list(judge_suggestions)
 		for s in agent_suggestions:
 			if s.lower().strip() not in seen_suggestions:

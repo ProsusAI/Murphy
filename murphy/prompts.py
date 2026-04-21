@@ -211,9 +211,7 @@ def build_test_generation_prompt(
 			'- genz_ui (Design): "The site feels visually current and engaging — bold palette, modern type, dark mode awareness, smooth transitions, expressive identity. Bland stock aesthetics, dated gradients, or zero visual personality are FAILURES"\n'
 			'- whitespace_police_ui (Design): "Spacing follows a consistent scale — margins, padding, and gutters are uniform across sibling components. Misaligned elements, irregular vertical rhythm, cramped card layouts, or inconsistent gaps are FAILURES"'
 		)
-		persona_names_instruction = (
-			'- test_persona (one of: happy_path, confused_novice, adversarial, edge_case, explorer, impatient_user, angry_user, boomer_ui, genz_ui, whitespace_police_ui)'
-		)
+		persona_names_instruction = '- test_persona (one of: happy_path, confused_novice, adversarial, edge_case, explorer, impatient_user, angry_user, boomer_ui, genz_ui, whitespace_police_ui)'
 
 	return f"""Based on this website analysis, generate {max_tests} test scenarios that target the discovered features.
 {goal_block}
