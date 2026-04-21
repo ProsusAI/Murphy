@@ -11,10 +11,8 @@ can't miss navigation proof buried in nested JSON.
 
 from browser_use.agent.views import AgentHistoryList
 from browser_use.llm import BaseChatModel, SystemMessage, UserMessage
-from browser_use.llm.exceptions import ModelProviderError
 from browser_use.llm.messages import ContentPartImageParam, ContentPartTextParam, ImageURL
 from browser_use.utils import sanitize_surrogates
-from murphy.config import QUALITY_MAX_RETRIES
 from murphy.models import (
 	PERSONA_REGISTRY,
 	JudgeVerdict,
@@ -63,7 +61,7 @@ TEST_TYPE_RULES: dict[TestType, str] = {
 	'ux': 'Silent handling with no visible feedback is a FAIL. The user must understand what happened.',
 	'security': 'Silent sanitization is CORRECT behavior. Only fail on crash, data leak, or code execution.',
 	'boundary': 'Graceful degradation (even silent) is a PASS. Only fail on unhandled exception or corrupted state.',
-	'design': 'Evaluate visual design quality only — functional correctness is not in scope. Judge based on the persona\'s aesthetic expectations and trait vector.',
+	'design': "Evaluate visual design quality only — functional correctness is not in scope. Judge based on the persona's aesthetic expectations and trait vector.",
 }
 
 
@@ -246,24 +244,28 @@ Also assess feedback quality (response_present, response_timely, response_clear,
 
 
 # Actions that produce meaningful visual state changes worth showing the judge
-_HIGH_SIGNAL_ACTIONS = frozenset({
-	'navigate',
-	'input_text',
-	'done',
-	'select_dropdown_option',
-	'upload_file',
-	'evaluate',  # JS execution often mutates state
-})
+_HIGH_SIGNAL_ACTIONS = frozenset(
+	{
+		'navigate',
+		'input_text',
+		'done',
+		'select_dropdown_option',
+		'upload_file',
+		'evaluate',  # JS execution often mutates state
+	}
+)
 
 # Actions that rarely change what the judge needs to see
-_LOW_SIGNAL_ACTIONS = frozenset({
-	'scroll',
-	'refresh_dom_state',
-	'search_page',
-	'find_elements',
-	'switch_tab',
-	'wait',
-})
+_LOW_SIGNAL_ACTIONS = frozenset(
+	{
+		'scroll',
+		'refresh_dom_state',
+		'search_page',
+		'find_elements',
+		'switch_tab',
+		'wait',
+	}
+)
 
 
 def _select_key_screenshots(history: AgentHistoryList, max_screenshots: int = 3) -> list[str]:

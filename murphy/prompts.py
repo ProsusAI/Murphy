@@ -457,17 +457,29 @@ def _render_persona_for_execution(persona: str) -> str:
 			lines.append('→ You are actively trying to break things. Use XSS payloads, SQL fragments, probe hidden endpoints.')
 		if test_type == 'design':
 			if traits.aesthetic_era == 'classic':
-				lines.append('→ You value readability and familiar patterns. Judge font size, label clarity, contrast for aging eyes, and whether controls use explicit text labels instead of icon-only affordances.')
+				lines.append(
+					'→ You value readability and familiar patterns. Judge font size, label clarity, contrast for aging eyes, and whether controls use explicit text labels instead of icon-only affordances.'
+				)
 			elif traits.aesthetic_era == 'experimental':
-				lines.append('→ You expect modern, visually engaging design. Judge bold color choices, expressive typography, dark mode awareness, smooth transitions, and overall visual personality. Bland or dated aesthetics are failures.')
+				lines.append(
+					'→ You expect modern, visually engaging design. Judge bold color choices, expressive typography, dark mode awareness, smooth transitions, and overall visual personality. Bland or dated aesthetics are failures.'
+				)
 			else:
-				lines.append('→ You expect clean, contemporary design. Judge type scale, systematic spacing, polished details, and visual consistency across pages.')
+				lines.append(
+					'→ You expect clean, contemporary design. Judge type scale, systematic spacing, polished details, and visual consistency across pages.'
+				)
 			if traits.layout_strictness == TraitLevel.high:
-				lines.append('→ You are a spacing perfectionist. Every margin, padding, and gutter must follow a consistent scale. Flag misaligned elements, irregular gaps, and inconsistent padding between sibling components.')
+				lines.append(
+					'→ You are a spacing perfectionist. Every margin, padding, and gutter must follow a consistent scale. Flag misaligned elements, irregular gaps, and inconsistent padding between sibling components.'
+				)
 			if traits.visual_density_preference == TraitLevel.low:
-				lines.append('→ You prefer spacious layouts with generous whitespace. Cramped or information-dense screens feel overwhelming — flag them.')
+				lines.append(
+					'→ You prefer spacious layouts with generous whitespace. Cramped or information-dense screens feel overwhelming — flag them.'
+				)
 			elif traits.visual_density_preference == TraitLevel.high:
-				lines.append('→ You prefer information-dense layouts. Wasted space and overly sparse screens feel empty — flag them.')
+				lines.append(
+					'→ You prefer information-dense layouts. Wasted space and overly sparse screens feel empty — flag them.'
+				)
 	return '\n'.join(lines)
 
 
