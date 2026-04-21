@@ -2,10 +2,12 @@
 
 Usage::
 
-    python -m murphy.personas.demo [--discovery N] [--scoring N] [--min-events N] [--months-back N] [--model MODEL] [--examples N] [--context-max-chars N] [--no-context]
+    python -m murphy.personas.demo [--discovery N] [--scoring N] [--min-events N] [--months-back N] [--model MODEL] [--examples N] [--context-max-chars N] [--no-context] [--tenants T1,T2,...]
 
 Defaults match :mod:`murphy.config` (discovery/scoring counts, min events, cluster count).
 Omit ``--clusters`` to use ``PERSONA_NUM_CLUSTERS``; pass ``--clusters 0`` for automatic K (silhouette).
+Omit ``--tenants`` to use :data:`DEFAULT_RESTAURANT_TENANTS`; pass ``--tenants all`` to sample
+across every tenant in the project.
 After the run, prints a sample of the compressed session text inserted as {timeline} in the
 per-session discovery user message (OBSERVE_USER in murphy.personas.discovery).
 """
@@ -30,6 +32,46 @@ from murphy.personas.discovery import OBSERVE_USER
 from murphy.personas.pipeline import run_persona_pipeline
 from murphy.personas.pipeline_models import PersonaResult, SessionScore, TraitSchema
 from murphy.personas.storage import save_personas
+
+DEFAULT_RESTAURANT_TENANTS: list[str] = [
+	'sla-amsterdam',
+	'burgersenfrites',
+	'tresamigos',
+	'poke-perfect',
+	'depizzabakkersgroup',
+	'brightkitchen',
+	'le-smash',
+	'gangnamchicken',
+	'highsideburgers',
+	'boosty',
+	'stadshaven-brouwerij',
+	'tandoori-express',
+	'de-harmonie-almere',
+	'franggo',
+	'lebkov',
+	'urbansalad',
+	'mondi-restaurant',
+	'badeta',
+	'pieperz',
+	'de-burgerij',
+	'satay-club',
+	'shabo-to-go-hq',
+]
+
+
+def _parse_tenants(raw: str | None) -> list[str] | None:
+	"""Parse the ``--tenants`` CLI argument.
+
+	- ``None`` (flag omitted) -> use :data:`DEFAULT_RESTAURANT_TENANTS`.
+	- ``'all'`` (case-insensitive) -> no tenant filter (sample across project).
+	- Comma-separated list -> return stripped non-empty tokens.
+	"""
+	if raw is None:
+		return list(DEFAULT_RESTAURANT_TENANTS)
+	if raw.strip().lower() == 'all':
+		return None
+	tokens = [t.strip() for t in raw.split(',')]
+	return [t for t in tokens if t]
 
 
 def _print_discovery_session_context(timeline: str | None, max_chars: int) -> None:
@@ -158,7 +200,7 @@ async def main() -> None:
 		'--months-back',
 		type=int,
 		default=PERSONA_MONTHS_BACK,
-		help=f'Months of history to sample (default: {PERSONA_MONTHS_BACK} from config)',
+		help=f'Months of history to sample (default: {PERSONA_MONTHS_BACK} from config; 0 = all time)',
 	)
 	parser.add_argument('--model', type=str, default='gpt-5-mini', help='LLM model (default: gpt-5-mini)')
 	parser.add_argument('--examples', type=int, default=5, help='Number of score examples to display (default: 5)')
@@ -182,6 +224,16 @@ async def main() -> None:
 	)
 	parser.add_argument('--no-context', action='store_true', help='Skip printing the discovery session context sample')
 	parser.add_argument('--output', type=str, default=None, help='Output directory for personas.json (default: none)')
+	parser.add_argument(
+		'--tenants',
+		type=str,
+		default=None,
+		help=(
+			'Comma-separated tenant_id list to scope the pipeline to '
+			f'(default: {len(DEFAULT_RESTAURANT_TENANTS)} restaurant tenants). '
+			"Pass 'all' to sample across the whole project."
+		),
+	)
 	args = parser.parse_args()
 
 	logging.basicConfig(
@@ -190,8 +242,15 @@ async def main() -> None:
 		stream=sys.stderr,
 	)
 
+	tenants = _parse_tenants(args.tenants)
+
 	print(f'\nRunning persona pipeline: {args.discovery} discovery + {args.scoring} scoring sessions')
-	print(f'Model: {args.model}  |  Min events: {args.min_events}  |  Months back: {args.months_back}\n')
+	months_label = 'all time' if args.months_back <= 0 else f'{args.months_back} month(s)'
+	print(f'Model: {args.model}  |  Min events: {args.min_events}  |  History: {months_label}')
+	if tenants is None:
+		print('Tenants: all (no filter)\n')
+	else:
+		print(f'Tenants ({len(tenants)}): {", ".join(tenants)}\n')
 
 	pipeline_kw: dict[str, Any] = {
 		'model': args.model,
@@ -200,6 +259,7 @@ async def main() -> None:
 		'min_events': args.min_events,
 		'months_back': args.months_back,
 		'max_concurrent': args.concurrency,
+		'tenants': tenants,
 	}
 	if args.clusters is not None:
 		pipeline_kw['num_clusters'] = args.clusters

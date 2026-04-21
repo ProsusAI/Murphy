@@ -82,19 +82,34 @@ async def fetch_person_contexts(
 	return result
 
 
-async def fetch_population_paths(client: PostHogClient, after: str) -> str:
+async def fetch_population_paths(
+	client: PostHogClient,
+	after: str | None,
+	tenants: list[str] | None = None,
+) -> str:
 	"""Run an aggregate behavioral flow query and format as text context.
+
+	When ``tenants`` is provided, the aggregate is scoped to those tenants so
+	the LLM discovery prompt sees only behavior from the target population
+	rather than the whole project. When ``after`` is ``None``, no time filter
+	is applied (all-time aggregate).
 
 	Returns a formatted string summarizing the top navigation flows for
 	LLM context during trait aggregation.
 	"""
+	time_where = f" AND timestamp > '{after}'" if after else ''
+	tenant_where = ''
+	if tenants:
+		escaped = ', '.join(f"'{t.replace(chr(39), chr(39) * 2)}'" for t in tenants)
+		tenant_where = f' AND person.properties.tenant_id IN ({escaped})'
 	query = (
 		f'SELECT'
 		f' properties.$pathname as page,'
 		f' count() as visits'
 		f' FROM events'
 		f" WHERE event = '$pageview'"
-		f" AND timestamp > '{after}'"
+		f'{time_where}'
+		f'{tenant_where}'
 		f' GROUP BY page'
 		f' ORDER BY visits DESC'
 		f' LIMIT 30'
@@ -151,6 +166,7 @@ async def run_persona_pipeline(
 	max_concurrent: int = PERSONA_LLM_CONCURRENCY,
 	max_clusters: int = PERSONA_MAX_CLUSTERS,
 	num_clusters: int | None = None,
+	tenants: list[str] | None = None,
 ) -> tuple[TraitSchema, list[SessionScore], PersonaResult, str | None, TokenUsage]:
 	"""Run the full persona discovery, scoring, and clustering pipeline.
 
@@ -161,6 +177,10 @@ async def run_persona_pipeline(
 	5. Enrich scoring sessions with person properties.
 	6. Run Phase 2 scoring -> list[SessionScore].
 	7. Run Phase 3 clustering -> PersonaResult.
+
+	When ``tenants`` is provided, session sampling and the aggregate population
+	context are both scoped to users whose ``person.properties.tenant_id`` is in
+	the list, so the resulting personas describe only that subset.
 
 	Returns ``(schema, scores, persona_result, discovery_timeline_sample, token_usage)``.
 	"""
@@ -175,23 +195,34 @@ async def run_persona_pipeline(
 		token_cost = TokenCost()
 		token_cost.register_llm(llm)
 
-		after_date = datetime.now(tz=timezone.utc) - timedelta(days=months_back * 30)
-		after_iso = after_date.strftime('%Y-%m-%d %H:%M:%S')
+		after_iso: str | None
+		if months_back <= 0:
+			after_iso = None
+		else:
+			after_date = datetime.now(tz=timezone.utc) - timedelta(days=months_back * 30)
+			after_iso = after_date.strftime('%Y-%m-%d %H:%M:%S')
 
 		# Phase 1: Discovery
-		logger.info('Fetching %d sessions for discovery (after=%s)', discovery_sessions, after_iso)
+		if tenants:
+			logger.info('Scoping persona pipeline to %d tenants: %s', len(tenants), ', '.join(tenants))
+		logger.info(
+			'Fetching %d sessions for discovery (after=%s)',
+			discovery_sessions,
+			after_iso if after_iso else 'all-time',
+		)
 		disc_sessions = await adapter.get_sessions(
 			num_sessions=discovery_sessions,
 			min_events=min_events,
 			after=after_iso,
 			offset=0,
+			tenants=tenants,
 		)
 		logger.info('Got %d discovery sessions', len(disc_sessions))
 
 		disc_user_ids = _unique_user_ids(disc_sessions)
 		person_contexts = await fetch_person_contexts(client, disc_user_ids)
 
-		population_paths = await fetch_population_paths(client, after_iso)
+		population_paths = await fetch_population_paths(client, after_iso, tenants=tenants)
 
 		discovery_timeline_sample: str | None = None
 		if disc_sessions:
@@ -216,6 +247,7 @@ async def run_persona_pipeline(
 			min_events=min_events,
 			after=after_iso,
 			offset=discovery_sessions,
+			tenants=tenants,
 		)
 		logger.info('Got %d scoring sessions', len(score_sessions))
 

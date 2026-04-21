@@ -70,6 +70,7 @@ class PostHogAdapter:
 		after: str | datetime | None = None,
 		before: str | datetime | None = None,
 		offset: int = 0,
+		tenants: list[str] | None = None,
 	) -> list[AnalyticsSession]:
 		raw = await self._client.sample_user_sessions(
 			num_sessions=num_sessions,
@@ -77,6 +78,7 @@ class PostHogAdapter:
 			after=after,
 			before=before,
 			offset=offset,
+			tenants=tenants,
 		)
 		sessions: list[AnalyticsSession] = []
 		for uid, user_sessions in raw.items():

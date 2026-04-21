@@ -161,6 +161,7 @@ class PostHogClient:
 		after: str | datetime | None = None,
 		before: str | datetime | None = None,
 		offset: int = 0,
+		tenants: list[str] | None = None,
 	) -> dict[str, list[dict[str, Any]]]:
 		"""Sample random sessions that meet the event-count threshold.
 
@@ -170,6 +171,10 @@ class PostHogClient:
 		The ``offset`` parameter skips the first N qualifying sessions in the
 		deterministic hash order, allowing callers to fetch distinct batches
 		(e.g. offset=0 for discovery, offset=100 for scoring).
+
+		``tenants`` restricts sampling to sessions whose owning person has
+		``person.properties.tenant_id`` in the given list. Pass ``None`` or an
+		empty list to sample across all tenants.
 
 		Returns a dict keyed by ``distinct_id``, where each value is a list of
 		session dicts. Each session dict has ``session_id``, ``session_start``,
@@ -181,13 +186,16 @@ class PostHogClient:
 		min_events = min_events if min_events is not None else PERSONA_MIN_EVENTS_PER_SESSION
 
 		time_filter = ''
-		time_conditions: list[str] = []
+		extra_conditions: list[str] = []
 		if after:
-			time_conditions.append(f"timestamp > '{_to_iso(after)}'")
+			extra_conditions.append(f"timestamp > '{_to_iso(after)}'")
 		if before:
-			time_conditions.append(f"timestamp < '{_to_iso(before)}'")
-		if time_conditions:
-			time_filter = f' AND {" AND ".join(time_conditions)}'
+			extra_conditions.append(f"timestamp < '{_to_iso(before)}'")
+		tenant_filter_sql = _tenant_filter_clause(tenants)
+		if tenant_filter_sql:
+			extra_conditions.append(tenant_filter_sql)
+		if extra_conditions:
+			time_filter = f' AND {" AND ".join(extra_conditions)}'
 
 		# 1. Pick random sessions above the event threshold
 		offset_clause = f' OFFSET {offset}' if offset else ''
@@ -415,3 +423,15 @@ def _rows_to_dicts(result: dict[str, Any]) -> list[dict[str, Any]]:
 	columns: list[str] = result.get('columns', [])
 	rows: list[list[Any]] = result.get('results', [])
 	return [dict(zip(columns, row)) for row in rows]
+
+
+def _tenant_filter_clause(tenants: list[str] | None) -> str:
+	"""Build a ``person.properties.tenant_id IN (...)`` HogQL fragment.
+
+	Returns an empty string when ``tenants`` is falsy. Single-quotes inside
+	tenant names are escaped to prevent malformed HogQL.
+	"""
+	if not tenants:
+		return ''
+	escaped = ', '.join(f"'{t.replace(chr(39), chr(39) * 2)}'" for t in tenants)
+	return f'person.properties.tenant_id IN ({escaped})'
