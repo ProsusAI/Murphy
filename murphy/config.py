@@ -9,7 +9,6 @@ load_dotenv()
 # ─── Pipeline defaults ────────────────────────────────────────────────────────
 
 DEFAULT_MAX_STEPS = 30
-DEFAULT_MAX_TESTS = 8
 DEFAULT_MAX_ACTIONS_PER_STEP = 3
 QUALITY_MAX_RETRIES = 2
 
@@ -42,3 +41,26 @@ MURPHY_REQUEST_TIMEOUT = int(os.environ.get('MURPHY_REQUEST_TIMEOUT', '1800'))
 MURPHY_API_HOST = os.environ.get('MURPHY_API_HOST', '0.0.0.0')
 MURPHY_API_PORT = int(os.environ.get('MURPHY_API_PORT', '8000'))
 SEMAPHORE_ACQUIRE_TIMEOUT = 30
+
+# ─── PostHog integration ─────────────────────────────────────────────────────
+
+POSTHOG_API_KEY = os.environ.get('POSTHOG_API_KEY', '')
+POSTHOG_PROJECT_ID = os.environ.get('POSTHOG_PROJECT_ID', '')
+POSTHOG_HOST = os.environ.get('POSTHOG_HOST', 'https://eu.posthog.com')
+
+# ─── Persona pipeline defaults ──────────────────────────────────────────────
+
+PERSONA_DISCOVERY_SESSIONS = int(os.environ.get('PERSONA_DISCOVERY_SESSIONS', '200'))
+PERSONA_SCORING_SESSIONS = int(os.environ.get('PERSONA_SCORING_SESSIONS', '500'))
+# Minimum event count per session when sampling from PostHog for the persona pipeline
+PERSONA_MIN_EVENTS = int(os.environ.get('PERSONA_MIN_EVENTS', '100'))
+PERSONA_LLM_CONCURRENCY = int(os.environ.get('PERSONA_LLM_CONCURRENCY', '15'))
+PERSONA_MONTHS_BACK = int(os.environ.get('PERSONA_MONTHS_BACK', '2'))
+PERSONA_MAX_CLUSTERS = int(os.environ.get('PERSONA_MAX_CLUSTERS', '10'))
+# Fixed K for K-Means in the persona pipeline; ``0`` = auto-select via silhouette
+PERSONA_NUM_CLUSTERS = int(os.environ.get('PERSONA_NUM_CLUSTERS', '8'))
+
+# ─── Embedding model ─────────────────────────────────────────────────────────
+
+EMBEDDING_MODEL = os.environ.get('EMBEDDING_MODEL', 'Qwen/Qwen3-Embedding-0.6B')
+EMBEDDING_DEVICE = os.environ.get('EMBEDDING_DEVICE', 'cpu')

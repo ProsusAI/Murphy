@@ -5,6 +5,7 @@ Extracted from evaluate.py for maintainability.
 """
 
 from murphy.models import PERSONA_REGISTRY, TestPersona, TestScenario, TraitVector, WebsiteAnalysis
+from murphy.personas.pipeline_models import PersonaResult, TraitSchema
 
 # Percentages for persona distribution in test generation
 _PERSONA_DISTRIBUTION: dict[TestPersona, tuple[int, str]] = {
@@ -127,6 +128,7 @@ def build_test_generation_prompt(
 	analysis: WebsiteAnalysis,
 	max_tests: int,
 	goal: str | None = None,
+	discovered_personas: tuple[PersonaResult, TraitSchema] | None = None,
 ) -> str:
 	"""Return the full test generation prompt for generating test scenarios from analysis."""
 	features_by_testability: dict[str, list] = {'testable': [], 'partial': [], 'untestable': []}
@@ -139,8 +141,52 @@ def build_test_generation_prompt(
 	peripheral_features = [f for f in testable_features if f.importance == 'peripheral']
 
 	goal_block = ''
+	goal_criteria_rule = ''
+	goal_steps_rule = ''
 	if goal:
 		goal_block = f'\nIMPORTANT GOAL: The user specifically wants to test: {goal}. Prioritize generating scenarios that address this goal.\n'
+		goal_steps_rule = (
+			"\n- GOAL PROGRESSION: Steps must progress through the stated goal's workflow, not just search for controls. "
+			'At least one step MUST attempt to complete the core goal action (e.g., actually submitting the form, completing the purchase, or finishing the flow), not merely look for UI elements. '
+			'BAD: "1) Look for a create button 2) If not found, note absence 3) Recommend adding a CTA" (only discovers controls, never attempts the goal). '
+			'GOOD: "1) Navigate to the relevant section 2) Initiate the workflow 3) Fill in required fields and submit 4) Verify the outcome".'
+		)
+		goal_criteria_rule = (
+			f'\n- GOAL COMPLETION AS SUCCESS CRITERION: The stated goal ("{goal}") being accomplished MUST be the primary success criterion for every scenario. '
+			f'Success means the goal action was completed end-to-end (e.g., entity created, purchase confirmed, flow finished), not merely that the user could begin or find the entry point. '
+			f'Persona-specific behavior criteria (e.g., visible feedback, graceful error handling) are still required, but they must be IN ADDITION TO verified goal completion. '
+			f'BAD: "The site allows the user to begin the flow" (only evaluates the entry point, not completion). '
+			f'BAD: "The site remains responsive and shows no errors" (only persona-driven, ignores goal). '
+			f'GOOD: "The user completes the goal action end-to-end (outcome confirmed via list update, detail view, success message, OR redirect to result) AND the site provides visible feedback throughout the interaction".'
+		)
+
+	# Build persona distribution and criteria blocks — use discovered or predefined
+	if discovered_personas:
+		from murphy.personas.bridge import (
+			build_discovered_persona_distribution_text,
+			build_discovered_success_criteria_block,
+			get_discovered_persona_names,
+		)
+
+		persona_result, trait_schema = discovered_personas
+		persona_distribution_text = build_discovered_persona_distribution_text(persona_result, trait_schema)
+		success_criteria_text = build_discovered_success_criteria_block(persona_result)
+		persona_names_list = ', '.join(get_discovered_persona_names(persona_result))
+		persona_names_instruction = f'- test_persona (one of: {persona_names_list})'
+	else:
+		persona_distribution_text = _build_persona_distribution_text()
+		success_criteria_text = (
+			'- happy_path (UX): "The agent completes the expected flow, receives clear confirmation feedback (toast, redirect, page update, success message), and arrives at the correct page/state"\n'
+			'- confused_novice (UX): "The website provides VISIBLE FEEDBACK for the confused interaction — an error message, a tooltip on a disabled control, a redirect with explanation, or an inline hint. Silent rejection, disabled buttons with no explanation, or forms that do nothing on submit are FAILURES — the confused user must understand what to do next"\n'
+			'- adversarial (Security): "The website does NOT execute injected scripts, does NOT expose debug info, shows an appropriate error or sanitizes the input"\n'
+			'- edge_case (Security): "The website handles the edge case without crashing — shows a validation message, truncates gracefully, or ignores invalid input"\n'
+			'- explorer (UX): "The website provides ORIENTATION AND FEEDBACK at every step — clear page titles, breadcrumbs, \'no results found\' messages, or redirect explanations. Dead ends with no feedback, blank pages, or silent failures are FAILURES"\n'
+			'- impatient_user (UX): "The website provides VISIBLE STATE FEEDBACK during rapid interactions — loading indicators, \'please wait\' messages, queued-action confirmation, or duplicate-prevention messages. Silent deduplication with no user-facing signal is a FAILURE"\n'
+			'- angry_user (Security): "The website absorbs the hostile interaction gracefully — no crash, no broken state from force-navigation, no infinite loops from rapid clicks"'
+		)
+		persona_names_instruction = (
+			'- test_persona (one of: happy_path, confused_novice, adversarial, edge_case, explorer, impatient_user, angry_user)'
+		)
 
 	return f"""Based on this website analysis, generate {max_tests} test scenarios that target the discovered features.
 {goal_block}
@@ -168,16 +214,10 @@ MANDATORY PERSONA DISTRIBUTION (for {max_tests} tests):
 Each test MUST have a test_persona field. Distribute across these personas.
 Each persona has a trait vector that explains WHY it tests different things:
 
-{_build_persona_distribution_text()}
+{persona_distribution_text}
 
 PERSONA-SPECIFIC SUCCESS CRITERIA GUIDANCE:
-- happy_path (UX): "The agent completes the expected flow, receives clear confirmation feedback (toast, redirect, page update, success message), and arrives at the correct page/state"
-- confused_novice (UX): "The website provides VISIBLE FEEDBACK for the confused interaction — an error message, a tooltip on a disabled control, a redirect with explanation, or an inline hint. Silent rejection, disabled buttons with no explanation, or forms that do nothing on submit are FAILURES — the confused user must understand what to do next"
-- adversarial (Security): "The website does NOT execute injected scripts, does NOT expose debug info, shows an appropriate error or sanitizes the input"
-- edge_case (Security): "The website handles the edge case without crashing — shows a validation message, truncates gracefully, or ignores invalid input"
-- explorer (UX): "The website provides ORIENTATION AND FEEDBACK at every step — clear page titles, breadcrumbs, 'no results found' messages, or redirect explanations. Dead ends with no feedback, blank pages, or silent failures are FAILURES"
-- impatient_user (UX): "The website provides VISIBLE STATE FEEDBACK during rapid interactions — loading indicators, 'please wait' messages, queued-action confirmation, or duplicate-prevention messages. Silent deduplication with no user-facing signal is a FAILURE"
-- angry_user (Security): "The website absorbs the hostile interaction gracefully — no crash, no broken state from force-navigation, no infinite loops from rapid clicks"
+{success_criteria_text}
 
 Each test should have:
 - A clear name reflecting the persona behavior (e.g. "Novice submits empty search form" not "Test search functionality")
@@ -185,7 +225,7 @@ Each test should have:
 - Priority level (critical, high, medium, low)
 - feature_category (navigation, search, forms, content_display, filtering_sorting, media, authentication, ecommerce, social, other)
 - target_feature (the Feature.name this test exercises)
-- test_persona (one of: happy_path, confused_novice, adversarial, edge_case, explorer, impatient_user, angry_user)
+{persona_names_instruction}
 - Step-by-step instructions (steps_description) — see STEP WRITING RULES below
 - Concrete success criteria (success_criteria) — see SUCCESS CRITERIA RULES below
 
@@ -196,7 +236,7 @@ STEP WRITING RULES — steps_description must be INTENT-BASED with alternatives:
 - BAD: "Click the Search icon in the top-right corner"
 - GOOD: "Trigger a search (via search icon, search bar, or keyboard shortcut)"
 - Each step MUST include at least one alternative approach in parentheses.
-- Write steps AS IF the agent IS the persona. For confused novice, steps include wrong clicks and backtracking. For adversarial, steps include actual attack payloads.
+- Write steps AS IF the agent IS the persona. For confused novice, steps include wrong clicks and backtracking. For adversarial, steps include actual attack payloads.{goal_steps_rule}
 
 SUCCESS CRITERIA RULES — must use BEHAVIORAL OUTCOME format:
 - Describe the behavioral outcome, not specific UI text or elements.
@@ -209,7 +249,7 @@ SUCCESS CRITERIA RULES — must use BEHAVIORAL OUTCOME format:
 - Focus on what SHOULD NOT happen (crash, data leak, unhandled exception) as much as what should.
 - "Silent handling" and "graceful degradation" are valid pass conditions ONLY for security-oriented personas (adversarial, edge_case, angry_user).
 - For UX-oriented personas (happy_path, confused_novice, impatient_user, explorer), success criteria MUST include visible feedback requirements.
-- The judge evaluates success by matching the action trace and browser URLs against these criteria.
+- The judge evaluates success by matching the action trace and browser URLs against these criteria.{goal_criteria_rule}
 
 CRITICAL — Security-oriented persona criteria:
 - For adversarial tests: if the site accepts the input without crashing, erroring, or exposing sensitive data, that IS a pass. Silent sanitization is valid and correct behavior.
@@ -268,31 +308,67 @@ def build_plan_synthesis_prompt(
 	url: str,
 	exploration_context: str,
 	max_scenarios: int,
+	discovered_personas: tuple[PersonaResult, TraitSchema] | None = None,
 ) -> str:
 	"""Synthesis prompt with persona requirements for generating a plan from exploration data."""
+	if discovered_personas:
+		from murphy.personas.bridge import (
+			build_discovered_persona_distribution_text,
+			build_discovered_success_criteria_block,
+			get_discovered_persona_names,
+		)
+
+		persona_result, trait_schema = discovered_personas
+		names = get_discovered_persona_names(persona_result)
+		persona_req = f'- Must include a diverse mix of these personas: {", ".join(names)}.\n'
+		names[0] if names else 'happy_path'
+		critical_req = '- At least one scenario must have priority=critical.\n'
+		distribution_block = (
+			f'PERSONA DISTRIBUTION:\n'
+			f'{build_discovered_persona_distribution_text(persona_result, trait_schema)}\n\n'
+			f'PERSONA-SPECIFIC SUCCESS CRITERIA GUIDANCE:\n'
+			f'{build_discovered_success_criteria_block(persona_result)}\n'
+		)
+	else:
+		persona_req = '- Must include these personas: happy_path, confused_novice, adversarial, edge_case, explorer.\n'
+		critical_req = '- At least one scenario must be happy_path with priority=critical.\n'
+		distribution_block = (
+			'PERSONA DISTRIBUTION:\n'
+			'- happy_path (~20%): Standard user completing the expected flow. Success requires visible confirmation feedback.\n'
+			'- confused_novice (~15%): Misclicks, wrong inputs, backtracking. Success requires visible guidance — error messages, tooltips, inline hints. Silent rejection is a FAIL.\n'
+			'- adversarial (~15%): XSS payloads, SQL injection, probing /admin. Silent sanitization is a valid PASS.\n'
+			'- edge_case (~15%): Empty inputs, special chars, long strings. Graceful degradation (even silent) is a PASS.\n'
+			'- explorer (~10%): Unusual navigation, unexpected feature combos. Success requires orientation feedback — page titles, breadcrumbs, "no results" messages. Dead ends with no feedback are FAILS.\n'
+			'- impatient_user (~15%): Rapid clicks, skipping steps. Success requires visible state feedback — loading indicators, "please wait" messages. Silent deduplication is a FAIL.\n'
+			'- angry_user (~10%): Rage-clicks, force-navigation, rapid form submissions, abandoning flows. Absorbing hostility without crash is a PASS.\n'
+		)
+
 	return (
 		f'Based on the following exploration of {url}, generate {max_scenarios} test scenarios.\n\n'
 		f'TASK: {task}\n\n'
 		f'EXPLORATION CONTEXT (observed UI evidence):\n{exploration_context}\n\n'
 		f'REQUIREMENTS:\n'
 		f'- Generate exactly {max_scenarios} scenarios (minimum 5 if max allows).\n'
-		f'- Must include these personas: happy_path, confused_novice, adversarial, edge_case, explorer.\n'
-		f'- At least one scenario must be happy_path with priority=critical.\n'
-		f'- The happy_path scenario must describe the chosen route AND mention alternatives considered.\n'
+		f'{persona_req}'
+		f'{critical_req}'
+		f'- The first happy-path/primary scenario must describe the chosen route AND mention alternatives considered.\n'
 		f'- steps_description must be INTENT-BASED: describe WHAT to accomplish, not exact elements. Each step must include at least one alternative approach in parentheses. BAD: "Click the Submit button". GOOD: "Submit the form (via Submit button, Enter key, or any submit control)".\n'
+		f"- GOAL PROGRESSION: Steps must progress through the stated TASK's workflow, not just search for controls. "
+		f'At least one step MUST attempt to complete the core goal action (e.g., actually submitting the form, completing the purchase, or finishing the flow), not merely look for UI elements. '
+		f'BAD: "1) Look for a create button 2) If not found, note absence 3) Recommend adding a CTA" (only discovers controls, never attempts the goal). '
+		f'GOOD: "1) Navigate to the relevant section 2) Initiate the workflow 3) Fill in required fields and submit 4) Verify the outcome".\n'
 		f'- success_criteria must use BEHAVIORAL OUTCOME format: describe the expected behavior, not specific UI text. List 3+ acceptable alternative outcomes separated by OR. BAD: "Error toast says Invalid". GOOD: "The site rejects invalid input without crashing (error message, input cleared, silent rejection, or redirect)". Never quote specific error message text as the only acceptable outcome.\n'
+		f'- GOAL COMPLETION AS SUCCESS CRITERION: The stated TASK ("{task}") being accomplished MUST be the primary success criterion for every scenario. '
+		f'Success means the goal action was completed end-to-end (e.g., entity created, purchase confirmed, flow finished), not merely that the user could begin or find the entry point. '
+		f'Persona-specific behavior criteria (e.g., visible feedback, graceful error handling) are still required, but they must be IN ADDITION TO verified goal completion. '
+		f'BAD: "The site allows the user to begin the flow" (only evaluates the entry point, not completion). '
+		f'BAD: "The site remains responsive and shows no errors" (only persona-driven, ignores the task goal). '
+		f'GOOD: "The user completes the goal action end-to-end (outcome confirmed via list update, detail view, success message, OR redirect to result) AND the site provides visible feedback throughout the interaction".\n'
 		f'- Do NOT fabricate URLs — only reference pages/paths observed in the exploration context.\n'
 		f'- Do NOT assume UI elements exist that were not observed during exploration (e.g., do not assume a search bar, filter, or input field exists unless one was seen). If a persona needs to interact with an input field but none was observed, write the scenario to: (a) look for the expected element, (b) note its absence, (c) use whatever elements ARE present to achieve the task intent, and (d) recommend the missing element as a UX improvement in the final assessment.\n'
-		f'- For security-oriented personas (adversarial, edge_case, angry_user): evaluate how the website HANDLES unexpected behavior. Any graceful handling (including silent sanitization) is a pass; only crash/leak/corruption is a fail.\n'
-		f'- For UX-oriented personas (happy_path, confused_novice, impatient_user, explorer): the site MUST provide visible feedback. Silent handling, disabled buttons with no explanation, or forms that do nothing are FAILURES.\n\n'
-		f'PERSONA DISTRIBUTION:\n'
-		f'- happy_path (~20%): Standard user completing the expected flow. Success requires visible confirmation feedback.\n'
-		f'- confused_novice (~15%): Misclicks, wrong inputs, backtracking. Success requires visible guidance — error messages, tooltips, inline hints. Silent rejection is a FAIL.\n'
-		f'- adversarial (~15%): XSS payloads, SQL injection, probing /admin. Silent sanitization is a valid PASS.\n'
-		f'- edge_case (~15%): Empty inputs, special chars, long strings. Graceful degradation (even silent) is a PASS.\n'
-		f'- explorer (~10%): Unusual navigation, unexpected feature combos. Success requires orientation feedback — page titles, breadcrumbs, "no results" messages. Dead ends with no feedback are FAILS.\n'
-		f'- impatient_user (~15%): Rapid clicks, skipping steps. Success requires visible state feedback — loading indicators, "please wait" messages. Silent deduplication is a FAIL.\n'
-		f'- angry_user (~10%): Rage-clicks, force-navigation, rapid form submissions, abandoning flows. Absorbing hostility without crash is a PASS.\n'
+		f'- For security/resilience-oriented personas: evaluate how the website HANDLES unexpected behavior. Any graceful handling (including silent sanitization) is a pass; only crash/leak/corruption is a fail.\n'
+		f'- For UX-oriented personas: the site MUST provide visible feedback. Silent handling, disabled buttons with no explanation, or forms that do nothing are FAILURES.\n\n'
+		f'{distribution_block}'
 	)
 
 
@@ -319,10 +395,10 @@ _PERSONA_DESCRIPTIONS: dict[TestPersona, str] = {
 }
 
 
-def _render_persona_for_execution(persona: TestPersona) -> str:
+def _render_persona_for_execution(persona: str) -> str:
 	"""Produce both character description and trait breakdown for the execution prompt."""
-	entry = PERSONA_REGISTRY.get(persona)
-	description = _PERSONA_DESCRIPTIONS.get(persona, '')
+	entry = PERSONA_REGISTRY.get(persona)  # type: ignore[arg-type]
+	description = _PERSONA_DESCRIPTIONS.get(persona, '')  # type: ignore[arg-type]
 
 	lines = [f'Your persona: **{persona}**']
 	if description:
@@ -351,8 +427,18 @@ def build_execution_prompt(
 	scenario: TestScenario,
 	start_url: str,
 	available_file_paths: list[str] | None = None,
+	discovered_personas: tuple[PersonaResult, TraitSchema] | None = None,
 ) -> str:
 	"""Build execution prompt with validation rules."""
+	# Resolve persona behavior block — use discovered if persona not in predefined registry
+	if discovered_personas and scenario.test_persona not in PERSONA_REGISTRY:
+		from murphy.personas.bridge import render_discovered_persona_for_execution
+
+		persona_result, trait_schema = discovered_personas
+		persona_block = render_discovered_persona_for_execution(scenario.test_persona, persona_result, trait_schema)
+	else:
+		persona_block = _render_persona_for_execution(scenario.test_persona)
+
 	return (
 		f'Test: {scenario.name}\n\n'
 		f'Global task context: {global_task}\n\n'
@@ -377,7 +463,7 @@ def build_execution_prompt(
 		f'  (4) Run at most one search_page (or equivalent) to confirm fallback paths (e.g. support, contact, "Get Started"). Once you have that result, do NOT run another step only to "collect evidence" or "capture context" — produce the verdict immediately.\n'
 		f'  (5) In your final done() response, include a "Missing UI elements" section noting: what was expected, that it was absent, what you used instead, and a recommendation that the missing element should ideally be present for better user clarity.\n\n'
 		f'PERSONA BEHAVIOR:\n'
-		f'{_render_persona_for_execution(scenario.test_persona)}\n\n'
+		f'{persona_block}\n\n'
 		f'EDGE CASE / ADVERSARIAL TESTING:\n'
 		f'- For edge_case or adversarial tests: ATTEMPT the action even if controls appear disabled. Click the submit/publish button, try form submission — observe what happens.\n'
 		f'- Do NOT just search for error messages or describe what you see. Actually interact with the form: leave fields empty, then click submit. Report the observed behavior (disabled button, inline validation, error toast, silent rejection, etc.).\n'

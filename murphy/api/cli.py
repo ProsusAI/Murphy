@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING
 from dotenv import load_dotenv
 
 from browser_use.config import CONFIG
+from browser_use.tokens.service import TokenCost
 
 if TYPE_CHECKING:
 	from murphy.api.server import ServerState
@@ -50,7 +51,7 @@ def main() -> int:
 	parser.add_argument('--no-auth', action='store_true', help='Skip auth detection entirely, treat site as public')
 	parser.add_argument('--features', help='Path to existing features markdown (skips analysis, goes to test generation)')
 	parser.add_argument('--plan', help='Path to existing YAML test plan (skips analysis + test generation)')
-	parser.add_argument('--max-tests', type=int, default=8, help='Max test scenarios (default: 8)')
+	parser.add_argument('--max-tests', type=int, default=None, help='Max test scenarios (default: number of personas)')
 	parser.add_argument(
 		'--provider', default='openai', help='LLM provider (default: openai). e.g. google, anthropic, azure, mistral'
 	)
@@ -78,6 +79,19 @@ def main() -> int:
 		metavar='N',
 		help='Number of tests to run concurrently (default: 3)',
 	)
+	parser.add_argument(
+		'--discover-personas',
+		action='store_true',
+		help='Run persona discovery pipeline first, then use discovered personas for testing',
+	)
+	parser.add_argument(
+		'--personas',
+		nargs='?',
+		const=True,
+		default=None,
+		metavar='PATH',
+		help='Use discovered personas (default: {output_dir}/personas.json, or specify a path)',
+	)
 	args = parser.parse_args()
 
 	if not args.open and not args.url:
@@ -101,6 +115,7 @@ async def _async_main(args: argparse.Namespace) -> None:
 	from browser_use.browser.profile import BrowserProfile
 	from browser_use.browser.session import BrowserSession
 	from murphy.api.auth import detect_auth_required, wait_for_manual_login
+	from murphy.browser.cleanup import clear_browser_pid, get_browser_pid_from_session, kill_stale_browser, record_browser_pid
 	from murphy.browser.patches import apply as apply_patches
 	from murphy.core.analysis import analyze_website
 	from murphy.core.execution import execute_tests_with_session
@@ -110,7 +125,12 @@ async def _async_main(args: argparse.Namespace) -> None:
 	from murphy.io.fixtures import ensure_dummy_fixture_files
 	from murphy.io.test_plan_io import load_test_plan, save_test_plan
 	from murphy.llm import create_llm
-	from murphy.models import WebsiteAnalysis
+	from murphy.models import TokenUsage, WebsiteAnalysis
+	from murphy.personas.pipeline_models import PersonaResult, TraitSchema
+	from murphy.personas.storage import load_personas, save_personas
+
+	# Kill any orphan browser from a previous crashed run
+	kill_stale_browser()
 
 	# Apply patches early (idempotent)
 	apply_patches()
@@ -128,6 +148,36 @@ async def _async_main(args: argparse.Namespace) -> None:
 	)
 	output_dir = Path(args.output_dir)
 	output_dir.mkdir(parents=True, exist_ok=True)
+
+	# ── Token tracking for Murphy execution ──
+	murphy_token_cost = TokenCost()
+	murphy_token_cost.register_llm(llm)
+	if judge_llm is not None:
+		murphy_token_cost.register_llm(judge_llm)
+
+	persona_discovery_tokens: TokenUsage | None = None
+
+	# ── Resolve discovered personas ──
+	discovered_personas: tuple[PersonaResult, TraitSchema] | None = None
+
+	if args.discover_personas:
+		from murphy.personas.pipeline import run_persona_pipeline
+
+		logger.info('Running persona discovery pipeline...')
+		schema, _scores, persona_result, _sample, persona_discovery_tokens = await run_persona_pipeline(
+			model=args.model, provider=args.provider
+		)
+		save_personas(schema, persona_result, output_dir)
+		discovered_personas = (persona_result, schema)
+		logger.info('Discovered %d personas, saved to %s', len(persona_result.personas), output_dir / 'personas.json')
+	elif args.personas is not None:
+		if args.personas is True:
+			personas_path = output_dir / 'personas.json'
+		else:
+			personas_path = Path(args.personas)
+		assert personas_path.exists(), f'Personas file not found: {personas_path}'
+		schema, persona_result = load_personas(personas_path)
+		discovered_personas = (persona_result, schema)
 
 	browser_session: BrowserSession | None = None
 	analysis: WebsiteAnalysis | None = None
@@ -154,6 +204,10 @@ async def _async_main(args: argparse.Namespace) -> None:
 			)
 		)
 		await browser_session.start()
+
+		browser_pid = get_browser_pid_from_session(browser_session)
+		if browser_pid:
+			record_browser_pid(browser_pid)
 
 		if args.auth:
 			# --auth flag: skip detection, go straight to login wait
@@ -186,6 +240,7 @@ async def _async_main(args: argparse.Namespace) -> None:
 				session=browser_session,
 				max_scenarios=args.max_tests,
 				max_steps=args.max_steps,
+				discovered_personas=discovered_personas,
 			)
 
 			# Save test plan to YAML
@@ -225,7 +280,9 @@ async def _async_main(args: argparse.Namespace) -> None:
 				logger.info('  Using %d features for test generation.\n', len(analysis.features))
 
 			# ── Generate tests ──
-			test_plan = await generate_tests(args.url, analysis, llm, args.max_tests, goal=args.goal)
+			test_plan = await generate_tests(
+				args.url, analysis, llm, args.max_tests, goal=args.goal, discovered_personas=discovered_personas
+			)
 
 			# Save test plan to YAML
 			plan_path = save_test_plan(args.url, test_plan, output_dir)
@@ -258,9 +315,26 @@ async def _async_main(args: argparse.Namespace) -> None:
 			)
 
 		# ── Phase 3: Execute ──
+		def _get_murphy_tokens() -> TokenUsage:
+			usage = murphy_token_cost.get_usage_tokens_for_model(args.model)
+			total_input = usage.prompt_tokens
+			total_output = usage.completion_tokens
+			if judge_llm is not None:
+				judge_usage = murphy_token_cost.get_usage_tokens_for_model(args.judge_model)
+				total_input += judge_usage.prompt_tokens
+				total_output += judge_usage.completion_tokens
+			return TokenUsage(input_tokens=total_input, output_tokens=total_output)
+
 		def _on_test_complete(results: list[TestResult]) -> None:
 			if analysis:
-				write_reports_and_print(args.url, analysis, results, output_dir)
+				write_reports_and_print(
+					args.url,
+					analysis,
+					results,
+					output_dir,
+					persona_discovery_tokens=persona_discovery_tokens,
+					murphy_tokens=_get_murphy_tokens(),
+				)
 
 		if not args.ui:
 			results = await execute_tests_with_session(
@@ -275,9 +349,17 @@ async def _async_main(args: argparse.Namespace) -> None:
 				max_concurrent=args.parallel,
 				judge_llm=judge_llm,
 				output_dir=output_dir,
+				discovered_personas=discovered_personas,
 			)
 			if analysis:
-				write_reports_and_print(args.url, analysis, results, output_dir)
+				write_reports_and_print(
+					args.url,
+					analysis,
+					results,
+					output_dir,
+					persona_discovery_tokens=persona_discovery_tokens,
+					murphy_tokens=_get_murphy_tokens(),
+				)
 			else:
 				_log_results_summary(results)
 			return
@@ -301,6 +383,7 @@ async def _async_main(args: argparse.Namespace) -> None:
 				max_concurrent=args.parallel,
 				judge_llm=judge_llm,
 				output_dir=output_dir,
+				discovered_personas=discovered_personas,
 			)
 
 		state = ServerState(
@@ -320,7 +403,14 @@ async def _async_main(args: argparse.Namespace) -> None:
 				await asyncio.sleep(1)
 				if state.done and state.results and not getattr(state, '_reports_written', False):
 					if analysis:
-						write_reports_and_print(args.url, analysis, state.results, output_dir)
+						write_reports_and_print(
+							args.url,
+							analysis,
+							state.results,
+							output_dir,
+							persona_discovery_tokens=persona_discovery_tokens,
+							murphy_tokens=_get_murphy_tokens(),
+						)
 					else:
 						_log_results_summary(state.results)
 					state._reports_written = True  # type: ignore[attr-defined]
@@ -332,6 +422,7 @@ async def _async_main(args: argparse.Namespace) -> None:
 	finally:
 		if browser_session:
 			await browser_session.kill()
+		clear_browser_pid()
 
 
 async def _open_mode(output_dir: Path) -> None:

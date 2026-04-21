@@ -147,7 +147,7 @@ def suggest_fix(result: TestResult) -> str:
 		)
 
 	# Test-type-specific suggestions for security / boundary personas
-	persona_entry = PERSONA_REGISTRY.get(persona)
+	persona_entry = PERSONA_REGISTRY.get(persona)  # type: ignore[arg-type]
 	test_type = persona_entry[1] if persona_entry else 'ux'
 	if test_type in ('security', 'boundary'):
 		silent_handling_signals = [

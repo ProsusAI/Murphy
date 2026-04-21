@@ -91,6 +91,13 @@ uv run murphy --url https://example.com --plan murphy/output/test_plan.yaml
 # Open the interactive UI for a previously completed run (no browser or LLM required)
 uv run murphy --open
 uv run murphy --open --output-dir ./murphy/output/my-run
+
+# Run persona discovery first, then use those personas for testing
+uv run murphy --url https://example.com --discover-personas
+
+# Reuse previously discovered personas (defaults to murphy/output/personas.json)
+uv run murphy --url https://example.com --personas
+uv run murphy --url https://example.com --personas path/to/personas.json
 ```
 
 https://github.com/user-attachments/assets/7fbc441d-e02f-4321-aba7-3aec0cb17163
@@ -118,6 +125,7 @@ Default output directory: `./murphy/output/`
 |------|-------------|
 | `<site>_features.md` | Discovered features, pages, and user flows (editable; only generated without `--goal`) |
 | `test_plan.yaml` | Generated test scenarios with steps and success criteria (editable) |
+| `personas.json` | Discovered personas (only generated with `--discover-personas`) |
 | `evaluation_report.json` | Full structured results (machine-readable) |
 | `evaluation_report.md` | Human-readable summary with pass/fail per test |
 
@@ -191,6 +199,8 @@ The full JSON report (`evaluation_report.json`) contains structured results, act
 | `--no-highlights` | `false` | Disable bounding boxes on interactive elements in the browser |
 | `--max-steps` | `30` | Max agent steps per exploration/execution phase |
 | `--parallel` | `3` | Number of tests to run concurrently |
+| `--discover-personas` | `false` | Run persona discovery pipeline before test generation; saves `personas.json` to the output directory (requires `POSTHOG_API_KEY`, `POSTHOG_PROJECT_ID`, `POSTHOG_HOST`) |
+| `--personas` | | Reuse previously discovered personas (defaults to `{output-dir}/personas.json`, or specify a path) |
 
 ## Interactive UI
 
@@ -297,6 +307,16 @@ Set the API key for whichever provider you use (at least one is required):
 | `MURPHY_MAX_CONCURRENT_JOBS` | `2` | Maximum concurrent browser jobs |
 | `MURPHY_REQUEST_TIMEOUT` | `1800` | HTTP keep-alive timeout (seconds) |
 | `MURPHY_JOB_TIMEOUT_OVERRIDE` | *(none)* | Override all per-endpoint job timeouts (seconds) |
+
+### Persona Discovery
+
+Required when using `--discover-personas`. Murphy queries PostHog to pull user sessions and events, which it uses to derive realistic personas. Requires a PostHog instance with posthog-js >= 1.93.0 (the client-side `$elements_chain` string format).
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `POSTHOG_API_KEY` | *(required)* | PostHog personal API key |
+| `POSTHOG_PROJECT_ID` | *(required)* | PostHog project ID |
+| `POSTHOG_HOST` | `https://eu.posthog.com` | PostHog instance URL (use `https://us.posthog.com` for the US cloud) |
 
 ### Browser
 
