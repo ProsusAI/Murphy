@@ -593,7 +593,7 @@ def build_execution_prompt(
 		f'  (4) Run at most one search_page (or equivalent) to confirm fallback paths (e.g. support, contact, "Get Started"). Once you have that result, do NOT run another step only to "collect evidence" or "capture context" — produce the verdict immediately.\n'
 		f'  (5) In your final done() response, include a "Missing UI elements" section noting: what was expected, that it was absent, what you used instead, and a recommendation that the missing element should ideally be present for better user clarity.\n\n'
 		f'PERSONA BEHAVIOR:\n'
-		f'{_render_persona_for_execution(scenario.test_persona)}\n\n'
+		f'{persona_block}\n\n'
 		f'{_build_suggestion_instruction(scenario.test_persona)}\n'
 		f'EDGE CASE / ADVERSARIAL TESTING:\n'
 		f'- For edge_case or adversarial tests: ATTEMPT the action even if controls appear disabled. Click the submit/publish button, try form submission — observe what happens.\n'
