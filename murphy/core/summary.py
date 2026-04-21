@@ -99,6 +99,21 @@ async def generate_executive_summary(
 			f'{i}. [{status}] {r.scenario.name} (persona: {persona}, priority: {r.scenario.priority}){reason}{fq_note}{trait_note}'
 		)
 
+	# Collect feature suggestions from all personas
+	suggestions_parts: list[str] = []
+	for r in results:
+		if r.feature_suggestions:
+			persona = r.scenario.test_persona.replace('_', ' ')
+			for s in r.feature_suggestions:
+				suggestions_parts.append(f'- [{persona}] {s}')
+	suggestions_block = ''
+	if suggestions_parts:
+		suggestions_block = (
+			f'\n\nFeature suggestions from persona testing:\n'
+			f'{chr(10).join(suggestions_parts)}\n'
+			f'Use these persona-grounded suggestions to inform your recommended_actions.'
+		)
+
 	prompt = f"""Analyze these website evaluation results and produce an executive summary.
 
 Website: {url}
@@ -110,12 +125,12 @@ Results: {summary.passed}/{summary.total} tests passed ({summary.pass_rate}%)
 - Test Limitations: {summary.test_limitations}
 
 Individual results:
-{chr(10).join(results_summary_parts)}
+{chr(10).join(results_summary_parts)}{suggestions_block}
 
 Provide:
 1. overall_assessment: 1-2 sentences on the site's overall quality based on test results
 2. key_findings: 3-5 specific UX findings ranked by severity (most severe first). Each finding should reference specific test results. When trait evaluations are available, reference the specific trait dimension that failed (e.g., "Users with low reading comprehension will miss the error message because it's plain body text"). When feedback quality scores are available, reference specific gaps (e.g., "3 of 8 tests had no actionable feedback").
-3. recommended_actions: Top 3 concrete actions the site team should take to improve UX
+3. recommended_actions: Top 3 concrete actions the site team should take to improve UX. When feature suggestions from persona testing are available, prioritize the most frequently mentioned or highest-impact suggestions.
 
 Be specific and actionable. Reference actual test names and outcomes. Do NOT use generic statements."""
 	prompt = sanitize_surrogates(prompt)

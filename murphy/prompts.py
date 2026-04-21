@@ -483,6 +483,75 @@ def _render_persona_for_execution(persona: str) -> str:
 	return '\n'.join(lines)
 
 
+_PERSONA_SUGGESTION_INSTRUCTIONS: dict[str, str] = {
+	'happy_path': (
+		'As a standard user completing the expected flow, suggest 1-3 features that would make '
+		'the happy path smoother (e.g. clearer confirmation feedback, streamlined form flows, '
+		'better success states, progress indicators for multi-step processes).'
+	),
+	'confused_novice': (
+		'As a confused first-time user, suggest 1-3 features that would help you orient yourself '
+		'(e.g. onboarding checklists, guided tours, empty-state guidance, clearer CTAs, '
+		'contextual help tooltips, "what is this?" hints).'
+	),
+	'adversarial': (
+		'As a security tester, suggest 1-3 security UX improvements based on what you observed '
+		'(e.g. 2FA prompts, rate-limit feedback, error messaging that does not leak internals, '
+		'CAPTCHA on sensitive actions, input sanitization indicators).'
+	),
+	'edge_case': (
+		'As a boundary-condition tester, suggest 1-3 error-recovery features based on what you observed '
+		'(e.g. auto-save, progress persistence, undo/redo, clear recovery paths after errors, '
+		'input length indicators, character limit warnings).'
+	),
+	'explorer': (
+		'As an exploratory user taking unexpected paths, suggest 1-3 discoverability improvements '
+		'(e.g. global search, keyboard shortcuts, breadcrumb navigation, contextual related-feature links, '
+		'site map, "you might also like" suggestions).'
+	),
+	'impatient_user': (
+		'As an impatient user who wants instant feedback, suggest 1-3 speed or responsiveness improvements '
+		'(e.g. skeleton loaders, optimistic UI updates, progress bars, reduced click-depth, '
+		'prefetching on hover, instant search).'
+	),
+	'angry_user': (
+		'As a frustrated user, suggest 1-3 error-recovery features that would reduce frustration '
+		'(e.g. auto-save on form abandonment, undo for destructive actions, clear "start over" paths, '
+		'graceful handling of rapid interactions, queue/debounce feedback).'
+	),
+	'boomer_ui': (
+		'As an older user who values readability and familiarity, suggest 1-3 accessibility or legibility '
+		'improvements (e.g. font-size control, high-contrast mode, larger buttons with text labels, '
+		'persistent visible navigation, reduced reliance on icons without text).'
+	),
+	'genz_ui': (
+		'As a young design-savvy user, suggest 1-3 improvements to make the design feel more current '
+		'and engaging (e.g. dark mode toggle, micro-interactions, expressive typography, gamification elements, '
+		'branded illustrations, smooth transitions).'
+	),
+	'whitespace_police_ui': (
+		'As a spacing perfectionist, suggest 1-3 design-system improvements to resolve spacing issues '
+		'(e.g. a spacing scale with 4/8/16/24/32px tokens, a consistent grid system, '
+		'component-level padding standards, vertical rhythm baseline).'
+	),
+}
+
+
+def _build_suggestion_instruction(persona: str) -> str:
+	"""Return the feature suggestion instruction block for a persona."""
+	instruction = _PERSONA_SUGGESTION_INSTRUCTIONS.get(persona, (
+		'Based on your persona perspective, suggest 1-3 concrete feature or UX improvements '
+		'that would enhance the experience for users like you.'
+	))
+	return (
+		f'FEATURE SUGGESTIONS:\n'
+		f'In your ScenarioExecutionVerdict, populate the feature_suggestions field with 1-3 concrete, '
+		f'actionable improvement suggestions based on what you observed during testing.\n'
+		f'{instruction}\n'
+		f'Each suggestion should be a single sentence describing a specific, implementable improvement.\n'
+	)
+
+
 def build_execution_prompt(
 	global_task: str,
 	scenario: TestScenario,
@@ -524,7 +593,8 @@ def build_execution_prompt(
 		f'  (4) Run at most one search_page (or equivalent) to confirm fallback paths (e.g. support, contact, "Get Started"). Once you have that result, do NOT run another step only to "collect evidence" or "capture context" — produce the verdict immediately.\n'
 		f'  (5) In your final done() response, include a "Missing UI elements" section noting: what was expected, that it was absent, what you used instead, and a recommendation that the missing element should ideally be present for better user clarity.\n\n'
 		f'PERSONA BEHAVIOR:\n'
-		f'{persona_block}\n\n'
+		f'{_render_persona_for_execution(scenario.test_persona)}\n\n'
+		f'{_build_suggestion_instruction(scenario.test_persona)}\n'
 		f'EDGE CASE / ADVERSARIAL TESTING:\n'
 		f'- For edge_case or adversarial tests: ATTEMPT the action even if controls appear disabled. Click the submit/publish button, try form submission — observe what happens.\n'
 		f'- Do NOT just search for error messages or describe what you see. Actually interact with the form: leave fields empty, then click submit. Report the observed behavior (disabled button, inline validation, error toast, silent rejection, etc.).\n'

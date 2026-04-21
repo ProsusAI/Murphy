@@ -412,6 +412,12 @@ def render_results_html(
 				if failure_reason:
 					body_parts.append(f'<div class="detail"><strong>Failure reason:</strong> {_e(failure_reason)}</div>')
 
+			if r.feature_suggestions:
+				suggestions_html = ''.join(f'<li>{_e(s)}</li>' for s in r.feature_suggestions)
+				body_parts.append(
+					f'<div class="detail"><strong>Feature suggestions:</strong><ul>{suggestions_html}</ul></div>'
+				)
+
 			if not r.success:
 				suggestion = suggest_fix(r)
 				if suggestion:

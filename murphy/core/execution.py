@@ -192,6 +192,16 @@ async def _execute_single_test(
 		reason = judgement.failure_reason or (verdict.reason if verdict else '')
 		validation_evidence = (verdict.validation_evidence if verdict else '') or ''
 
+		# Merge feature suggestions: prefer judge (authoritative), deduplicate with agent's
+		judge_suggestions = judgement.feature_suggestions or []
+		agent_suggestions = (verdict.feature_suggestions if verdict else []) or []
+		seen_suggestions: set[str] = set(s.lower().strip() for s in judge_suggestions)
+		merged_suggestions = list(judge_suggestions)
+		for s in agent_suggestions:
+			if s.lower().strip() not in seen_suggestions:
+				merged_suggestions.append(s)
+				seen_suggestions.add(s.lower().strip())
+
 		all_actions = history.model_actions()
 		errors = history.errors()
 
@@ -236,6 +246,7 @@ async def _execute_single_test(
 			feedback_quality=judgement.feedback_quality,
 			trait_evaluations=judgement.trait_evaluations,
 			missing_signals=judgement.missing_signals,
+			feature_suggestions=merged_suggestions,
 		)
 		test_result.failure_category = classify_failure(test_result)
 	except Exception as exc:

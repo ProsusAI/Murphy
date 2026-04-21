@@ -325,6 +325,10 @@ class ScenarioExecutionVerdict(BaseModel):
 			'Concrete verification evidence used for verdict: what was checked, where it was checked, and what was observed.'
 		),
 	)
+	feature_suggestions: list[str] = Field(
+		default_factory=list,
+		description='1-3 concrete feature or UX improvement suggestions from this persona perspective.',
+	)
 
 
 # ─── Judge verdict ─────────────────────────────────────────────────────────────
@@ -351,6 +355,10 @@ class JudgeVerdict(BaseModel):
 			'Report for UX improvement only — never used to fail the test.'
 		),
 	)
+	feature_suggestions: list[str] = Field(
+		default_factory=list,
+		description='1-3 concrete feature or UX improvement suggestions from this persona perspective.',
+	)
 
 
 # ─── Phase 3: Results ──────────────────────────────────────────────────────────
@@ -375,6 +383,7 @@ class TestResult(BaseModel):
 	feedback_quality: FeedbackQualityScore | None = None
 	trait_evaluations: dict[str, str] | None = None
 	missing_signals: list[str] = Field(default_factory=list)
+	feature_suggestions: list[str] = Field(default_factory=list)
 
 
 class ReportSummary(BaseModel):
