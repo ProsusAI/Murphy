@@ -90,6 +90,12 @@ class PersonaDescription(BaseModel):
 	judge_questions: list[str] = Field(
 		description='2-4 evaluation questions for the judge to assess whether the site handled this persona well',
 	)
+	suggestion_instruction: str = Field(
+		description=(
+			'Instruction for generating feature suggestions from this persona\'s perspective. '
+			'Format: "As a <role>, suggest 1-3 <category> improvements (e.g. <2-3 concrete examples>)."'
+		),
+	)
 
 
 class PersonaLabels(BaseModel):
@@ -119,6 +125,7 @@ class Persona(BaseModel):
 	success_criteria_guidance: str = ''
 	execution_hints: list[str] = Field(default_factory=list)
 	judge_questions: list[str] = Field(default_factory=list)
+	suggestion_instruction: str = ''
 
 
 class PersonaResult(BaseModel):

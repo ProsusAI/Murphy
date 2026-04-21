@@ -31,6 +31,12 @@ def lookup_persona_by_slug(slug: str, result: PersonaResult) -> Persona | None:
 	return None
 
 
+def get_discovered_suggestion_instruction(persona_slug: str, result: PersonaResult) -> str | None:
+	"""Return the suggestion instruction for a discovered persona, or None if not found."""
+	persona = lookup_persona_by_slug(persona_slug, result)
+	return persona.suggestion_instruction if persona else None
+
+
 def build_discovered_persona_distribution_text(result: PersonaResult, schema: TraitSchema) -> str:
 	"""Format the MANDATORY PERSONA DISTRIBUTION block for test generation prompts."""
 	total_sessions = sum(p.size for p in result.personas)

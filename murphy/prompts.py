@@ -537,12 +537,21 @@ _PERSONA_SUGGESTION_INSTRUCTIONS: dict[str, str] = {
 }
 
 
-def _build_suggestion_instruction(persona: str) -> str:
+def _build_suggestion_instruction(
+	persona: str,
+	discovered_personas: tuple[PersonaResult, TraitSchema] | None = None,
+) -> str:
 	"""Return the feature suggestion instruction block for a persona."""
-	instruction = _PERSONA_SUGGESTION_INSTRUCTIONS.get(persona, (
-		'Based on your persona perspective, suggest 1-3 concrete feature or UX improvements '
-		'that would enhance the experience for users like you.'
-	))
+	instruction = _PERSONA_SUGGESTION_INSTRUCTIONS.get(persona)
+	if instruction is None and discovered_personas:
+		from murphy.personas.bridge import get_discovered_suggestion_instruction
+
+		instruction = get_discovered_suggestion_instruction(persona, discovered_personas[0]) or None
+	if instruction is None:
+		instruction = (
+			'Based on your persona perspective, suggest 1-3 concrete feature or UX improvements '
+			'that would enhance the experience for users like you.'
+		)
 	return (
 		f'FEATURE SUGGESTIONS:\n'
 		f'In your ScenarioExecutionVerdict, populate the feature_suggestions field with 1-3 concrete, '
@@ -594,7 +603,7 @@ def build_execution_prompt(
 		f'  (5) In your final done() response, include a "Missing UI elements" section noting: what was expected, that it was absent, what you used instead, and a recommendation that the missing element should ideally be present for better user clarity.\n\n'
 		f'PERSONA BEHAVIOR:\n'
 		f'{persona_block}\n\n'
-		f'{_build_suggestion_instruction(scenario.test_persona)}\n'
+		f'{_build_suggestion_instruction(scenario.test_persona, discovered_personas)}\n'
 		f'EDGE CASE / ADVERSARIAL TESTING:\n'
 		f'- For edge_case or adversarial tests: ATTEMPT the action even if controls appear disabled. Click the submit/publish button, try form submission — observe what happens.\n'
 		f'- Do NOT just search for error messages or describe what you see. Actually interact with the form: leave fields empty, then click submit. Report the observed behavior (disabled button, inline validation, error toast, silent rejection, etc.).\n'
