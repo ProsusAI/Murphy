@@ -170,15 +170,6 @@ If verdict=true and all expected signals were observed, leave `missing_signals` 
 
 
 
-## Feature suggestions
-
-After evaluating the test, produce 1-3 concrete, actionable feature or UX improvement suggestions in `feature_suggestions`. These should be grounded in what you observed during the test, specific to the persona's perspective:
-- For UX personas (happy_path, confused_novice, impatient_user, explorer): suggest usability improvements like better onboarding, clearer feedback, navigation aids, or loading indicators.
-- For security personas (adversarial, edge_case, angry_user): suggest security UX improvements like rate-limit feedback, error messaging that doesn't leak internals, input validation indicators, or recovery paths.
-- For design personas (boomer_ui, genz_ui, whitespace_police_ui): suggest visual/accessibility improvements like font controls, dark mode, spacing systems, or contrast enhancements.
-
-Each suggestion should be a single sentence describing a specific, implementable improvement. Always populate this field — even passing tests have room for improvement.
-
 ## Failure classification
 
 If verdict is FALSE, you MUST also classify the failure:
@@ -249,7 +240,6 @@ These are UX observations only. A non-empty `missing_signals` on a passing test 
 Based on the Navigation Evidence and Pages Reached, did the agent successfully complete this test?
 Evaluate each trait dimension independently and report per-trait assessments in trait_evaluations.
 Also assess feedback quality (response_present, response_timely, response_clear, response_actionable, feedback_type).
-Finally, populate feature_suggestions with 1-3 concrete improvement suggestions from this persona's perspective.
 """
 
 

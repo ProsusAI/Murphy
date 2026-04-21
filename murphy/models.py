@@ -355,10 +355,6 @@ class JudgeVerdict(BaseModel):
 			'Report for UX improvement only — never used to fail the test.'
 		),
 	)
-	feature_suggestions: list[str] = Field(
-		default_factory=list,
-		description='1-3 concrete feature or UX improvement suggestions from this persona perspective.',
-	)
 
 
 # ─── Phase 3: Results ──────────────────────────────────────────────────────────

@@ -193,15 +193,21 @@ def write_markdown_report(report: EvaluationReport, output_dir: Path) -> Path:
 			for s in r.feature_suggestions:
 				all_suggestions.append((persona_label, s))
 	if all_suggestions:
-		lines += [
-			'',
-			'### Feature Suggestions',
-			'',
+		suggestion_table = [
 			'| Persona | Suggestion |',
 			'|---------|------------|',
 		]
 		for persona_label, suggestion in all_suggestions:
-			lines.append(f'| {persona_label} | {suggestion} |')
+			suggestion_table.append(f'| {persona_label} | {suggestion} |')
+		lines += [
+			'',
+			'<details>',
+			f'<summary><strong>Feature Suggestions</strong> ({len(all_suggestions)} suggestions from {len({p for p, _ in all_suggestions})} personas)</summary>',
+			'',
+		] + suggestion_table + [
+			'',
+			'</details>',
+		]
 
 	lines += ['', '---', '']
 
