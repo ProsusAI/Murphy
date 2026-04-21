@@ -23,9 +23,10 @@ from dotenv import load_dotenv
 
 from browser_use.config import CONFIG
 from browser_use.tokens.service import TokenCost
+from murphy.models import TokenUsage
 
 if TYPE_CHECKING:
-	from browser_use.llm import ChatOpenAI
+	from browser_use.llm import BaseChatModel
 	from murphy.api.server import ServerState
 	from murphy.models import TestPlan, TestResult
 	from murphy.personas.pipeline_models import PersonaResult, TraitSchema
@@ -54,8 +55,14 @@ def main() -> int:
 	parser.add_argument('--features', help='Path to existing features markdown (skips analysis, goes to test generation)')
 	parser.add_argument('--plan', help='Path to existing YAML test plan (skips analysis + test generation)')
 	parser.add_argument('--max-tests', type=int, default=8, help='Max test scenarios (default: 8)')
-	parser.add_argument('--model', default='gpt-5-mini', help='OpenAI model for agent tasks (default: gpt-5-mini)')
-	parser.add_argument('--judge-model', default='gpt-5-mini', help='OpenAI model for judging verdicts (default: gpt-5-mini)')
+	parser.add_argument(
+		'--provider', default='openai', help='LLM provider (default: openai). e.g. google, anthropic, azure, mistral'
+	)
+	parser.add_argument(
+		'--model', default='gpt-5-mini', help='LLM model name as it appears in the provider docs (default: gpt-5-mini)'
+	)
+	parser.add_argument('--judge-provider', default=None, help='LLM provider for judging (defaults to --provider)')
+	parser.add_argument('--judge-model', default=None, help='LLM model for judging (defaults to --model)')
 	parser.add_argument('--output-dir', default='./murphy/output', help='Output directory for reports')
 	parser.add_argument(
 		'--open',
@@ -115,9 +122,8 @@ async def _async_main(args: argparse.Namespace) -> None:
 
 	from browser_use.browser.profile import BrowserProfile
 	from browser_use.browser.session import BrowserSession
-	from browser_use.llm import ChatOpenAI
 	from murphy.api.auth import detect_auth_required, wait_for_manual_login
-	from murphy.browser.cleanup import clear_browser_pid, get_browser_pid_from_session, kill_stale_browser, record_browser_pid
+	from murphy.browser.cleanup import clear_browser_pid, get_browser_pid_from_session, record_browser_pid
 	from murphy.browser.patches import apply as apply_patches
 	from murphy.core.analysis import analyze_website
 	from murphy.core.execution import execute_tests_with_session
@@ -126,10 +132,9 @@ async def _async_main(args: argparse.Namespace) -> None:
 	from murphy.io.features_io import read_features_markdown, write_features_markdown
 	from murphy.io.fixtures import ensure_dummy_fixture_files
 	from murphy.io.test_plan_io import load_test_plan, save_test_plan
-	from murphy.models import TokenUsage, WebsiteAnalysis
-
-	# Kill any orphan browser from a previous crashed run
-	kill_stale_browser()
+	from murphy.llm import create_llm
+	from murphy.models import WebsiteAnalysis
+	from murphy.personas.storage import load_personas, save_personas
 
 	# Apply patches early (idempotent)
 	apply_patches()
@@ -137,10 +142,14 @@ async def _async_main(args: argparse.Namespace) -> None:
 	# Ensure dummy fixture files exist for upload testing
 	fixture_paths = ensure_dummy_fixture_files()
 
-	from murphy.personas.storage import load_personas, save_personas
-
-	llm = ChatOpenAI(model=args.model)
-	judge_llm = ChatOpenAI(model=args.judge_model) if args.judge_model != args.model else None
+	llm = create_llm(args.model, provider=args.provider)
+	judge_provider = args.judge_provider or args.provider
+	judge_model = args.judge_model or args.model
+	judge_llm = (
+		create_llm(judge_model, provider=judge_provider)
+		if (judge_model != args.model or judge_provider != args.provider)
+		else None
+	)
 	output_dir = Path(args.output_dir)
 	output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -425,7 +434,7 @@ async def _async_main(args: argparse.Namespace) -> None:
 async def _run_similarity_eval(
 	output_dir: Path,
 	discovered_personas: tuple[PersonaResult, TraitSchema] | None,
-	llm: ChatOpenAI,
+	llm: BaseChatModel,
 ) -> None:
 	"""Run the persona similarity eval after tests complete and print a summary."""
 	if discovered_personas is None:

@@ -2,7 +2,7 @@
 name = "murphy"
 description = "AI-driven website evaluation powered by browser-use"
 authors = [{ name = "MIH AI B.V." }]
-version = "1.0.0"
+version = "1.1.0"
 readme = "README.md"
 requires-python = ">=3.11,<4.0"
 classifiers = [

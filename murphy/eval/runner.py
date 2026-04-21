@@ -14,7 +14,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from browser_use.llm import ChatOpenAI
+from browser_use.llm import BaseChatModel
 from murphy.eval.models import PersonaSimilarityResult, SimilarityReport
 from murphy.eval.similarity import evaluate_similarity
 from murphy.models import EvaluationReport
@@ -120,7 +120,7 @@ async def run_similarity_eval(
 	output_dir: Path,
 	schema: TraitSchema,
 	persona_result: PersonaResult,
-	llm: ChatOpenAI,
+	llm: BaseChatModel,
 ) -> SimilarityReport | None:
 	"""Evaluate persona similarity for all discovered-persona tests in output_dir.
 

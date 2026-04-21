@@ -14,7 +14,6 @@ from typing import Any
 
 from browser_use.browser.profile import BrowserProfile
 from browser_use.browser.session import BrowserSession
-from browser_use.llm import ChatOpenAI
 from murphy.browser.cleanup import clear_browser_pid, get_browser_pid_from_session, kill_stale_browser, record_browser_pid
 from murphy.browser.patches import apply as apply_patches
 from murphy.evaluate import (
@@ -25,19 +24,21 @@ from murphy.evaluate import (
 	generate_tests,
 )
 from murphy.io.fixtures import ensure_dummy_fixture_files
+from murphy.llm import create_llm
 from murphy.models import ReportSummary, TestPlan, TestResult, WebsiteAnalysis
 
 
 async def run_analyze(
 	url: str,
 	model: str,
+	provider: str = 'openai',
 	goal: str | None = None,
 	browser_session: BrowserSession | None = None,
 ) -> WebsiteAnalysis:
 	"""Run website analysis (feature discovery)."""
 	apply_patches()
 	kill_stale_browser()
-	llm = ChatOpenAI(model=model)
+	llm = create_llm(model, provider=provider)
 	own_session = browser_session is None
 	if own_session:
 		browser_session = BrowserSession(browser_profile=BrowserProfile(headless=True, keep_alive=False))
@@ -57,12 +58,13 @@ async def run_generate_plan(
 	url: str,
 	analysis: WebsiteAnalysis,
 	model: str,
+	provider: str = 'openai',
 	max_tests: int = 8,
 	goal: str | None = None,
 ) -> TestPlan:
 	"""Generate test plan from analysis."""
 	apply_patches()
-	llm = ChatOpenAI(model=model)
+	llm = create_llm(model, provider=provider)
 	return await generate_tests(url, analysis, llm, max_tests, goal=goal)
 
 
@@ -70,7 +72,9 @@ async def run_execute(
 	url: str,
 	test_plan: TestPlan,
 	model: str,
+	provider: str = 'openai',
 	judge_model: str | None = None,
+	judge_provider: str | None = None,
 	goal: str | None = None,
 	max_steps: int = 15,
 	max_concurrent: int = 3,
@@ -85,8 +89,10 @@ async def run_execute(
 	kill_stale_browser()
 	if fixture_paths is None:
 		fixture_paths = ensure_dummy_fixture_files()
-	llm = ChatOpenAI(model=model)
-	judge_llm = ChatOpenAI(model=judge_model) if judge_model and judge_model != model else None
+	llm = create_llm(model, provider=provider)
+	jp = judge_provider or provider
+	jm = judge_model or model
+	judge_llm = create_llm(jm, provider=jp) if (jm != model or jp != provider) else None
 	own_session = browser_session is None
 	if own_session:
 		browser_session = BrowserSession(browser_profile=BrowserProfile(headless=True, keep_alive=False))
@@ -118,6 +124,7 @@ async def run_execute(
 async def run_evaluate(
 	url: str,
 	model: str,
+	provider: str = 'openai',
 	max_tests: int = 8,
 	goal: str | None = None,
 	browser_session: BrowserSession | None = None,
@@ -126,7 +133,7 @@ async def run_evaluate(
 	apply_patches()
 	kill_stale_browser()
 	task = goal or f'Evaluate the website at {url}'
-	llm = ChatOpenAI(model=model)
+	llm = create_llm(model, provider=provider)
 	own_session = browser_session is None
 	if own_session:
 		browser_session = BrowserSession(browser_profile=BrowserProfile(headless=True, keep_alive=False))

@@ -15,7 +15,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from browser_use.llm import ChatOpenAI
+from browser_use.llm import BaseChatModel
 from murphy.eval.history_adapter import format_agent_history_as_timeline
 from murphy.eval.models import DimensionSimilarity, PersonaSimilarityResult
 from murphy.personas.bridge import slugify_persona_name
@@ -31,7 +31,7 @@ async def evaluate_similarity(
 	history_path: Path,
 	scenario_name: str,
 	scenario_steps: str,
-	llm: ChatOpenAI,
+	llm: BaseChatModel,
 ) -> PersonaSimilarityResult:
 	"""Score Murphy's behavior against a persona's expected trait profile.
 

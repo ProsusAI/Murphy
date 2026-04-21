@@ -61,7 +61,7 @@ async def _core_analyze(req: AnalyzeRequest) -> dict[str, Any]:
 	"""Run website analysis. Returns serialized WebsiteAnalysis dict."""
 	from murphy.core.pipeline import run_analyze
 
-	analysis = await run_analyze(req.url, req.model, goal=req.goal)
+	analysis = await run_analyze(req.url, req.model, provider=req.provider, goal=req.goal)
 	return analysis.model_dump()
 
 
@@ -69,7 +69,9 @@ async def _core_generate_plan(req: GeneratePlanRequest) -> dict[str, Any]:
 	"""Generate test plan from analysis. Returns serialized TestPlan dict."""
 	from murphy.core.pipeline import run_generate_plan
 
-	test_plan = await run_generate_plan(req.url, req.analysis, req.model, req.max_tests, goal=req.goal)
+	test_plan = await run_generate_plan(
+		req.url, req.analysis, req.model, provider=req.provider, max_tests=req.max_tests, goal=req.goal
+	)
 	return test_plan.model_dump()
 
 
@@ -93,7 +95,9 @@ async def _core_execute(req: ExecuteRequest) -> dict[str, Any]:
 		req.url,
 		test_plan,
 		req.model,
+		provider=req.provider,
 		judge_model=req.judge_model,
+		judge_provider=req.judge_provider,
 		goal=req.goal,
 		max_steps=req.max_steps,
 		max_concurrent=req.max_concurrent,
@@ -105,7 +109,7 @@ async def _core_evaluate(req: EvaluateRequest) -> dict[str, Any]:
 	"""Run exploration-first evaluation: explore site → generate test plan."""
 	from murphy.core.pipeline import run_evaluate
 
-	test_plan = await run_evaluate(req.url, req.model, req.max_tests, goal=req.goal)
+	test_plan = await run_evaluate(req.url, req.model, provider=req.provider, max_tests=req.max_tests, goal=req.goal)
 	return test_plan.model_dump()
 
 

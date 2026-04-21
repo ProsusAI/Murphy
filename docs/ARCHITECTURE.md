@@ -7,6 +7,7 @@ murphy/
 ├── __init__.py              # Package exports and version
 ├── __main__.py              # python -m murphy entry point
 ├── config.py                # Shared configuration constants
+├── llm.py                   # Multi-provider LLM factory (OpenAI, Google, Anthropic, etc.)
 ├── models.py                # Pydantic models (TestPlan, TestResult, JudgeVerdict, etc.)
 ├── prompts.py               # All LLM prompt text
 ├── evaluate.py              # Backward-compatible re-exports
