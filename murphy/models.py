@@ -435,6 +435,14 @@ class ScenarioExecutionVerdict(BaseModel):
 # ─── Judge verdict ─────────────────────────────────────────────────────────────
 
 
+class TraitEvaluation(BaseModel):
+	"""Single trait pass/fail entry — used instead of dict[str, str] to avoid
+	OpenAI strict-mode ``additionalProperties: false`` blocking dynamic keys."""
+
+	trait_name: str = Field(description='Exact trait dimension name from the persona (e.g. "technical_literacy", "patience").')
+	assessment: Literal['pass', 'fail'] = Field(description='"pass" or "fail".')
+
+
 class JudgeVerdict(BaseModel):
 	reasoning: str
 	verdict: bool
@@ -446,7 +454,19 @@ class JudgeVerdict(BaseModel):
 	logical_evaluation: str = ''
 	usability_evaluation: str = ''
 	feedback_quality: FeedbackQualityScore | None = None
-	trait_evaluations: dict[str, str] | None = None
+	trait_evaluations: list[TraitEvaluation] = Field(
+		default_factory=list,
+		description=(
+			'Per-trait pass/fail verdicts. One entry per trait dimension from the persona. '
+			'Each entry has trait_name (exact dimension name) and assessment ("pass" or "fail").'
+		),
+	)
+
+	@property
+	def trait_evaluations_dict(self) -> dict[str, Literal['pass', 'fail']]:
+		"""Convert list to {trait_name: assessment} dict for consumers."""
+		return {entry.trait_name: entry.assessment for entry in self.trait_evaluations}
+
 	missing_signals: list[str] = Field(
 		default_factory=list,
 		description=(
@@ -478,7 +498,7 @@ class TestResult(BaseModel):
 	reason: str = ''
 	validation_evidence: str = ''
 	feedback_quality: FeedbackQualityScore | None = None
-	trait_evaluations: dict[str, str] | None = None
+	trait_evaluations: dict[str, Literal['pass', 'fail']] | None = None
 	missing_signals: list[str] = Field(default_factory=list)
 	feature_suggestions: list[str] = Field(default_factory=list)
 

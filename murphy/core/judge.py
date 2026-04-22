@@ -92,7 +92,9 @@ Each test has a **persona** with a **trait vector** and a **test type** (ux/secu
 
 Predefined personas use 5 fixed dimensions (technical_literacy, patience, intent, exploration, reading_comprehension). Discovered personas may use different, dynamically named trait dimensions with centroid scores and custom judge_questions. In both cases, evaluate each provided dimension/question independently.
 
-Evaluate each trait dimension independently, then synthesize into a verdict. A test can fail on one trait dimension but pass on others — report all of them in `trait_evaluations`.
+Evaluate each trait dimension independently, then synthesize into a verdict. A test can fail on one trait dimension but pass on others.
+
+For **`trait_evaluations`**: add one entry per trait dimension listed in the "Per-trait evaluation questions" section. Each entry has `trait_name` (exact dimension name) and `assessment` ("pass" or "fail"). Example: `[{"trait_name": "technical_literacy", "assessment": "pass"}, {"trait_name": "patience", "assessment": "fail"}]`.
 
 ## Feedback quality assessment
 
@@ -195,7 +197,7 @@ After determining the verdict, check which expected confirmation signals were NO
 These are UX observations only. A non-empty `missing_signals` on a passing test means the site's feedback could be improved — it does NOT change the verdict.
 
 Based on the Navigation Evidence and Pages Reached, did the agent successfully complete this test?
-Evaluate each trait dimension independently and report per-trait assessments in trait_evaluations.
+For each trait dimension listed above, add an entry to trait_evaluations with trait_name and assessment ("pass" or "fail").
 Also assess feedback quality (response_present, response_timely, response_clear, response_actionable, feedback_type).
 """
 

@@ -236,7 +236,7 @@ async def _execute_single_test(
 			reason=reason,
 			validation_evidence=validation_evidence,
 			feedback_quality=judgement.feedback_quality,
-			trait_evaluations=judgement.trait_evaluations,
+			trait_evaluations=judgement.trait_evaluations_dict or None,
 			missing_signals=judgement.missing_signals,
 			feature_suggestions=feature_suggestions,
 		)
