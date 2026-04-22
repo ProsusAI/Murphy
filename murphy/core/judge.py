@@ -15,47 +15,14 @@ from browser_use.llm.messages import ContentPartImageParam, ContentPartTextParam
 from browser_use.utils import sanitize_surrogates
 from murphy.models import (
 	PERSONA_REGISTRY,
+	TRAIT_JUDGE_QUESTIONS,
 	JudgeVerdict,
 	TestScenario,
 	TestType,
-	TraitLevel,
 	TraitVector,
 )
 from murphy.personas.bridge import build_discovered_judge_context
 from murphy.personas.pipeline_models import PersonaResult, TraitSchema
-
-TRAIT_JUDGE_QUESTIONS: dict[str, dict[TraitLevel, str]] = {
-	'technical_literacy': {
-		TraitLevel.low: 'Would a user unfamiliar with UI conventions understand what happened? Labels, icons, affordances must be self-explanatory without domain knowledge. This user needs explicit text, not just icons or color cues.',
-		TraitLevel.medium: 'Were standard UI patterns followed? Would a typical web user understand the interaction?',
-		TraitLevel.high: 'Were expert-level controls available and efficient?',
-	},
-	'patience': {
-		TraitLevel.low: 'Did the site communicate state IMMEDIATELY? Loading indicators, progress bars, "please wait" messages? This user interprets 2+ seconds of silence as broken. Silent deduplication with no feedback = FAIL.',
-		TraitLevel.medium: 'Did the site provide timely feedback within reasonable expectations?',
-		TraitLevel.high: 'Did the site complete the task correctly, regardless of timing?',
-	},
-	'reading_comprehension': {
-		TraitLevel.low: 'Was critical information conveyed through visual hierarchy: bold labels, color coding, icons, position-based cues? Error messages in body text are invisible to this user.',
-		TraitLevel.medium: 'Were important messages prominent and scannable?',
-		TraitLevel.high: 'Was detailed information available for thorough readers?',
-	},
-	'exploration': {
-		TraitLevel.high: 'Did the site provide ORIENTATION at every step? Breadcrumbs, page titles, "no results" messages? Dead ends with no feedback = FAIL.',
-		TraitLevel.medium: 'Did the site handle minor path deviations gracefully?',
-		TraitLevel.low: 'Did the expected path work without requiring exploration?',
-	},
-	'visual_density_preference': {
-		TraitLevel.low: 'Is the layout spacious and uncluttered? This user needs generous whitespace, large tap targets, and no more than one primary action per screen region. Dense dashboards or multi-column data grids feel overwhelming.',
-		TraitLevel.medium: 'Is content density balanced? A reasonable amount of information per viewport with clear grouping and breathing room between sections.',
-		TraitLevel.high: 'Is the layout information-dense and efficient? This user wants maximum data per screen — compact rows, minimal padding, and no wasted space. Sparse layouts feel empty.',
-	},
-	'layout_strictness': {
-		TraitLevel.low: 'Is the overall layout coherent and usable? Minor spacing inconsistencies are acceptable as long as the layout does not feel broken.',
-		TraitLevel.medium: 'Is spacing generally consistent? Obvious misalignments or irregular padding between clearly related components should be flagged.',
-		TraitLevel.high: 'Does every margin, padding, and gutter follow a consistent scale? Flag any misaligned elements, irregular gaps between sibling components, or inconsistent padding inside cards — even subtle deviations.',
-	},
-}
 
 TEST_TYPE_RULES: dict[TestType, str] = {
 	'ux': 'Silent handling with no visible feedback is a FAIL. The user must understand what happened.',
@@ -75,17 +42,7 @@ def build_judge_trait_context(persona: str, traits: TraitVector, test_type: Test
 	lines.append('## Per-trait evaluation questions (evaluate each independently):')
 	lines.append('')
 
-	trait_fields: dict[str, TraitLevel] = {
-		'technical_literacy': traits.technical_literacy,
-		'patience': traits.patience,
-		'reading_comprehension': traits.reading_comprehension,
-		'exploration': traits.exploration,
-	}
-	if test_type == 'design':
-		trait_fields['visual_density_preference'] = traits.visual_density_preference
-		trait_fields['layout_strictness'] = traits.layout_strictness
-	for trait_name, level in trait_fields.items():
-		assert isinstance(level, TraitLevel)
+	for trait_name, level in traits.level_trait_items(test_type):
 		question = TRAIT_JUDGE_QUESTIONS[trait_name][level]
 		lines.append(f'- **{trait_name}** ({level.name}): {question}')
 

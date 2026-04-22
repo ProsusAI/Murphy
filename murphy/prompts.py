@@ -62,19 +62,7 @@ def _build_persona_distribution_text() -> str:
 		entry = PERSONA_REGISTRY.get(persona)
 		if entry:
 			traits, test_type = entry
-			trait_summary = (
-				f'tech_lit={traits.technical_literacy.name}, '
-				f'patience={traits.patience.name}, '
-				f'intent={traits.intent}, '
-				f'exploration={traits.exploration.name}, '
-				f'reading={traits.reading_comprehension.name}'
-			)
-			if test_type == 'design':
-				trait_summary += (
-					f', density={traits.visual_density_preference.name}'
-					f', era={traits.aesthetic_era}'
-					f', strictness={traits.layout_strictness.name}'
-				)
+			trait_summary = traits.render_summary(test_type)
 			lines.append(f'- {persona} (~{pct}%, {test_type}): {description} [Traits: {trait_summary}]')
 		else:
 			lines.append(f'- {persona} (~{pct}%): {description}')
@@ -402,16 +390,7 @@ def build_plan_synthesis_prompt(
 
 def _render_trait_vector(traits: TraitVector) -> str:
 	"""Render a trait vector as a compact structured block."""
-	return (
-		f'  technical_literacy: {traits.technical_literacy.name}\n'
-		f'  patience: {traits.patience.name}\n'
-		f'  intent: {traits.intent}\n'
-		f'  exploration: {traits.exploration.name}\n'
-		f'  reading_comprehension: {traits.reading_comprehension.name}\n'
-		f'  visual_density_preference: {traits.visual_density_preference.name}\n'
-		f'  aesthetic_era: {traits.aesthetic_era}\n'
-		f'  layout_strictness: {traits.layout_strictness.name}'
-	)
+	return traits.render_full()
 
 
 # Character descriptions for vivid role-playing

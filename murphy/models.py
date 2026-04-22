@@ -1,7 +1,7 @@
 """Pydantic models for the Murphy evaluation pipeline."""
 
 from enum import IntEnum
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, ClassVar, Literal
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
 
@@ -53,8 +53,8 @@ TestPersona = Literal[
 #   boundary — graceful degradation is a PASS; only unhandled exceptions fail
 #   design   — evaluates visual design quality; functional correctness not in scope
 #
-# See core/judge.py (TRAIT_JUDGE_QUESTIONS, TEST_TYPE_RULES) for the full
-# mapping from trait levels to evaluation questions.
+# TRAIT_JUDGE_QUESTIONS (below TraitVector) maps trait levels to evaluation
+# questions.  TEST_TYPE_RULES lives in core/judge.py.
 
 
 class TraitLevel(IntEnum):
@@ -80,6 +80,107 @@ class TraitVector(BaseModel):
 	aesthetic_era: Literal['classic', 'modern', 'experimental'] = 'modern'
 	layout_strictness: TraitLevel = TraitLevel.medium
 
+	# ── Trait classification (single source of truth) ─────────────────────
+	# When adding a new TraitLevel trait:
+	#   1. Add the field above.
+	#   2. Add its name to the appropriate tuple below.
+	#   3. Add its judge questions to TRAIT_JUDGE_QUESTIONS (below the class).
+	#   4. Add its short name to _SUMMARY_NAMES.
+	# All consumers (judge, prompts, quality) derive from these.
+	CORE_LEVEL_TRAITS: ClassVar[tuple[str, ...]] = (
+		'technical_literacy',
+		'patience',
+		'reading_comprehension',
+		'exploration',
+	)
+	DESIGN_LEVEL_TRAITS: ClassVar[tuple[str, ...]] = (
+		'visual_density_preference',
+		'layout_strictness',
+	)
+	_SUMMARY_NAMES: ClassVar[dict[str, str]] = {
+		'technical_literacy': 'tech_lit',
+		'patience': 'patience',
+		'reading_comprehension': 'reading',
+		'exploration': 'exploration',
+		'visual_density_preference': 'density',
+		'layout_strictness': 'strictness',
+	}
+
+	@classmethod
+	def level_trait_names(cls, test_type: str) -> tuple[str, ...]:
+		"""Return TraitLevel field names relevant to the given test type."""
+		if test_type == 'design':
+			return cls.CORE_LEVEL_TRAITS + cls.DESIGN_LEVEL_TRAITS
+		return cls.CORE_LEVEL_TRAITS
+
+	def level_trait_items(self, test_type: str) -> list[tuple[str, 'TraitLevel']]:
+		"""Return (name, level) pairs for TraitLevel traits relevant to *test_type*."""
+		return [(n, getattr(self, n)) for n in self.level_trait_names(test_type)]
+
+	def render_summary(self, test_type: str) -> str:
+		"""Compact one-line trait summary for prompt distribution text."""
+		parts: list[str] = []
+		for name in self.CORE_LEVEL_TRAITS:
+			parts.append(f'{self._SUMMARY_NAMES[name]}={getattr(self, name).name}')
+		parts.append(f'intent={self.intent}')
+		if test_type == 'design':
+			for name in self.DESIGN_LEVEL_TRAITS:
+				parts.append(f'{self._SUMMARY_NAMES[name]}={getattr(self, name).name}')
+			parts.append(f'era={self.aesthetic_era}')
+		return ', '.join(parts)
+
+	def render_full(self) -> str:
+		"""Multi-line trait vector for execution prompts."""
+		lines: list[str] = []
+		for name in self.CORE_LEVEL_TRAITS:
+			lines.append(f'  {name}: {getattr(self, name).name}')
+		lines.append(f'  intent: {self.intent}')
+		for name in self.DESIGN_LEVEL_TRAITS:
+			lines.append(f'  {name}: {getattr(self, name).name}')
+		lines.append(f'  aesthetic_era: {self.aesthetic_era}')
+		return '\n'.join(lines)
+
+
+# ── Per-trait evaluation questions (used by the judge) ────────────────────────
+# Each TraitLevel trait must have an entry with low/medium/high questions.
+
+TRAIT_JUDGE_QUESTIONS: dict[str, dict[TraitLevel, str]] = {
+	'technical_literacy': {
+		TraitLevel.low: 'Would a user unfamiliar with UI conventions understand what happened? Labels, icons, affordances must be self-explanatory without domain knowledge. This user needs explicit text, not just icons or color cues.',
+		TraitLevel.medium: 'Were standard UI patterns followed? Would a typical web user understand the interaction?',
+		TraitLevel.high: 'Were expert-level controls available and efficient?',
+	},
+	'patience': {
+		TraitLevel.low: 'Did the site communicate state IMMEDIATELY? Loading indicators, progress bars, "please wait" messages? This user interprets 2+ seconds of silence as broken. Silent deduplication with no feedback = FAIL.',
+		TraitLevel.medium: 'Did the site provide timely feedback within reasonable expectations?',
+		TraitLevel.high: 'Did the site complete the task correctly, regardless of timing?',
+	},
+	'reading_comprehension': {
+		TraitLevel.low: 'Was critical information conveyed through visual hierarchy: bold labels, color coding, icons, position-based cues? Error messages in body text are invisible to this user.',
+		TraitLevel.medium: 'Were important messages prominent and scannable?',
+		TraitLevel.high: 'Was detailed information available for thorough readers?',
+	},
+	'exploration': {
+		TraitLevel.high: 'Did the site provide ORIENTATION at every step? Breadcrumbs, page titles, "no results" messages? Dead ends with no feedback = FAIL.',
+		TraitLevel.medium: 'Did the site handle minor path deviations gracefully?',
+		TraitLevel.low: 'Did the expected path work without requiring exploration?',
+	},
+	'visual_density_preference': {
+		TraitLevel.low: 'Is the layout spacious and uncluttered? This user needs generous whitespace, large tap targets, and no more than one primary action per screen region. Dense dashboards or multi-column data grids feel overwhelming.',
+		TraitLevel.medium: 'Is content density balanced? A reasonable amount of information per viewport with clear grouping and breathing room between sections.',
+		TraitLevel.high: 'Is the layout information-dense and efficient? This user wants maximum data per screen — compact rows, minimal padding, and no wasted space. Sparse layouts feel empty.',
+	},
+	'layout_strictness': {
+		TraitLevel.low: 'Is the overall layout coherent and usable? Minor spacing inconsistencies are acceptable as long as the layout does not feel broken.',
+		TraitLevel.medium: 'Is spacing generally consistent? Obvious misalignments or irregular padding between clearly related components should be flagged.',
+		TraitLevel.high: 'Does every margin, padding, and gutter follow a consistent scale? Flag any misaligned elements, irregular gaps between sibling components, or inconsistent padding inside cards — even subtle deviations.',
+	},
+}
+
+assert set(TRAIT_JUDGE_QUESTIONS) == set(TraitVector.CORE_LEVEL_TRAITS + TraitVector.DESIGN_LEVEL_TRAITS), (
+	f'TRAIT_JUDGE_QUESTIONS keys {set(TRAIT_JUDGE_QUESTIONS)} drift from '
+	f'TraitVector level traits {set(TraitVector.CORE_LEVEL_TRAITS + TraitVector.DESIGN_LEVEL_TRAITS)}'
+)
 
 TestType = Literal['ux', 'security', 'boundary', 'design']
 
