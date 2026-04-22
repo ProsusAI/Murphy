@@ -9,7 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 - Per-persona feature suggestions: each persona now produces 1–3 concrete, actionable feature/UX improvement suggestions grounded in what it observed during testing; suggestions are included in HTML reports, Markdown reports, and the executive summary
 - Discovered personas carry a tailored `suggestion_instruction` generated during labeling, producing persona-grounded suggestions instead of generic ones
-- New built-in UI-focused personas (accessibility, mobile, localisation, performance, dark-mode, onboarding) with dedicated trait schemas and judge evaluation criteria
+- New built-in UI-focused personas — `boomer_ui` (readability, contrast, familiar patterns), `genz_ui` (trendy aesthetics, dark-mode, micro-interactions), and `whitespace_police_ui` (spacing consistency, alignment, grid adherence) — with dedicated trait schemas and judge evaluation criteria
 - Smart screenshot selection for the judge: screenshots are now chosen by action signal strength (navigation, input, errors, final step) instead of simple recency, so the judge sees the most informative visual progression
 - Dynamic personas generated from real user sessions and events via PostHog integration, replacing static persona definitions during evaluation runs
 - `--discover-personas` CLI flag to run the persona discovery pipeline before test generation and save results to `{output_dir}/personas.json`
