@@ -190,9 +190,9 @@ async def _execute_single_test(
 		logical_eval = judgement.logical_evaluation or (verdict.logical_evaluation if verdict else '')
 		usability_eval = judgement.usability_evaluation or (verdict.usability_evaluation if verdict else '')
 		reason = judgement.failure_reason or (verdict.reason if verdict else '')
-		validation_evidence = (verdict.validation_evidence if verdict else '') or ''
+		validation_evidence = verdict.validation_evidence if verdict else ''
 
-		feature_suggestions = (verdict.feature_suggestions if verdict else []) or []
+		feature_suggestions = verdict.feature_suggestions if verdict else []
 
 		all_actions = history.model_actions()
 		errors = history.errors()
