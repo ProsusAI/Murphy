@@ -34,19 +34,19 @@ _PERSONA_DISTRIBUTION: dict[TestPersona, tuple[int, str]] = {
 		8,
 		'Rage-clicks buttons repeatedly, force-navigates by typing URLs, submits forms rapidly without waiting, abandons multi-step flows mid-way.',
 	),
-	'boomer_ui': (
+	'classic_ui': (
 		9,
-		'Evaluate from the perspective of an older, less tech-savvy user: font sizes must be readable, '
+		'Evaluate from the perspective of a user who values readability and familiarity: font sizes must be readable, '
 		'labels must be explicit text (not icon-only), layouts must follow familiar conventions '
-		'(top nav, visible buttons), and contrast must accommodate aging vision.',
+		'(top nav, visible buttons), and contrast must be high enough for comfortable reading.',
 	),
-	'genz_ui': (
+	'modern_ui': (
 		8,
-		'Evaluate from the perspective of a young, design-savvy user: the site should feel current '
+		'Evaluate from the perspective of a design-forward user: the site should feel current '
 		'and visually engaging — bold colors, modern typography, dark mode vibes, smooth transitions, '
 		'and expressive visual identity. Bland stock aesthetics or dated layouts are failures.',
 	),
-	'whitespace_police_ui': (
+	'layout_auditor_ui': (
 		8,
 		'Evaluate spacing discipline: every margin, padding, and gutter must follow a consistent scale. '
 		'Misaligned elements, cramped card layouts, inconsistent vertical rhythm, or irregular gaps '
@@ -207,11 +207,11 @@ def build_test_generation_prompt(
 			'- explorer (UX): "The website provides ORIENTATION AND FEEDBACK at every step — clear page titles, breadcrumbs, \'no results found\' messages, or redirect explanations. Dead ends with no feedback, blank pages, or silent failures are FAILURES"\n'
 			'- impatient_user (UX): "The website provides VISIBLE STATE FEEDBACK during rapid interactions — loading indicators, \'please wait\' messages, queued-action confirmation, or duplicate-prevention messages. Silent deduplication with no user-facing signal is a FAILURE"\n'
 			'- angry_user (Security): "The website absorbs the hostile interaction gracefully — no crash, no broken state from force-navigation, no infinite loops from rapid clicks"'
-			'- boomer_ui (Design): "Text is large and readable, labels are explicit (not icon-only), interactive controls are clearly labeled with familiar patterns (visible buttons, top nav), and contrast is high enough for comfortable reading. Novel hidden gestures or ambiguous icons without text labels are FAILURES"\n'
-			'- genz_ui (Design): "The site feels visually current and engaging — bold palette, modern type, dark mode awareness, smooth transitions, expressive identity. Bland stock aesthetics, dated gradients, or zero visual personality are FAILURES"\n'
-			'- whitespace_police_ui (Design): "Spacing follows a consistent scale — margins, padding, and gutters are uniform across sibling components. Misaligned elements, irregular vertical rhythm, cramped card layouts, or inconsistent gaps are FAILURES"'
+			'- classic_ui (Design): "Text is large and readable, labels are explicit (not icon-only), interactive controls are clearly labeled with familiar patterns (visible buttons, top nav), and contrast is high enough for comfortable reading. Novel hidden gestures or ambiguous icons without text labels are FAILURES"\n'
+			'- modern_ui (Design): "The site feels visually current and engaging — bold palette, modern type, dark mode awareness, smooth transitions, expressive identity. Bland stock aesthetics, dated gradients, or zero visual personality are FAILURES"\n'
+			'- layout_auditor_ui (Design): "Spacing follows a consistent scale — margins, padding, and gutters are uniform across sibling components. Misaligned elements, irregular vertical rhythm, cramped card layouts, or inconsistent gaps are FAILURES"'
 		)
-		persona_names_instruction = '- test_persona (one of: happy_path, confused_novice, adversarial, edge_case, explorer, impatient_user, angry_user, boomer_ui, genz_ui, whitespace_police_ui)'
+		persona_names_instruction = '- test_persona (one of: happy_path, confused_novice, adversarial, edge_case, explorer, impatient_user, angry_user, classic_ui, modern_ui, layout_auditor_ui)'
 
 	return f"""Based on this website analysis, generate {max_tests} test scenarios that target the discovered features.
 {goal_block}
@@ -355,7 +355,7 @@ def build_plan_synthesis_prompt(
 			f'{build_discovered_success_criteria_block(persona_result)}\n'
 		)
 	else:
-		persona_req = '- Must include these personas: happy_path, confused_novice, adversarial, edge_case, explorer, boomer_ui, genz_ui, whitespace_police_ui.\n'
+		persona_req = '- Must include these personas: happy_path, confused_novice, adversarial, edge_case, explorer, classic_ui, modern_ui, layout_auditor_ui.\n'
 		critical_req = '- At least one scenario must be happy_path with priority=critical.\n'
 		distribution_block = (
 			'PERSONA DISTRIBUTION:\n'
@@ -366,9 +366,9 @@ def build_plan_synthesis_prompt(
 			'- explorer (~8%): Unusual navigation, unexpected feature combos. Success requires orientation feedback — page titles, breadcrumbs, "no results" messages. Dead ends with no feedback are FAILS.\n'
 			'- impatient_user (~10%): Rapid clicks, skipping steps. Success requires visible state feedback — loading indicators, "please wait" messages. Silent deduplication is a FAIL.\n'
 			'- angry_user (~8%): Rage-clicks, force-navigation, rapid form submissions, abandoning flows. Absorbing hostility without crash is a PASS.\n'
-			'- boomer_ui (~9%): Evaluate readability and familiarity — large fonts, explicit labels, high contrast, conventional layouts. Icon-only controls or hidden gestures are FAILS.\n'
-			'- genz_ui (~8%): Evaluate visual currency — bold colors, modern type, dark mode, transitions, visual personality. Dated or bland aesthetics are FAILS.\n'
-			'- whitespace_police_ui (~8%): Evaluate spacing discipline — consistent margins, padding, gutters, vertical rhythm, grid alignment. Misaligned or cramped layouts are FAILS.\n'
+			'- classic_ui (~9%): Evaluate readability and familiarity — large fonts, explicit labels, high contrast, conventional layouts. Icon-only controls or hidden gestures are FAILS.\n'
+			'- modern_ui (~8%): Evaluate visual currency — bold colors, modern type, dark mode, transitions, visual personality. Dated or bland aesthetics are FAILS.\n'
+			'- layout_auditor_ui (~8%): Evaluate spacing discipline — consistent margins, padding, gutters, vertical rhythm, grid alignment. Misaligned or cramped layouts are FAILS.\n'
 		)
 
 	return (
@@ -423,9 +423,9 @@ _PERSONA_DESCRIPTIONS: dict[TestPersona, str] = {
 	'explorer': 'A curious user who takes unexpected paths: visits pages out of order, uses features in unintended combinations, clicks decorative elements.',
 	'impatient_user': 'A rushed user who clicks rapidly without waiting, skips required steps, submits forms immediately, navigates away mid-action.',
 	'angry_user': 'A frustrated user who rage-clicks buttons repeatedly, force-navigates by typing URLs, submits forms rapidly without waiting, and abandons multi-step flows mid-way.',
-	'boomer_ui': 'An older user who values readability and familiarity above all else. Needs large, legible fonts, high-contrast text, explicitly labeled buttons (not icon-only), and conventional layouts they have seen for decades (top nav bar, visible sidebar links). Anything that requires guessing — hidden hamburger menus, swipe gestures, unlabeled icon buttons — is a problem. Does not test functionality — focuses purely on whether the design is comfortable and clear for someone with aging eyes and traditional expectations.',
-	'genz_ui': 'A young, design-conscious user who grew up on TikTok, Instagram, and modern SaaS apps. Expects bold color palettes, expressive typography, dark mode support, smooth micro-interactions, and a distinct visual identity. Bland corporate aesthetics, dated skeuomorphic patterns, or sites that look like they were designed in 2010 are failures. Does not test functionality — focuses purely on whether the design feels current, engaging, and visually appealing.',
-	'whitespace_police_ui': 'A meticulous spacing perfectionist who evaluates every margin, padding, and gutter. Checks that sibling components share identical spacing, vertical rhythm is consistent across sections, card grids align to an implicit baseline grid, and no element feels cramped or adrift. Misaligned buttons, irregular gaps between list items, or inconsistent padding inside cards are immediate red flags. Does not test functionality — focuses purely on spatial consistency and breathing room.',
+	'classic_ui': 'A user who values readability and familiarity above all else. Needs large, legible fonts, high-contrast text, explicitly labeled buttons (not icon-only), and conventional layouts (top nav bar, visible sidebar links). Anything that requires guessing — hidden hamburger menus, swipe gestures, unlabeled icon buttons — is a problem. Does not test functionality — focuses purely on whether the design is comfortable, clear, and follows well-established conventions.',
+	'modern_ui': 'A design-forward user immersed in current visual trends and modern SaaS apps. Expects bold color palettes, expressive typography, dark mode support, smooth micro-interactions, and a distinct visual identity. Bland corporate aesthetics, dated skeuomorphic patterns, or stale layouts are failures. Does not test functionality — focuses purely on whether the design feels current, engaging, and visually appealing.',
+	'layout_auditor_ui': 'A meticulous spacing perfectionist who evaluates every margin, padding, and gutter. Checks that sibling components share identical spacing, vertical rhythm is consistent across sections, card grids align to an implicit baseline grid, and no element feels cramped or adrift. Misaligned buttons, irregular gaps between list items, or inconsistent padding inside cards are immediate red flags. Does not test functionality — focuses purely on spatial consistency and breathing room.',
 }
 
 
@@ -517,17 +517,17 @@ _PERSONA_SUGGESTION_INSTRUCTIONS: dict[str, str] = {
 		'(e.g. auto-save on form abandonment, undo for destructive actions, clear "start over" paths, '
 		'graceful handling of rapid interactions, queue/debounce feedback).'
 	),
-	'boomer_ui': (
-		'As an older user who values readability and familiarity, suggest 1-3 accessibility or legibility '
+	'classic_ui': (
+		'As a user who values readability and familiarity, suggest 1-3 accessibility or legibility '
 		'improvements (e.g. font-size control, high-contrast mode, larger buttons with text labels, '
 		'persistent visible navigation, reduced reliance on icons without text).'
 	),
-	'genz_ui': (
-		'As a young design-savvy user, suggest 1-3 improvements to make the design feel more current '
+	'modern_ui': (
+		'As a design-forward user, suggest 1-3 improvements to make the design feel more current '
 		'and engaging (e.g. dark mode toggle, micro-interactions, expressive typography, gamification elements, '
 		'branded illustrations, smooth transitions).'
 	),
-	'whitespace_police_ui': (
+	'layout_auditor_ui': (
 		'As a spacing perfectionist, suggest 1-3 design-system improvements to resolve spacing issues '
 		'(e.g. a spacing scale with 4/8/16/24/32px tokens, a consistent grid system, '
 		'component-level padding standards, vertical rhythm baseline).'

@@ -30,9 +30,9 @@ TestPersona = Literal[
 	'explorer',  # goes off the beaten path, tries unexpected combinations
 	'impatient_user',  # clicks rapidly, doesn't wait for loads, skips steps
 	'angry_user',  # rage-clicks, force-navigates, rapid form submissions, abandons flows mid-way
-	'boomer_ui',  # readability, font size, clear labels, familiar patterns, contrast for aging eyes
-	'genz_ui',  # trendy aesthetics, dark mode vibes, visual appeal, engagement, micro-interactions
-	'whitespace_police_ui',  # spacing consistency, breathing room, alignment, padding regularity, grid adherence
+	'classic_ui',  # readability, font size, clear labels, familiar patterns, high contrast
+	'modern_ui',  # current aesthetics, dark mode, visual appeal, engagement, micro-interactions
+	'layout_auditor_ui',  # spacing consistency, breathing room, alignment, padding regularity, grid adherence
 ]
 
 
@@ -154,7 +154,7 @@ PERSONA_REGISTRY: dict[TestPersona, tuple[TraitVector, TestType]] = {
 		),
 		'security',
 	),
-	'boomer_ui': (
+	'classic_ui': (
 		TraitVector(
 			technical_literacy=TraitLevel.medium,
 			patience=TraitLevel.high,
@@ -167,7 +167,7 @@ PERSONA_REGISTRY: dict[TestPersona, tuple[TraitVector, TestType]] = {
 		),
 		'design',
 	),
-	'genz_ui': (
+	'modern_ui': (
 		TraitVector(
 			technical_literacy=TraitLevel.high,
 			patience=TraitLevel.low,
@@ -180,7 +180,7 @@ PERSONA_REGISTRY: dict[TestPersona, tuple[TraitVector, TestType]] = {
 		),
 		'design',
 	),
-	'whitespace_police_ui': (
+	'layout_auditor_ui': (
 		TraitVector(
 			technical_literacy=TraitLevel.high,
 			patience=TraitLevel.high,
