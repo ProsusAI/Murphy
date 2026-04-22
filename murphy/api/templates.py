@@ -85,7 +85,7 @@ h2 { font-family: Georgia, 'Times New Roman', serif; font-size: 1.3rem; font-wei
 .expand-link { color: var(--accent); cursor: pointer; font-size: .75rem; text-decoration: underline;
 	margin-left: .25rem; }
 .expand-link:hover { opacity: .7; }
-.badge-persona { font-size: .6rem; letter-spacing: .06em; }
+.badge-persona { font-size: .6rem; letter-spacing: .06em; color: #fff; }
 .badge-happy_path { background: #16a34a; color: #fff; }
 .badge-confused_novice { background: #7c3aed; color: #fff; }
 .badge-adversarial { background: #dc2626; color: #fff; }
