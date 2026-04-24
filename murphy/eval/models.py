@@ -25,6 +25,7 @@ class PersonaSimilarityResult(BaseModel):
 	dimensions: list[DimensionSimilarity]
 	overall_similarity_score: float  # 0–1, where 1 = perfect match to persona centroid
 	scoring_reasoning: str  # LLM rationale from score_session()
+	embedding_similarity: float | None = None  # 0–1 cosine sim of timeline embeddings; None if centroid_embedding not available
 
 
 class SimilarityReport(BaseModel):

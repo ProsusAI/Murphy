@@ -12,13 +12,12 @@ import asyncio
 import logging
 from typing import Any
 
-import numpy as np
-from openai import AsyncOpenAI
 from sklearn.cluster import KMeans
 
 from browser_use.llm import ChatOpenAI, SystemMessage, UserMessage
 from murphy.personas.clustering import find_optimal_k
 from murphy.personas.compressor import compress_session
+from murphy.personas.embedder import embed_texts
 from murphy.personas.models import AnalyticsSession
 from murphy.personas.pipeline_models import SessionObservation, TraitDimension, TraitSchema
 
@@ -74,10 +73,6 @@ Trait labels in this cluster:
 {trait_list}
 {paths_block}"""
 
-EMBEDDING_MODEL = 'text-embedding-3-small'
-EMBEDDING_BATCH_SIZE = 2048
-
-
 # ── LLM calls ────────────────────────────────────────────────────────────────
 
 
@@ -97,20 +92,6 @@ async def observe_session(llm: ChatOpenAI, timeline: str, session_id: str) -> Se
 
 
 # ── Embedding + clustering ───────────────────────────────────────────────────
-
-
-async def _embed_traits(traits: list[str]) -> np.ndarray:
-	"""Embed trait strings using OpenAI text embeddings. Returns (N, dim) array."""
-	client = AsyncOpenAI()
-	all_embeddings: list[list[float]] = []
-
-	for i in range(0, len(traits), EMBEDDING_BATCH_SIZE):
-		batch = traits[i : i + EMBEDDING_BATCH_SIZE]
-		resp = await client.embeddings.create(model=EMBEDDING_MODEL, input=batch)
-		for item in sorted(resp.data, key=lambda x: x.index):
-			all_embeddings.append(item.embedding)
-
-	return np.array(all_embeddings, dtype=np.float64)
 
 
 def _deduplicate_traits(observations: list[SessionObservation]) -> list[str]:
@@ -169,7 +150,7 @@ async def cluster_trait_dimensions(
 		return TraitSchema(dimensions=[], rationale='No traits observed.')
 
 	logger.info('Embedding %d unique traits for dimension clustering', len(traits))
-	embeddings = await _embed_traits(traits)
+	embeddings = await embed_texts(traits)
 
 	n = embeddings.shape[0]
 	lo = max(k_range[0], 2)

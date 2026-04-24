@@ -15,10 +15,13 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+import numpy as np
+
 from browser_use.llm import BaseChatModel
 from murphy.eval.history_adapter import format_agent_history_as_timeline
 from murphy.eval.models import DimensionSimilarity, PersonaSimilarityResult
 from murphy.personas.bridge import slugify_persona_name
+from murphy.personas.embedder import embed_texts
 from murphy.personas.pipeline_models import Persona, TraitSchema
 from murphy.personas.scoring import score_session
 
@@ -85,6 +88,21 @@ async def evaluate_similarity(
 	else:
 		overall = 0.0
 
+	# Embedding similarity: cosine distance between Murphy's timeline embedding
+	# and the persona's centroid embedding (mean of its real-user session embeddings).
+	# No LLM involved — purely text → vector → cosine similarity.
+	emb_sim: float | None = None
+	if persona.centroid_embedding:
+		try:
+			emb_matrix = await embed_texts([timeline])
+			murphy_vec = emb_matrix[0]
+			centroid_vec = np.array(persona.centroid_embedding, dtype=np.float64)
+			norm = np.linalg.norm(murphy_vec) * np.linalg.norm(centroid_vec)
+			if norm > 0:
+				emb_sim = round(float(np.dot(murphy_vec, centroid_vec) / norm), 3)
+		except Exception:
+			logger.warning('Failed to compute embedding similarity for "%s"', scenario_name, exc_info=True)
+
 	return PersonaSimilarityResult(
 		persona_id=persona.persona_id,
 		persona_name=persona.name,
@@ -94,4 +112,5 @@ async def evaluate_similarity(
 		dimensions=dimensions,
 		overall_similarity_score=round(overall, 3),
 		scoring_reasoning=session_score.reasoning,
+		embedding_similarity=emb_sim,
 	)

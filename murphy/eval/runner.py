@@ -77,17 +77,32 @@ def build_markdown_report(report_data: dict[str, Any]) -> str:
 		)
 		return '\n'.join(lines)
 
-	by_persona: dict[str, list[float]] = defaultdict(list)
+	by_persona_llm: dict[str, list[float]] = defaultdict(list)
+	by_persona_emb: dict[str, list[float]] = defaultdict(list)
 	for r in results:
-		by_persona[r['persona_name']].append(r['overall_similarity_score'])
+		by_persona_llm[r['persona_name']].append(r['overall_similarity_score'])
+		emb = r.get('embedding_similarity')
+		if emb is not None:
+			by_persona_emb[r['persona_name']].append(emb)
+
+	has_embeddings = bool(by_persona_emb)
 
 	lines.append('## Summary')
 	lines.append('')
-	lines.append('| Persona | Tests | Avg Similarity | Rating |')
-	lines.append('|---------|-------|---------------|--------|')
-	for persona_name, scores in sorted(by_persona.items()):
-		avg = sum(scores) / len(scores)
-		lines.append(f'| {persona_name} | {len(scores)} | {avg:.2f} | {_similarity_label(avg)} |')
+	if has_embeddings:
+		lines.append('| Persona | Tests | Avg LLM Similarity | Rating | Avg Embedding Sim |')
+		lines.append('|---------|-------|--------------------|--------|-------------------|')
+		for persona_name, llm_scores in sorted(by_persona_llm.items()):
+			avg_llm = sum(llm_scores) / len(llm_scores)
+			emb_scores = by_persona_emb.get(persona_name, [])
+			avg_emb = f'{sum(emb_scores) / len(emb_scores):.2f}' if emb_scores else '—'
+			lines.append(f'| {persona_name} | {len(llm_scores)} | {avg_llm:.2f} | {_similarity_label(avg_llm)} | {avg_emb} |')
+	else:
+		lines.append('| Persona | Tests | Avg Similarity | Rating |')
+		lines.append('|---------|-------|---------------|--------|')
+		for persona_name, llm_scores in sorted(by_persona_llm.items()):
+			avg = sum(llm_scores) / len(llm_scores)
+			lines.append(f'| {persona_name} | {len(llm_scores)} | {avg:.2f} | {_similarity_label(avg)} |')
 	lines.append('')
 
 	lines.append('## Detailed Results')
@@ -95,8 +110,12 @@ def build_markdown_report(report_data: dict[str, Any]) -> str:
 	for r in results:
 		overall = r['overall_similarity_score']
 		label = _similarity_label(overall)
+		emb = r.get('embedding_similarity')
 		lines.append(f'### {r["test_scenario_name"]}')
-		lines.append(f'**Persona:** `{r["persona_slug"]}`  |  **Overall similarity:** {overall:.2f} ({label})')
+		header = f'**Persona:** `{r["persona_slug"]}`  |  **LLM similarity:** {overall:.2f} ({label})'
+		if emb is not None:
+			header += f'  |  **Embedding sim:** {emb:.2f}'
+		lines.append(header)
 		lines.append('')
 		lines.append('| Trait Dimension | Murphy | Real Users | Delta |')
 		lines.append('|----------------|--------|-----------|-------|')

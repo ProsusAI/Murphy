@@ -8,6 +8,7 @@ descriptions for each cluster.
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 import numpy as np
 
@@ -139,6 +140,7 @@ def build_persona_result(
 	scores: list[SessionScore],
 	clustering: ClusteringResult,
 	labels: PersonaLabels,
+	session_embeddings: dict[str, Any] | None = None,
 ) -> PersonaResult:
 	"""Merge algorithmic clustering with LLM-generated labels into the final result."""
 	dim_names = [d.name for d in schema.dimensions]
@@ -155,6 +157,13 @@ def build_persona_result(
 		]
 		size = int(np.sum(clustering.labels == cluster_idx))
 
+		centroid_emb: list[float] | None = None
+		if session_embeddings:
+			member_ids = [s.session_id for i, s in enumerate(scores) if clustering.labels[i] == cluster_idx]
+			vecs = [session_embeddings[sid] for sid in member_ids if sid in session_embeddings]
+			if vecs:
+				centroid_emb = np.mean(np.stack(vecs), axis=0).tolist()
+
 		desc = label_map.get(cluster_idx)
 		personas.append(
 			Persona(
@@ -168,6 +177,7 @@ def build_persona_result(
 				success_criteria_guidance=desc.success_criteria_guidance if desc else '',
 				execution_hints=desc.execution_hints if desc else [],
 				judge_questions=desc.judge_questions if desc else [],
+				centroid_embedding=centroid_emb,
 			)
 		)
 

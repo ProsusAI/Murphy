@@ -75,10 +75,10 @@ async def score_session(
 		output_format=SessionScore,
 	)
 	score: SessionScore = response.completion
-	if not score.session_id:
-		score.session_id = session_id
-	if not score.user_id:
-		score.user_id = user_id
+	# Always use the caller-supplied IDs — the LLM doesn't see the session_id in the
+	# prompt and may hallucinate a plausible-looking but wrong value.
+	score.session_id = session_id
+	score.user_id = user_id
 	return score
 
 
