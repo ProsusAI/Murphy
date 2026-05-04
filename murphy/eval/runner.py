@@ -60,12 +60,49 @@ def _similarity_label(score: float) -> str:
 	return 'LOW'
 
 
+def _similarity_emoji(score: float) -> str:
+	if score >= 0.85:
+		return '🟢'
+	if score >= 0.70:
+		return '🟡'
+	return '🔴'
+
+
+def _make_bar(score: float, width: int = 20) -> str:
+	filled = round(score * width)
+	return '█' * filled + '░' * (width - filled)
+
+
+def _delta_str(delta: float) -> str:
+	return f'+{delta:.2f}' if delta >= 0 else f'{delta:.2f}'
+
+
+def _short_trait(name: str, max_len: int = 24) -> str:
+	return name if len(name) <= max_len else name[: max_len - 1] + '…'
+
+
 def build_markdown_report(report_data: dict[str, Any]) -> str:
 	lines: list[str] = []
+
+	# ── Header ────────────────────────────────────────────────────────────────
+	num_results = len(report_data.get('results', []))
+	num_personas = len({r['persona_name'] for r in report_data.get('results', [])})
 	lines.append('# Persona Similarity Report')
-	lines.append(f'Generated: {report_data["timestamp"]}')
-	lines.append(f'Personas file: {report_data["personas_file"]}')
-	lines.append(f'Output dir: {report_data["output_dir"]}')
+	lines.append(
+		f'Generated: {report_data["timestamp"]}  ·  '
+		f'Output: `{report_data["output_dir"]}`  ·  '
+		f'{num_results} tests across {num_personas} personas'
+	)
+	lines.append('')
+	lines.append('**Ratings:** 🟢 HIGH ≥ 85%  ·  🟡 MEDIUM ≥ 70%  ·  🔴 LOW < 70%')
+	lines.append('')
+	lines.append("**LLM match** measures how closely Murphy's trait scores match the real-user centroid (1 = perfect).")
+	lines.append('')
+	lines.append(
+		"**Embedding sim** measures cosine distance between Murphy's behavioral timeline and the persona's mean session embedding."
+	)
+	lines.append('')
+	lines.append('---')
 	lines.append('')
 
 	results: list[dict[str, Any]] = report_data.get('results', [])
@@ -79,42 +116,69 @@ def build_markdown_report(report_data: dict[str, Any]) -> str:
 
 	by_persona_llm: dict[str, list[float]] = defaultdict(list)
 	by_persona_emb: dict[str, list[float]] = defaultdict(list)
+	by_persona_dims: dict[str, list[dict]] = defaultdict(list)
 	for r in results:
 		by_persona_llm[r['persona_name']].append(r['overall_similarity_score'])
 		emb = r.get('embedding_similarity')
 		if emb is not None:
 			by_persona_emb[r['persona_name']].append(emb)
+		for dim in r['dimensions']:
+			by_persona_dims[r['persona_name']].append(dim)
 
 	has_embeddings = bool(by_persona_emb)
 
+	# ── Summary table ─────────────────────────────────────────────────────────
 	lines.append('## Summary')
 	lines.append('')
 	if has_embeddings:
-		lines.append('| Persona | Tests | Avg LLM Similarity | Rating | Avg Embedding Sim |')
-		lines.append('|---------|-------|--------------------|--------|-------------------|')
+		lines.append('| Persona | Tests | LLM Match | Emb Sim | Strongest match | Biggest gap |')
+		lines.append('|---------|-------|-----------|---------|-----------------|-------------|')
 		for persona_name, llm_scores in sorted(by_persona_llm.items()):
 			avg_llm = sum(llm_scores) / len(llm_scores)
 			emb_scores = by_persona_emb.get(persona_name, [])
 			avg_emb = f'{sum(emb_scores) / len(emb_scores):.2f}' if emb_scores else '—'
-			lines.append(f'| {persona_name} | {len(llm_scores)} | {avg_llm:.2f} | {_similarity_label(avg_llm)} | {avg_emb} |')
+			bar = _make_bar(avg_llm)
+			pct = round(avg_llm * 100)
+			emoji = _similarity_emoji(avg_llm)
+			dims = by_persona_dims[persona_name]
+			best = min(dims, key=lambda d: abs(d['delta']))
+			worst = max(dims, key=lambda d: abs(d['delta']))
+			best_cell = f'{_short_trait(best["trait_name"])} ({_delta_str(best["delta"])})'
+			worst_cell = f'{_short_trait(worst["trait_name"])} ({_delta_str(worst["delta"])})'
+			lines.append(
+				f'| {persona_name} | {len(llm_scores)} | `{bar}` {pct}% {emoji} | {avg_emb} | {best_cell} | {worst_cell} |'
+			)
 	else:
-		lines.append('| Persona | Tests | Avg Similarity | Rating |')
-		lines.append('|---------|-------|---------------|--------|')
+		lines.append('| Persona | Tests | LLM Match | Strongest match | Biggest gap |')
+		lines.append('|---------|-------|-----------|-----------------|-------------|')
 		for persona_name, llm_scores in sorted(by_persona_llm.items()):
 			avg = sum(llm_scores) / len(llm_scores)
-			lines.append(f'| {persona_name} | {len(llm_scores)} | {avg:.2f} | {_similarity_label(avg)} |')
+			bar = _make_bar(avg)
+			pct = round(avg * 100)
+			emoji = _similarity_emoji(avg)
+			dims = by_persona_dims[persona_name]
+			best = min(dims, key=lambda d: abs(d['delta']))
+			worst = max(dims, key=lambda d: abs(d['delta']))
+			best_cell = f'{_short_trait(best["trait_name"])} ({_delta_str(best["delta"])})'
+			worst_cell = f'{_short_trait(worst["trait_name"])} ({_delta_str(worst["delta"])})'
+			lines.append(f'| {persona_name} | {len(llm_scores)} | `{bar}` {pct}% {emoji} | {best_cell} | {worst_cell} |')
 	lines.append('')
 
+	# ── Detailed results ──────────────────────────────────────────────────────
 	lines.append('## Detailed Results')
 	lines.append('')
 	for r in results:
 		overall = r['overall_similarity_score']
-		label = _similarity_label(overall)
 		emb = r.get('embedding_similarity')
+		bar = _make_bar(overall)
+		pct = round(overall * 100)
+		emoji = _similarity_emoji(overall)
 		lines.append(f'### {r["test_scenario_name"]}')
-		header = f'**Persona:** `{r["persona_slug"]}`  |  **LLM similarity:** {overall:.2f} ({label})'
+		lines.append(f'**Persona:** `{r["persona_slug"]}`')
+		lines.append('')
+		header = f'**LLM match:** `{bar}` {pct}% {emoji}'
 		if emb is not None:
-			header += f'  |  **Embedding sim:** {emb:.2f}'
+			header += f'  ·  **Embedding sim:** {emb:.3f}'
 		lines.append(header)
 		lines.append('')
 		lines.append('| Trait Dimension | Murphy | Real Users | Delta |')
@@ -124,10 +188,21 @@ def build_markdown_report(report_data: dict[str, Any]) -> str:
 			sign = '+' if delta >= 0 else ''
 			lines.append(f'| {dim["trait_name"]} | {dim["murphy_score"]:.1f} | {dim["persona_score"]:.1f} | {sign}{delta:.1f} |')
 		lines.append('')
-		reasoning = r.get('scoring_reasoning', '').strip()
-		if reasoning:
-			lines.append(f'**Scoring rationale:** {reasoning}')
+		rat = r.get('rationale')
+		if rat:
+			dims = r['dimensions']
+			best = min(dims, key=lambda d: abs(d['delta']))
+			worst = max(dims, key=lambda d: abs(d['delta']))
+			lines.append(f'↳ 🟢 **Best match — {best["trait_name"]} ({_delta_str(best["delta"])}):** {rat["best_match"]}  ')
+			lines.append(f'↳ 🔴 **Biggest gap — {worst["trait_name"]} ({_delta_str(worst["delta"])}):** {rat["biggest_gap"]}  ')
+			if emb is not None:
+				lines.append(f'↳ 📐 **Embedding ({emb:.3f}):** {rat["embedding"]}')
 			lines.append('')
+		else:
+			reasoning = r.get('scoring_reasoning', '').strip()
+			if reasoning:
+				lines.append(f'**Scoring rationale:** {reasoning}')
+				lines.append('')
 
 	return '\n'.join(lines)
 

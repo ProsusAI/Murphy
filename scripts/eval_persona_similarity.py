@@ -29,10 +29,8 @@ import json
 import logging
 import re
 import sys
-from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
-from typing import Any
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
@@ -78,63 +76,6 @@ def _similarity_label(score: float) -> str:
 	if score >= 0.70:
 		return 'MEDIUM'
 	return 'LOW'
-
-
-# ── Report generation ─────────────────────────────────────────────────────────
-
-
-def _build_markdown(report_data: dict[str, Any]) -> str:
-	lines: list[str] = []
-	lines.append('# Persona Similarity Report')
-	lines.append(f'Generated: {report_data["timestamp"]}')
-	lines.append(f'Personas file: {report_data["personas_file"]}')
-	lines.append(f'Output dir: {report_data["output_dir"]}')
-	lines.append('')
-
-	results: list[dict[str, Any]] = report_data.get('results', [])
-	if not results:
-		lines.append('No discovered-persona tests found.')
-		lines.append('')
-		lines.append('Make sure you ran Murphy with `--personas <path>` so that')
-		lines.append('test scenarios are assigned to discovered personas.')
-		return '\n'.join(lines)
-
-	# Summary table
-	by_persona: dict[str, list[float]] = defaultdict(list)
-	for r in results:
-		by_persona[r['persona_name']].append(r['overall_similarity_score'])
-
-	lines.append('## Summary')
-	lines.append('')
-	lines.append('| Persona | Tests | Avg Similarity | Rating |')
-	lines.append('|---------|-------|---------------|--------|')
-	for persona_name, scores in sorted(by_persona.items()):
-		avg = sum(scores) / len(scores)
-		lines.append(f'| {persona_name} | {len(scores)} | {avg:.2f} | {_similarity_label(avg)} |')
-	lines.append('')
-
-	# Detail per test
-	lines.append('## Detailed Results')
-	lines.append('')
-	for r in results:
-		overall = r['overall_similarity_score']
-		label = _similarity_label(overall)
-		lines.append(f'### {r["test_scenario_name"]}')
-		lines.append(f'**Persona:** `{r["persona_slug"]}`  |  **Overall similarity:** {overall:.2f} ({label})')
-		lines.append('')
-		lines.append('| Trait Dimension | Murphy | Real Users | Delta |')
-		lines.append('|----------------|--------|-----------|-------|')
-		for dim in r['dimensions']:
-			delta = dim['delta']
-			sign = '+' if delta >= 0 else ''
-			lines.append(f'| {dim["trait_name"]} | {dim["murphy_score"]:.1f} | {dim["persona_score"]:.1f} | {sign}{delta:.1f} |')
-		lines.append('')
-		reasoning = r.get('scoring_reasoning', '').strip()
-		if reasoning:
-			lines.append(f'**Scoring rationale:** {reasoning}')
-			lines.append('')
-
-	return '\n'.join(lines)
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
@@ -231,7 +172,9 @@ async def _async_main(args: argparse.Namespace) -> int:
 
 	# Write markdown
 	md_path = output_dir / 'persona_similarity_report.md'
-	md_path.write_text(_build_markdown(json.loads(report_obj.model_dump_json())), encoding='utf-8')
+	from murphy.eval.runner import build_markdown_report
+
+	md_path.write_text(build_markdown_report(json.loads(report_obj.model_dump_json())), encoding='utf-8')
 	logger.info('Wrote %s', md_path)
 
 	# Print summary

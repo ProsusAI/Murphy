@@ -14,6 +14,14 @@ class DimensionSimilarity(BaseModel):
 	delta: float  # murphy_score - persona_score (positive = Murphy scored higher)
 
 
+class TestRationale(BaseModel):
+	"""LLM-generated one-line explanations for the three key signals in a similarity result."""
+
+	best_match: str  # why Murphy matched the best-matching trait
+	biggest_gap: str  # what Murphy did differently on the worst-matching trait
+	embedding: str  # what the embedding similarity score reveals beyond trait scores
+
+
 class PersonaSimilarityResult(BaseModel):
 	"""Similarity evaluation for one (test scenario, discovered persona) pair."""
 
@@ -26,6 +34,7 @@ class PersonaSimilarityResult(BaseModel):
 	overall_similarity_score: float  # 0–1, where 1 = perfect match to persona centroid
 	scoring_reasoning: str  # LLM rationale from score_session()
 	embedding_similarity: float | None = None  # 0–1 cosine sim of timeline embeddings; None if centroid_embedding not available
+	rationale: TestRationale | None = None  # structured LLM rationale for best match, biggest gap, embedding
 
 
 class SimilarityReport(BaseModel):

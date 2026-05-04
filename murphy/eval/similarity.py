@@ -17,15 +17,83 @@ from pathlib import Path
 
 import numpy as np
 
-from browser_use.llm import BaseChatModel
+from browser_use.llm import BaseChatModel, SystemMessage, UserMessage
 from murphy.eval.history_adapter import format_agent_history_as_timeline
-from murphy.eval.models import DimensionSimilarity, PersonaSimilarityResult
+from murphy.eval.models import DimensionSimilarity, PersonaSimilarityResult, TestRationale
 from murphy.personas.bridge import slugify_persona_name
 from murphy.personas.embedder import embed_texts
 from murphy.personas.pipeline_models import Persona, TraitSchema
 from murphy.personas.scoring import score_session
 
 logger = logging.getLogger(__name__)
+
+
+_RATIONALE_SYSTEM = """\
+You are writing concise rationale lines for a persona similarity evaluation report.
+Each explanation should be one clear, specific sentence grounded in the behavioral data.
+Avoid generic statements — reference the specific trait and what the scores reveal about behavior."""
+
+_RATIONALE_USER = """\
+Persona: {persona_name}
+{persona_description}
+
+Test result:
+- Best-matching trait: {best_trait}
+  Murphy: {best_murphy:.1f}  |  Real users: {best_persona:.1f}  |  Delta: {best_delta}
+- Biggest gap: {worst_trait}
+  Murphy: {worst_murphy:.1f}  |  Real users: {worst_persona:.1f}  |  Delta: {worst_delta}
+- Embedding similarity: {emb_str}  (0 = completely different behavioral timeline, 1 = identical)
+
+Behavioral context from scoring:
+{scoring_reasoning}
+
+Write three rationale fields:
+- best_match: one sentence explaining why Murphy matched the best-matching trait well.
+- biggest_gap: one sentence explaining what Murphy did differently on the biggest-gap trait and why it matters for persona fidelity.
+- embedding: one to two sentences on what the embedding similarity tells us about overall behavioral resemblance beyond the individual trait scores."""
+
+
+def _delta_str(delta: float) -> str:
+	return f'+{delta:.2f}' if delta >= 0 else f'{delta:.2f}'
+
+
+async def generate_test_rationale(
+	persona: Persona,
+	best_dim: DimensionSimilarity,
+	worst_dim: DimensionSimilarity,
+	embedding_similarity: float | None,
+	scoring_reasoning: str,
+	llm: BaseChatModel,
+) -> TestRationale | None:
+	"""Generate one-line rationale for best match, biggest gap, and embedding similarity."""
+	emb_str = f'{embedding_similarity:.3f}' if embedding_similarity is not None else 'not available'
+	try:
+		response = await llm.ainvoke(
+			messages=[
+				SystemMessage(content=_RATIONALE_SYSTEM),
+				UserMessage(
+					content=_RATIONALE_USER.format(
+						persona_name=persona.name,
+						persona_description=persona.description,
+						best_trait=best_dim.trait_name,
+						best_murphy=best_dim.murphy_score,
+						best_persona=best_dim.persona_score,
+						best_delta=_delta_str(best_dim.delta),
+						worst_trait=worst_dim.trait_name,
+						worst_murphy=worst_dim.murphy_score,
+						worst_persona=worst_dim.persona_score,
+						worst_delta=_delta_str(worst_dim.delta),
+						emb_str=emb_str,
+						scoring_reasoning=scoring_reasoning[:1200],
+					)
+				),
+			],
+			output_format=TestRationale,
+		)
+		return response.completion
+	except Exception:
+		logger.warning('Failed to generate test rationale for "%s"', persona.name, exc_info=True)
+		return None
 
 
 async def evaluate_similarity(
@@ -103,6 +171,12 @@ async def evaluate_similarity(
 		except Exception:
 			logger.warning('Failed to compute embedding similarity for "%s"', scenario_name, exc_info=True)
 
+	best_dim = min(dimensions, key=lambda d: abs(d.delta)) if dimensions else None
+	worst_dim = max(dimensions, key=lambda d: abs(d.delta)) if dimensions else None
+	rationale: TestRationale | None = None
+	if best_dim and worst_dim:
+		rationale = await generate_test_rationale(persona, best_dim, worst_dim, emb_sim, session_score.reasoning, llm)
+
 	return PersonaSimilarityResult(
 		persona_id=persona.persona_id,
 		persona_name=persona.name,
@@ -113,4 +187,5 @@ async def evaluate_similarity(
 		overall_similarity_score=round(overall, 3),
 		scoring_reasoning=session_score.reasoning,
 		embedding_similarity=emb_sim,
+		rationale=rationale,
 	)
