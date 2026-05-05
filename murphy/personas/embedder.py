@@ -21,8 +21,8 @@ logger = logging.getLogger(__name__)
 
 EMBEDDING_MODEL = 'text-embedding-3-small'
 EMBEDDING_BATCH_SIZE = 50  # session timelines are long; keep well under the 300k token/request limit
-# EMBEDDING_MAX_CHARS = 30000  # ~7,500 tokens; safely under the 8,192 token/string limit
-EMBEDDING_MAX_CHARS = 6000  # 25,000 tokens; safely under the 300k token/request limit
+# EMBEDDING_MAX_CHARS = 30000  # ~7,500 tokens; under the 8,192 token/string limit
+EMBEDDING_MAX_CHARS = 6000
 
 
 async def embed_texts(texts: list[str]) -> np.ndarray:

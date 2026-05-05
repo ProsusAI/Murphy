@@ -102,6 +102,15 @@ def build_markdown_report(report_data: dict[str, Any]) -> str:
 		"**Embedding sim** measures cosine distance between Murphy's behavioral timeline and the persona's mean session embedding."
 	)
 	lines.append('')
+	key_takeaways = report_data.get('key_takeaways') or []
+	if key_takeaways:
+		lines.append('## Key Takeaways')
+		lines.append('')
+		for i, takeaway in enumerate(key_takeaways, 1):
+			lines.append(f'**{i}.** {takeaway}')
+			lines.append('')
+		lines.append('')
+
 	lines.append('---')
 	lines.append('')
 
@@ -270,12 +279,16 @@ async def run_similarity_eval(
 	if not similarity_results:
 		return None
 
-	return SimilarityReport(
+	from murphy.eval.similarity import generate_key_takeaways
+
+	report = SimilarityReport(
 		personas_file='',  # caller can set this
 		output_dir=str(output_dir),
 		timestamp=datetime.now().isoformat(timespec='seconds'),
 		results=similarity_results,
 	)
+	report.key_takeaways = await generate_key_takeaways(report, llm)
+	return report
 
 
 def write_similarity_reports(report: SimilarityReport, output_dir: Path) -> tuple[Path, Path]:

@@ -44,3 +44,4 @@ class SimilarityReport(BaseModel):
 	output_dir: str
 	timestamp: str
 	results: list[PersonaSimilarityResult]
+	key_takeaways: list[str] | None = None

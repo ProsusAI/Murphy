@@ -158,12 +158,15 @@ async def _async_main(args: argparse.Namespace) -> int:
 		logger.warning('No discovered-persona tests found. Run Murphy with --personas to use discovered personas.')
 		return 0
 
+	from murphy.eval.similarity import generate_key_takeaways
+
 	report_obj = SimilarityReport(
 		personas_file=str(personas_path),
 		output_dir=str(output_dir),
 		timestamp=datetime.now().isoformat(timespec='seconds'),
 		results=similarity_results,
 	)
+	report_obj.key_takeaways = await generate_key_takeaways(report_obj, llm)
 
 	# Write JSON
 	json_path = output_dir / 'persona_similarity_report.json'

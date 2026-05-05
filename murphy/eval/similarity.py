@@ -19,7 +19,7 @@ import numpy as np
 
 from browser_use.llm import BaseChatModel, SystemMessage, UserMessage
 from murphy.eval.history_adapter import format_agent_history_as_timeline
-from murphy.eval.models import DimensionSimilarity, PersonaSimilarityResult, TestRationale
+from murphy.eval.models import DimensionSimilarity, PersonaSimilarityResult, SimilarityReport, TestRationale
 from murphy.personas.bridge import slugify_persona_name
 from murphy.personas.embedder import embed_texts
 from murphy.personas.pipeline_models import Persona, TraitSchema
@@ -36,6 +36,7 @@ Avoid generic statements — reference the specific trait and what the scores re
 _RATIONALE_USER = """\
 Persona: {persona_name}
 {persona_description}
+Distinguishing traits: {distinguishing_traits}
 
 Test result:
 - Best-matching trait: {best_trait}
@@ -44,13 +45,16 @@ Test result:
   Murphy: {worst_murphy:.1f}  |  Real users: {worst_persona:.1f}  |  Delta: {worst_delta}
 - Embedding similarity: {emb_str}  (0 = completely different behavioral timeline, 1 = identical)
 
+Murphy's behavioral summary:
+{murphy_behavioral_summary}
+
 Behavioral context from scoring:
 {scoring_reasoning}
 
 Write three rationale fields:
 - best_match: one sentence explaining why Murphy matched the best-matching trait well.
 - biggest_gap: one sentence explaining what Murphy did differently on the biggest-gap trait and why it matters for persona fidelity.
-- embedding: one to two sentences on what the embedding similarity tells us about overall behavioral resemblance beyond the individual trait scores."""
+- embedding: two sentences. Do NOT lead with or paraphrase the score number. Sentence 1: pick the single behavioral signal from Murphy's summary (e.g. a specific action count, deliberation steps, navigation style) that best aligns with one of this persona's distinguishing traits — name both explicitly. Sentence 2: pick the single behavioral signal that most diverges from another distinguishing trait — name both explicitly. End with one clause explaining whether the score is expected given this."""
 
 
 def _delta_str(delta: float) -> str:
@@ -63,10 +67,12 @@ async def generate_test_rationale(
 	worst_dim: DimensionSimilarity,
 	embedding_similarity: float | None,
 	scoring_reasoning: str,
+	murphy_behavioral_summary: str,
 	llm: BaseChatModel,
 ) -> TestRationale | None:
 	"""Generate one-line rationale for best match, biggest gap, and embedding similarity."""
 	emb_str = f'{embedding_similarity:.3f}' if embedding_similarity is not None else 'not available'
+	distinguishing_traits = ', '.join(persona.distinguishing_traits) if persona.distinguishing_traits else 'not specified'
 	try:
 		response = await llm.ainvoke(
 			messages=[
@@ -75,6 +81,7 @@ async def generate_test_rationale(
 					content=_RATIONALE_USER.format(
 						persona_name=persona.name,
 						persona_description=persona.description,
+						distinguishing_traits=distinguishing_traits,
 						best_trait=best_dim.trait_name,
 						best_murphy=best_dim.murphy_score,
 						best_persona=best_dim.persona_score,
@@ -84,6 +91,7 @@ async def generate_test_rationale(
 						worst_persona=worst_dim.persona_score,
 						worst_delta=_delta_str(worst_dim.delta),
 						emb_str=emb_str,
+						murphy_behavioral_summary=murphy_behavioral_summary,
 						scoring_reasoning=scoring_reasoning[:1200],
 					)
 				),
@@ -94,6 +102,82 @@ async def generate_test_rationale(
 	except Exception:
 		logger.warning('Failed to generate test rationale for "%s"', persona.name, exc_info=True)
 		return None
+
+
+_TAKEAWAYS_SYSTEM = """\
+You are analyzing a Murphy persona similarity report to extract product insights.
+Murphy is an AI agent that simulates real user personas to test a product.
+Write exactly 2 key takeaways about what this report reveals regarding Murphy's effectiveness and limitations as a product tester.
+Each takeaway must be one to two sentences, specific and grounded in the data, and actionable for the product team."""
+
+_TAKEAWAYS_USER = """\
+Report summary across {num_results} test runs, {num_personas} personas:
+
+{persona_summaries}
+
+Write exactly 2 key takeaways. Each should name specific personas or traits, cite the data, and say what it means for product testing."""
+
+
+def _build_persona_summaries(results: list[PersonaSimilarityResult]) -> str:
+	from collections import defaultdict
+
+	by_persona: dict[str, list[PersonaSimilarityResult]] = defaultdict(list)
+	for r in results:
+		by_persona[r.persona_name].append(r)
+
+	lines: list[str] = []
+	for persona_name, runs in sorted(by_persona.items()):
+		avg_llm = sum(r.overall_similarity_score for r in runs) / len(runs)
+		emb_scores = [r.embedding_similarity for r in runs if r.embedding_similarity is not None]
+		avg_emb = f'{sum(emb_scores) / len(emb_scores):.2f}' if emb_scores else 'n/a'
+
+		all_dims: dict[str, list[float]] = defaultdict(list)
+		for r in runs:
+			for d in r.dimensions:
+				all_dims[d.trait_name].append(d.delta)
+		avg_deltas = {t: sum(v) / len(v) for t, v in all_dims.items()}
+		worst_trait = max(avg_deltas, key=lambda t: abs(avg_deltas[t]))
+		delta_str = f'{avg_deltas[worst_trait]:+.2f}'
+
+		trait_lines = '  '.join(f'{t}: {d:+.1f}' for t, d in sorted(avg_deltas.items(), key=lambda x: -abs(x[1])))
+		lines.append(
+			f'Persona: {persona_name} ({len(runs)} runs)\n'
+			f'  Avg LLM match: {avg_llm:.2f} | Avg embedding: {avg_emb}\n'
+			f'  Trait deltas (Murphy − real users): {trait_lines}\n'
+			f'  Biggest gap: {worst_trait} {delta_str}'
+		)
+	return '\n\n'.join(lines)
+
+
+async def generate_key_takeaways(report: SimilarityReport, llm: BaseChatModel) -> list[str]:
+	"""Generate 2 key takeaways from the full similarity report."""
+	from pydantic import BaseModel
+
+	class _Takeaways(BaseModel):
+		takeaway_1: str
+		takeaway_2: str
+
+	persona_summaries = _build_persona_summaries(report.results)
+	num_personas = len({r.persona_name for r in report.results})
+	try:
+		response = await llm.ainvoke(
+			messages=[
+				SystemMessage(content=_TAKEAWAYS_SYSTEM),
+				UserMessage(
+					content=_TAKEAWAYS_USER.format(
+						num_results=len(report.results),
+						num_personas=num_personas,
+						persona_summaries=persona_summaries,
+					)
+				),
+			],
+			output_format=_Takeaways,
+		)
+		t = response.completion
+		return [t.takeaway_1, t.takeaway_2]
+	except Exception:
+		logger.warning('Failed to generate key takeaways', exc_info=True)
+		return []
 
 
 async def evaluate_similarity(
@@ -171,11 +255,17 @@ async def evaluate_similarity(
 		except Exception:
 			logger.warning('Failed to compute embedding similarity for "%s"', scenario_name, exc_info=True)
 
+	marker = '=== Action Timeline ==='
+	cutoff = timeline.find(marker)
+	murphy_behavioral_summary = timeline[:cutoff].strip() if cutoff != -1 else timeline[:800]
+
 	best_dim = min(dimensions, key=lambda d: abs(d.delta)) if dimensions else None
 	worst_dim = max(dimensions, key=lambda d: abs(d.delta)) if dimensions else None
 	rationale: TestRationale | None = None
 	if best_dim and worst_dim:
-		rationale = await generate_test_rationale(persona, best_dim, worst_dim, emb_sim, session_score.reasoning, llm)
+		rationale = await generate_test_rationale(
+			persona, best_dim, worst_dim, emb_sim, session_score.reasoning, murphy_behavioral_summary, llm
+		)
 
 	return PersonaSimilarityResult(
 		persona_id=persona.persona_id,
