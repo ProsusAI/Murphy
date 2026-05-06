@@ -15,42 +15,20 @@ from browser_use.llm.messages import ContentPartImageParam, ContentPartTextParam
 from browser_use.utils import sanitize_surrogates
 from murphy.models import (
 	PERSONA_REGISTRY,
+	TRAIT_JUDGE_QUESTIONS,
 	JudgeVerdict,
 	TestScenario,
 	TestType,
-	TraitLevel,
 	TraitVector,
 )
 from murphy.personas.bridge import build_discovered_judge_context
 from murphy.personas.pipeline_models import PersonaResult, TraitSchema
 
-TRAIT_JUDGE_QUESTIONS: dict[str, dict[TraitLevel, str]] = {
-	'technical_literacy': {
-		TraitLevel.low: 'Would a user unfamiliar with UI conventions understand what happened? Labels, icons, affordances must be self-explanatory without domain knowledge. This user needs explicit text, not just icons or color cues.',
-		TraitLevel.medium: 'Were standard UI patterns followed? Would a typical web user understand the interaction?',
-		TraitLevel.high: 'Were expert-level controls available and efficient?',
-	},
-	'patience': {
-		TraitLevel.low: 'Did the site communicate state IMMEDIATELY? Loading indicators, progress bars, "please wait" messages? This user interprets 2+ seconds of silence as broken. Silent deduplication with no feedback = FAIL.',
-		TraitLevel.medium: 'Did the site provide timely feedback within reasonable expectations?',
-		TraitLevel.high: 'Did the site complete the task correctly, regardless of timing?',
-	},
-	'reading_comprehension': {
-		TraitLevel.low: 'Was critical information conveyed through visual hierarchy: bold labels, color coding, icons, position-based cues? Error messages in body text are invisible to this user.',
-		TraitLevel.medium: 'Were important messages prominent and scannable?',
-		TraitLevel.high: 'Was detailed information available for thorough readers?',
-	},
-	'exploration': {
-		TraitLevel.high: 'Did the site provide ORIENTATION at every step? Breadcrumbs, page titles, "no results" messages? Dead ends with no feedback = FAIL.',
-		TraitLevel.medium: 'Did the site handle minor path deviations gracefully?',
-		TraitLevel.low: 'Did the expected path work without requiring exploration?',
-	},
-}
-
 TEST_TYPE_RULES: dict[TestType, str] = {
 	'ux': 'Silent handling with no visible feedback is a FAIL. The user must understand what happened.',
 	'security': 'Silent sanitization is CORRECT behavior. Only fail on crash, data leak, or code execution.',
 	'boundary': 'Graceful degradation (even silent) is a PASS. Only fail on unhandled exception or corrupted state.',
+	'design': "Evaluate visual design quality only — functional correctness is not in scope. Judge based on the persona's aesthetic expectations and trait vector.",
 }
 
 
@@ -64,14 +42,7 @@ def build_judge_trait_context(persona: str, traits: TraitVector, test_type: Test
 	lines.append('## Per-trait evaluation questions (evaluate each independently):')
 	lines.append('')
 
-	trait_fields = {
-		'technical_literacy': traits.technical_literacy,
-		'patience': traits.patience,
-		'reading_comprehension': traits.reading_comprehension,
-		'exploration': traits.exploration,
-	}
-	for trait_name, level in trait_fields.items():
-		assert isinstance(level, TraitLevel)
+	for trait_name, level in traits.level_trait_items(test_type):
 		question = TRAIT_JUDGE_QUESTIONS[trait_name][level]
 		lines.append(f'- **{trait_name}** ({level.name}): {question}')
 
@@ -121,7 +92,9 @@ Each test has a **persona** with a **trait vector** and a **test type** (ux/secu
 
 Predefined personas use 5 fixed dimensions (technical_literacy, patience, intent, exploration, reading_comprehension). Discovered personas may use different, dynamically named trait dimensions with centroid scores and custom judge_questions. In both cases, evaluate each provided dimension/question independently.
 
-Evaluate each trait dimension independently, then synthesize into a verdict. A test can fail on one trait dimension but pass on others — report all of them in `trait_evaluations`.
+Evaluate each trait dimension independently, then synthesize into a verdict. A test can fail on one trait dimension but pass on others.
+
+For **`trait_evaluations`**: add one entry per trait dimension listed in the "Per-trait evaluation questions" section. Each entry has `trait_name` (exact dimension name) and `assessment` ("pass" or "fail"). Example: `[{"trait_name": "technical_literacy", "assessment": "pass"}, {"trait_name": "patience", "assessment": "fail"}]`.
 
 ## Feedback quality assessment
 
@@ -224,9 +197,89 @@ After determining the verdict, check which expected confirmation signals were NO
 These are UX observations only. A non-empty `missing_signals` on a passing test means the site's feedback could be improved — it does NOT change the verdict.
 
 Based on the Navigation Evidence and Pages Reached, did the agent successfully complete this test?
-Evaluate each trait dimension independently and report per-trait assessments in trait_evaluations.
+For each trait dimension listed above, add an entry to trait_evaluations with trait_name and assessment ("pass" or "fail").
 Also assess feedback quality (response_present, response_timely, response_clear, response_actionable, feedback_type).
 """
+
+
+# Actions that produce meaningful visual state changes worth showing the judge
+_HIGH_SIGNAL_ACTIONS = frozenset(
+	{
+		'navigate',
+		'input_text',
+		'done',
+		'select_dropdown_option',
+		'upload_file',
+		'evaluate',  # JS execution often mutates state
+	}
+)
+
+# Actions that rarely change what the judge needs to see
+_LOW_SIGNAL_ACTIONS = frozenset(
+	{
+		'scroll',
+		'refresh_dom_state',
+		'search_page',
+		'find_elements',
+		'switch_tab',
+		'wait',
+	}
+)
+
+
+def _select_key_screenshots(history: AgentHistoryList, max_screenshots: int = 3) -> list[str]:
+	"""Pick the most informative screenshots from the agent history.
+
+	Prefers: final state, steps after high-signal actions, error steps.
+	Skips: scroll/search/DOM-refresh steps that rarely change visible state.
+	Returns at most max_screenshots base64 strings.
+	"""
+	steps = history.history
+	if not steps:
+		return []
+
+	# Score each step
+	scored: list[tuple[int, int, str]] = []  # (score, index, screenshot_b64)
+	for i, step in enumerate(steps):
+		screenshot_b64 = step.state.get_screenshot()
+		if not screenshot_b64:
+			continue
+
+		score = 0
+
+		# Always weight the last step highest
+		if i == len(steps) - 1:
+			score += 10
+
+		# Check action types in this step
+		if step.model_output:
+			for action in step.model_output.action:
+				action_type = next((k for k in action.model_fields_set if k != 'interacted_element'), None)
+				if action_type in _HIGH_SIGNAL_ACTIONS:
+					score += 3
+				elif action_type not in _LOW_SIGNAL_ACTIONS:
+					score += 1  # clicks and other mid-signal actions
+
+		# Error steps are always informative
+		for result in step.result:
+			if getattr(result, 'error', None):
+				score += 4
+
+		if score > 0:
+			scored.append((score, i, screenshot_b64))
+
+	if not scored:
+		# Fallback: just return the last screenshot
+		last = next((step.state.get_screenshot() for step in reversed(steps) if step.state.get_screenshot()), None)
+		return [last] if last else []
+
+	# Sort by score descending, then pick top N spread across the trace
+	scored.sort(key=lambda x: (-x[0], -x[1]))  # highest score first, break ties by recency
+	selected = scored[:max_screenshots]
+
+	# Return in chronological order
+	selected.sort(key=lambda x: x[1])
+	return [s[2] for s in selected]
 
 
 def _extract_navigation_evidence(history: AgentHistoryList) -> str:
@@ -391,8 +444,8 @@ async def murphy_judge(
 		ContentPartTextParam(text=user_prompt),
 	]
 
-	# Attach last N screenshots (base64) — these let the judge verify visual feedback
-	screenshots = history.screenshots(n_last=3)
+	# Attach key screenshots — selected by action significance, not just recency
+	screenshots = _select_key_screenshots(history, max_screenshots=3)
 	for i, screenshot_b64 in enumerate(screenshots):
 		if screenshot_b64:
 			user_content.append(ContentPartTextParam(text=f'\n## Screenshot {i + 1} of {len(screenshots)}'))

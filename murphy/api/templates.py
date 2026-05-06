@@ -85,7 +85,7 @@ h2 { font-family: Georgia, 'Times New Roman', serif; font-size: 1.3rem; font-wei
 .expand-link { color: var(--accent); cursor: pointer; font-size: .75rem; text-decoration: underline;
 	margin-left: .25rem; }
 .expand-link:hover { opacity: .7; }
-.badge-persona { font-size: .6rem; letter-spacing: .06em; }
+.badge-persona { font-size: .6rem; letter-spacing: .06em; color: #fff; }
 .badge-happy_path { background: #16a34a; color: #fff; }
 .badge-confused_novice { background: #7c3aed; color: #fff; }
 .badge-adversarial { background: #dc2626; color: #fff; }
@@ -93,6 +93,9 @@ h2 { font-family: Georgia, 'Times New Roman', serif; font-size: 1.3rem; font-wei
 .badge-explorer { background: #0891b2; color: #fff; }
 .badge-impatient_user { background: #e11d48; color: #fff; }
 .badge-angry_user { background: #9f1239; color: #fff; }
+.badge-classic_ui { background: #4b5563; color: #fff; }
+.badge-modern_ui { background: #6366f1; color: #fff; }
+.badge-layout_auditor_ui { background: #0d9488; color: #fff; }
 .persona-label { font-size: .7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: .06em; }
 .trace-link { color: var(--accent); font-size: .8rem; text-decoration: none; margin-left: .5rem; }
 .trace-link:hover { text-decoration: underline; }
@@ -119,9 +122,22 @@ _PERSONA_LABELS: dict[str, str] = {
 	'explorer': 'Explorer',
 	'impatient_user': 'Impatient User',
 	'angry_user': 'Angry User',
+	'classic_ui': 'Classic UI',
+	'modern_ui': 'Modern UI',
+	'layout_auditor_ui': 'Layout Auditor UI',
 }
 
 _PERSONA_ORDER = list(_PERSONA_LABELS.keys())
+
+_DEFAULT_PERSONA_BADGE_COLOR = '#6366f1'
+
+
+def _ordered_personas(persona_keys: set[str]) -> list[str]:
+	"""Return persona keys in a stable order: predefined first, then discovered alphabetically."""
+	ordered = [p for p in _PERSONA_ORDER if p in persona_keys]
+	ordered += sorted(persona_keys - set(_PERSONA_ORDER))
+	return ordered
+
 
 _expand_counter = [0]
 
@@ -246,23 +262,27 @@ def render_plan_html(url: str, analysis: WebsiteAnalysis, test_plan: TestPlan) -
 	for i, s in enumerate(test_plan.scenarios):
 		groups.setdefault(s.test_persona, []).append((i, s))
 
-	for persona in _PERSONA_ORDER:
-		items = groups.get(persona)
-		if not items:
-			continue
-		label = _PERSONA_LABELS.get(persona, persona.replace('_', ' ').title())
-		cards_html += f'<div class="group-header"><span class="badge badge-persona badge-{persona}">{_e(label)}</span> ({len(items)})</div>\n'
+	for persona in _ordered_personas(set(groups.keys())):
+		items = groups[persona]
+		label = _PERSONA_LABELS.get(persona) or persona.replace('_', ' ').title()
+		badge_cls = f'badge-{persona}' if persona in _PERSONA_LABELS else ''
+		badge_style = '' if persona in _PERSONA_LABELS else f' style="background:{_DEFAULT_PERSONA_BADGE_COLOR}"'
+		cards_html += f'<div class="group-header"><span class="badge badge-persona {badge_cls}"{badge_style}>{_e(label)}</span> ({len(items)})</div>\n'
 		for idx, s in items:
+			p = s.test_persona
+			p_label = _PERSONA_LABELS.get(p) or p.replace('_', ' ').title()
+			p_badge_cls = f'badge-{p}' if p in _PERSONA_LABELS else ''
+			p_badge_style = '' if p in _PERSONA_LABELS else f' style="background:{_DEFAULT_PERSONA_BADGE_COLOR}"'
 			cards_html += f"""<div class="card">
 	<div class="card-header" onclick="toggle({idx})">
 		<span class="arrow" id="arrow-{idx}">&#9654;</span>
 		<span class="test-name">{_e(s.name)}</span>
 		<span class="badge badge-{s.priority}">{_e(s.priority)}</span>
-		<span class="badge badge-persona badge-{s.test_persona}">{_e(_PERSONA_LABELS.get(s.test_persona) or s.test_persona)}</span>
+		<span class="badge badge-persona {p_badge_cls}"{p_badge_style}>{_e(p_label)}</span>
 	</div>
 	<div class="card-body" id="body-{idx}">
 		<div class="detail"><strong>Target feature:</strong> {_e(s.target_feature)}</div>
-		<div class="detail"><strong>Persona:</strong> {_e(_PERSONA_LABELS.get(s.test_persona) or s.test_persona)}</div>
+		<div class="detail"><strong>Persona:</strong> {_e(p_label)}</div>
 		<div class="detail"><strong>Description:</strong> {_e(s.description)}</div>
 		<div class="detail"><strong>Success criteria:</strong> {_e(s.success_criteria)}</div>
 		<div class="steps">{_e(s.steps_description)}</div>
@@ -334,15 +354,15 @@ def render_results_html(
 			persona_stats[p]['passed'] += 1
 
 	persona_boxes = ''
-	for persona in _PERSONA_ORDER:
-		if persona not in persona_stats:
-			continue
+	for persona in _ordered_personas(set(persona_stats.keys())):
 		ps = persona_stats[persona]
-		label = _PERSONA_LABELS.get(persona, persona.replace('_', ' ').title())
+		label = _PERSONA_LABELS.get(persona) or persona.replace('_', ' ').title()
+		badge_cls = f'badge-{persona}' if persona in _PERSONA_LABELS else ''
+		badge_bg = '' if persona in _PERSONA_LABELS else f';background:{_DEFAULT_PERSONA_BADGE_COLOR}'
 		persona_boxes += (
 			f'<div class="summary-box">'
 			f'<div class="num">{ps["passed"]}/{ps["total"]}</div>'
-			f'<div class="label"><span class="badge badge-persona badge-{persona}" style="font-size:.55rem">{_e(label)}</span></div>'
+			f'<div class="label"><span class="badge badge-persona {badge_cls}" style="font-size:.55rem{badge_bg}">{_e(label)}</span></div>'
 			f'</div>'
 		)
 
@@ -383,8 +403,12 @@ def render_results_html(
 				badge_text = 'TEST LIMITATION'
 
 			body_parts = []
+			p = r.scenario.test_persona
+			p_label = _PERSONA_LABELS.get(p) or p.replace('_', ' ').title()
+			p_badge_cls = f'badge-{p}' if p in _PERSONA_LABELS else ''
+			p_badge_style = '' if p in _PERSONA_LABELS else f' style="background:{_DEFAULT_PERSONA_BADGE_COLOR}"'
 			body_parts.append(
-				f'<div class="detail"><strong>Persona:</strong> <span class="badge badge-persona badge-{r.scenario.test_persona}">{_e(_PERSONA_LABELS.get(r.scenario.test_persona, r.scenario.test_persona))}</span></div>'
+				f'<div class="detail"><strong>Persona:</strong> <span class="badge badge-persona {p_badge_cls}"{p_badge_style}>{_e(p_label)}</span></div>'
 			)
 			body_parts.append(f'<div class="detail"><strong>Target feature:</strong> {_e(r.scenario.target_feature)}</div>')
 			body_parts.append(f'<div class="detail"><strong>Description:</strong> {_e(r.scenario.description)}</div>')
@@ -412,6 +436,10 @@ def render_results_html(
 				if failure_reason:
 					body_parts.append(f'<div class="detail"><strong>Failure reason:</strong> {_e(failure_reason)}</div>')
 
+			if r.feature_suggestions:
+				suggestions_html = ''.join(f'<li>{_e(s)}</li>' for s in r.feature_suggestions)
+				body_parts.append(f'<div class="detail"><strong>Feature suggestions:</strong><ul>{suggestions_html}</ul></div>')
+
 			if not r.success:
 				suggestion = suggest_fix(r)
 				if suggestion:
@@ -424,7 +452,7 @@ def render_results_html(
 	<div class="card-header" onclick="toggle({card_idx})">
 		<span class="arrow" id="arrow-{card_idx}">&#9654;</span>
 		<span class="test-name">{_e(r.scenario.name)}</span>
-		<span class="badge badge-persona badge-{r.scenario.test_persona}">{_e(_PERSONA_LABELS.get(r.scenario.test_persona, r.scenario.test_persona))}</span>
+		<span class="badge badge-persona {p_badge_cls}"{p_badge_style}>{_e(p_label)}</span>
 		<span class="badge {badge_cls}">{badge_text}</span>
 		<a href="/trace/{results_idx}" class="trace-link" onclick="event.stopPropagation()">View trace &rarr;</a>
 		<a href="/graph/{results_idx}" class="trace-link" onclick="event.stopPropagation()">View graph &rarr;</a>

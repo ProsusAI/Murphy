@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import re
 
-from murphy.personas.pipeline_models import Persona, PersonaResult, TraitSchema
+from murphy.personas.pipeline_models import Persona, PersonaResult, TraitDimension, TraitSchema
 
 
 def slugify_persona_name(name: str) -> str:
@@ -29,6 +29,12 @@ def lookup_persona_by_slug(slug: str, result: PersonaResult) -> Persona | None:
 		if slugify_persona_name(p.name) == slug:
 			return p
 	return None
+
+
+def get_discovered_suggestion_instruction(persona_slug: str, result: PersonaResult) -> str | None:
+	"""Return the suggestion instruction for a discovered persona, or None if not found."""
+	persona = lookup_persona_by_slug(persona_slug, result)
+	return persona.suggestion_instruction if persona else None
 
 
 def build_discovered_persona_distribution_text(result: PersonaResult, schema: TraitSchema) -> str:
@@ -83,6 +89,14 @@ def render_discovered_persona_for_execution(
 	return '\n'.join(lines)
 
 
+def _trait_question_for_score(dim: TraitDimension, score: float | int) -> str:
+	"""Generate an evaluation question from a dimension's anchors and the persona's centroid score."""
+	midpoint = 3.0
+	if score <= midpoint:
+		return dim.low_description
+	return dim.high_description
+
+
 def build_discovered_judge_context(
 	persona_slug: str,
 	result: PersonaResult,
@@ -93,7 +107,6 @@ def build_discovered_judge_context(
 	if persona is None:
 		return f'## Persona: {persona_slug}\n(Unknown discovered persona — no trait context available)\n'
 
-	dim_names = [d.name for d in schema.dimensions]
 	centroid_dict = {s.trait_name: s.score for s in persona.centroid}
 	orientation = persona.test_orientation or 'ux'
 
@@ -109,13 +122,26 @@ def build_discovered_judge_context(
 			'## Test type rule: Silent sanitization is CORRECT behavior. Only fail on crash, data leak, or code execution.'
 		)
 	lines.append('')
-	lines.append('## Trait profile (discovered dimensions):')
-	for d in dim_names:
-		lines.append(f'- **{d}**: {centroid_dict.get(d, "?")}')
+	lines.append('## Per-trait evaluation questions (evaluate each independently):')
 	lines.append('')
-	lines.append('## Persona-specific evaluation questions:')
+	for dim in schema.dimensions:
+		score = centroid_dict.get(dim.name, 3.0)
+		question = _trait_question_for_score(dim, score)
+		lines.append(f'- **{dim.name}** (score {score}): {question}')
 	lines.append('')
-	for q in persona.judge_questions:
-		lines.append(f'- {q}')
+
+	if persona.judge_questions:
+		lines.append('These persona-specific questions provide additional context for the trait evaluations above:')
+		lines.append('')
+		for q in persona.judge_questions:
+			lines.append(f'- {q}')
+		lines.append('')
+
+	examples = ', '.join(f'{{"trait_name": "{d.name}", "assessment": "pass"}}' for d in schema.dimensions[:2])
+	lines.append(
+		f'For **`trait_evaluations`**: add one entry per trait dimension listed above. '
+		f'Each entry has `trait_name` (exact dimension name) and `assessment` ("pass" or "fail"). '
+		f'Example: [{examples}].'
+	)
 	lines.append('')
 	return '\n'.join(lines)

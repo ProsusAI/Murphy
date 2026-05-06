@@ -47,6 +47,7 @@ MOCK_LABELS = PersonaLabels(
 			success_criteria_guidance='User completes deep exploration of a single feature.',
 			execution_hints=['Focus on one area', 'Go deep'],
 			judge_questions=['Did the user explore deeply?'],
+			suggestion_instruction='As a deeply engaged user, suggest 1-3 depth-of-feature improvements (e.g. advanced filtering, keyboard shortcuts, bulk actions).',
 		),
 		PersonaDescription(
 			persona_id=1,
@@ -57,6 +58,7 @@ MOCK_LABELS = PersonaLabels(
 			success_criteria_guidance='User samples multiple features.',
 			execution_hints=['Try many features', 'Move quickly'],
 			judge_questions=['Did the user explore broadly?'],
+			suggestion_instruction='As a broad explorer, suggest 1-3 discoverability improvements (e.g. global search, feature highlights, contextual cross-links).',
 		),
 	]
 )
@@ -188,10 +190,13 @@ def test_build_persona_result_merges_correctly():
 	assert p0.centroid[0].trait_name == 'engagement_depth'
 	assert p0.centroid[0].score == 4.5
 
+	assert p0.suggestion_instruction.startswith('As a deeply engaged user')
+
 	# Check persona 1
 	p1 = next(p for p in result.personas if p.persona_id == 1)
 	assert p1.name == 'Broad Explorer'
 	assert p1.size == 1
+	assert p1.suggestion_instruction.startswith('As a broad explorer')
 
 	# Check assignments
 	a1 = next(a for a in result.assignments if a.session_id == 's1')
@@ -242,6 +247,7 @@ def test_build_persona_result_fallback_names():
 				success_criteria_guidance='User completes deep exploration of a single feature.',
 				execution_hints=['Focus on one area', 'Go deep'],
 				judge_questions=['Did the user explore deeply?'],
+				suggestion_instruction='As a deeply engaged user, suggest 1-3 depth improvements.',
 			),
 		]
 	)
@@ -250,3 +256,4 @@ def test_build_persona_result_fallback_names():
 	p1 = next(p for p in result.personas if p.persona_id == 1)
 	assert p1.name == 'Cluster 1'
 	assert p1.description == ''
+	assert p1.suggestion_instruction == ''
