@@ -29,7 +29,11 @@ logger = logging.getLogger(__name__)
 
 # ── Prompts ──────────────────────────────────────────────────────────────────
 
-LABEL_SYSTEM = """\
+DESCRIPTION_INSTRUCTION = "- Provide a concise 1-2 sentence profile detailing the user's technical comfort, typical interaction style, and primary goals with the product."
+
+EXECUTION_HINTS_INSTRUCTION = "- Provide 3-5 specific behavioral instructions that reflect the user's navigation style and frustration tolerance. Include concrete actions, e.g., 'If a page doesn't load within 3 seconds, abandon the task and seek alternatives.'"
+
+LABEL_SYSTEM = f"""\
 You are a behavioral scientist naming user personas from clustered session data.
 
 You will receive a set of persona clusters, each described by its centroid
@@ -39,8 +43,7 @@ with defined low and high anchors.
 For each cluster, provide:
 - A short, memorable archetype name (2-4 words, e.g. "Power Explorer",
   "Cautious Evaluator", "Quick Scanner")
-- A 2-3 sentence description of who this user is: their motivations,
-  typical behavior, and relationship with the product
+{DESCRIPTION_INSTRUCTION}
 - The 2-3 traits that most distinguish this persona from the others
   (list dimension names where this cluster's centroid diverges most
   from the overall mean)
@@ -51,10 +54,7 @@ For each cluster, provide:
   when a website is tested by this persona. Use the same style as:
   "The website provides VISIBLE FEEDBACK for the confused interaction — an error
   message, a tooltip, or an inline hint."
-- execution_hints: Write 2-4 short behavioral instructions for a browser agent
-  role-playing this persona. Each hint should describe a concrete behavior
-  pattern, e.g., "You have zero patience — if something takes more than
-  2 seconds with no feedback, treat it as broken."
+{EXECUTION_HINTS_INSTRUCTION}
 - judge_questions: Write 2-4 evaluation questions a QA judge should ask when
   assessing whether a website handled this persona well. Each question should
   reference a specific trait dimension, e.g., "Would a user with low technical
