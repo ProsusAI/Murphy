@@ -190,7 +190,9 @@ async def _execute_single_test(
 		logical_eval = judgement.logical_evaluation or (verdict.logical_evaluation if verdict else '')
 		usability_eval = judgement.usability_evaluation or (verdict.usability_evaluation if verdict else '')
 		reason = judgement.failure_reason or (verdict.reason if verdict else '')
-		validation_evidence = (verdict.validation_evidence if verdict else '') or ''
+		validation_evidence = verdict.validation_evidence if verdict else ''
+
+		feature_suggestions = verdict.feature_suggestions if verdict else []
 
 		all_actions = history.model_actions()
 		errors = history.errors()
@@ -234,8 +236,9 @@ async def _execute_single_test(
 			reason=reason,
 			validation_evidence=validation_evidence,
 			feedback_quality=judgement.feedback_quality,
-			trait_evaluations=judgement.trait_evaluations,
+			trait_evaluations=judgement.trait_evaluations_dict or None,
 			missing_signals=judgement.missing_signals,
+			feature_suggestions=feature_suggestions,
 		)
 		test_result.failure_category = classify_failure(test_result)
 	except Exception as exc:

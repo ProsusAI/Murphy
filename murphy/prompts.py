@@ -4,35 +4,53 @@ Murphy — LLM prompt text for evaluation phases.
 Extracted from evaluate.py for maintainability.
 """
 
-from murphy.models import PERSONA_REGISTRY, TestPersona, TestScenario, TraitVector, WebsiteAnalysis
+from murphy.models import PERSONA_REGISTRY, TestPersona, TestScenario, TraitLevel, TraitVector, WebsiteAnalysis
 from murphy.personas.pipeline_models import PersonaResult, TraitSchema
 
 # Percentages for persona distribution in test generation
 _PERSONA_DISTRIBUTION: dict[TestPersona, tuple[int, str]] = {
-	'happy_path': (20, 'Standard user, expected flow. A skilled user who knows exactly what they want.'),
+	'happy_path': (15, 'Standard user, expected flow. A skilled user who knows exactly what they want.'),
 	'confused_novice': (
-		15,
+		12,
 		"Simulate someone who doesn't read labels, clicks wrong buttons, submits empty forms, navigates backward repeatedly.",
 	),
 	'adversarial': (
-		15,
+		12,
 		'Try to break things: XSS payloads, SQL injection, navigate to /admin, submit forms with whitespace, paste HTML tags.',
 	),
 	'edge_case': (
-		15,
+		10,
 		'Empty submissions, extremely long inputs (500+ chars), special characters (emoji, RTL text, null bytes, unicode), double-clicking.',
 	),
 	'explorer': (
-		10,
+		8,
 		'Unexpected navigation patterns — visit pages out of order, use features in unintended combinations, click decorative elements.',
 	),
 	'impatient_user': (
-		15,
+		10,
 		'Click rapidly without waiting, skip required steps, submit forms immediately, navigate away mid-action, spam buttons.',
 	),
 	'angry_user': (
-		10,
+		8,
 		'Rage-clicks buttons repeatedly, force-navigates by typing URLs, submits forms rapidly without waiting, abandons multi-step flows mid-way.',
+	),
+	'classic_ui': (
+		9,
+		'Evaluate from the perspective of a user who values readability and familiarity: font sizes must be readable, '
+		'labels must be explicit text (not icon-only), layouts must follow familiar conventions '
+		'(top nav, visible buttons), and contrast must be high enough for comfortable reading.',
+	),
+	'modern_ui': (
+		8,
+		'Evaluate from the perspective of a design-forward user: the site should feel current '
+		'and visually engaging — bold colors, modern typography, dark mode vibes, smooth transitions, '
+		'and expressive visual identity. Bland stock aesthetics or dated layouts are failures.',
+	),
+	'layout_auditor_ui': (
+		8,
+		'Evaluate spacing discipline: every margin, padding, and gutter must follow a consistent scale. '
+		'Misaligned elements, cramped card layouts, inconsistent vertical rhythm, or irregular gaps '
+		'between sibling components are failures.',
 	),
 }
 
@@ -44,13 +62,7 @@ def _build_persona_distribution_text() -> str:
 		entry = PERSONA_REGISTRY.get(persona)
 		if entry:
 			traits, test_type = entry
-			trait_summary = (
-				f'tech_lit={traits.technical_literacy.name}, '
-				f'patience={traits.patience.name}, '
-				f'intent={traits.intent}, '
-				f'exploration={traits.exploration.name}, '
-				f'reading={traits.reading_comprehension.name}'
-			)
+			trait_summary = traits.render_summary(test_type)
 			lines.append(f'- {persona} (~{pct}%, {test_type}): {description} [Traits: {trait_summary}]')
 		else:
 			lines.append(f'- {persona} (~{pct}%): {description}')
@@ -183,10 +195,11 @@ def build_test_generation_prompt(
 			'- explorer (UX): "The website provides ORIENTATION AND FEEDBACK at every step — clear page titles, breadcrumbs, \'no results found\' messages, or redirect explanations. Dead ends with no feedback, blank pages, or silent failures are FAILURES"\n'
 			'- impatient_user (UX): "The website provides VISIBLE STATE FEEDBACK during rapid interactions — loading indicators, \'please wait\' messages, queued-action confirmation, or duplicate-prevention messages. Silent deduplication with no user-facing signal is a FAILURE"\n'
 			'- angry_user (Security): "The website absorbs the hostile interaction gracefully — no crash, no broken state from force-navigation, no infinite loops from rapid clicks"'
+			'- classic_ui (Design): "Text is large and readable, labels are explicit (not icon-only), interactive controls are clearly labeled with familiar patterns (visible buttons, top nav), and contrast is high enough for comfortable reading. Novel hidden gestures or ambiguous icons without text labels are FAILURES"\n'
+			'- modern_ui (Design): "The site feels visually current and engaging — bold palette, modern type, dark mode awareness, smooth transitions, expressive identity. Bland stock aesthetics, dated gradients, or zero visual personality are FAILURES"\n'
+			'- layout_auditor_ui (Design): "Spacing follows a consistent scale — margins, padding, and gutters are uniform across sibling components. Misaligned elements, irregular vertical rhythm, cramped card layouts, or inconsistent gaps are FAILURES"'
 		)
-		persona_names_instruction = (
-			'- test_persona (one of: happy_path, confused_novice, adversarial, edge_case, explorer, impatient_user, angry_user)'
-		)
+		persona_names_instruction = '- test_persona (one of: happy_path, confused_novice, adversarial, edge_case, explorer, impatient_user, angry_user, classic_ui, modern_ui, layout_auditor_ui)'
 
 	return f"""Based on this website analysis, generate {max_tests} test scenarios that target the discovered features.
 {goal_block}
@@ -330,17 +343,20 @@ def build_plan_synthesis_prompt(
 			f'{build_discovered_success_criteria_block(persona_result)}\n'
 		)
 	else:
-		persona_req = '- Must include these personas: happy_path, confused_novice, adversarial, edge_case, explorer.\n'
+		persona_req = '- Must include these personas: happy_path, confused_novice, adversarial, edge_case, explorer, classic_ui, modern_ui, layout_auditor_ui.\n'
 		critical_req = '- At least one scenario must be happy_path with priority=critical.\n'
 		distribution_block = (
 			'PERSONA DISTRIBUTION:\n'
-			'- happy_path (~20%): Standard user completing the expected flow. Success requires visible confirmation feedback.\n'
-			'- confused_novice (~15%): Misclicks, wrong inputs, backtracking. Success requires visible guidance — error messages, tooltips, inline hints. Silent rejection is a FAIL.\n'
-			'- adversarial (~15%): XSS payloads, SQL injection, probing /admin. Silent sanitization is a valid PASS.\n'
-			'- edge_case (~15%): Empty inputs, special chars, long strings. Graceful degradation (even silent) is a PASS.\n'
-			'- explorer (~10%): Unusual navigation, unexpected feature combos. Success requires orientation feedback — page titles, breadcrumbs, "no results" messages. Dead ends with no feedback are FAILS.\n'
-			'- impatient_user (~15%): Rapid clicks, skipping steps. Success requires visible state feedback — loading indicators, "please wait" messages. Silent deduplication is a FAIL.\n'
-			'- angry_user (~10%): Rage-clicks, force-navigation, rapid form submissions, abandoning flows. Absorbing hostility without crash is a PASS.\n'
+			'- happy_path (~15%): Standard user completing the expected flow. Success requires visible confirmation feedback.\n'
+			'- confused_novice (~12%): Misclicks, wrong inputs, backtracking. Success requires visible guidance — error messages, tooltips, inline hints. Silent rejection is a FAIL.\n'
+			'- adversarial (~12%): XSS payloads, SQL injection, probing /admin. Silent sanitization is a valid PASS.\n'
+			'- edge_case (~10%): Empty inputs, special chars, long strings. Graceful degradation (even silent) is a PASS.\n'
+			'- explorer (~8%): Unusual navigation, unexpected feature combos. Success requires orientation feedback — page titles, breadcrumbs, "no results" messages. Dead ends with no feedback are FAILS.\n'
+			'- impatient_user (~10%): Rapid clicks, skipping steps. Success requires visible state feedback — loading indicators, "please wait" messages. Silent deduplication is a FAIL.\n'
+			'- angry_user (~8%): Rage-clicks, force-navigation, rapid form submissions, abandoning flows. Absorbing hostility without crash is a PASS.\n'
+			'- classic_ui (~9%): Evaluate readability and familiarity — large fonts, explicit labels, high contrast, conventional layouts. Icon-only controls or hidden gestures are FAILS.\n'
+			'- modern_ui (~8%): Evaluate visual currency — bold colors, modern type, dark mode, transitions, visual personality. Dated or bland aesthetics are FAILS.\n'
+			'- layout_auditor_ui (~8%): Evaluate spacing discipline — consistent margins, padding, gutters, vertical rhythm, grid alignment. Misaligned or cramped layouts are FAILS.\n'
 		)
 
 	return (
@@ -374,13 +390,7 @@ def build_plan_synthesis_prompt(
 
 def _render_trait_vector(traits: TraitVector) -> str:
 	"""Render a trait vector as a compact structured block."""
-	return (
-		f'  technical_literacy: {traits.technical_literacy.name}\n'
-		f'  patience: {traits.patience.name}\n'
-		f'  intent: {traits.intent}\n'
-		f'  exploration: {traits.exploration.name}\n'
-		f'  reading_comprehension: {traits.reading_comprehension.name}'
-	)
+	return traits.render_full()
 
 
 # Character descriptions for vivid role-playing
@@ -392,6 +402,9 @@ _PERSONA_DESCRIPTIONS: dict[TestPersona, str] = {
 	'explorer': 'A curious user who takes unexpected paths: visits pages out of order, uses features in unintended combinations, clicks decorative elements.',
 	'impatient_user': 'A rushed user who clicks rapidly without waiting, skips required steps, submits forms immediately, navigates away mid-action.',
 	'angry_user': 'A frustrated user who rage-clicks buttons repeatedly, force-navigates by typing URLs, submits forms rapidly without waiting, and abandons multi-step flows mid-way.',
+	'classic_ui': 'A user who values readability and familiarity above all else. Needs large, legible fonts, high-contrast text, explicitly labeled buttons (not icon-only), and conventional layouts (top nav bar, visible sidebar links). Anything that requires guessing — hidden hamburger menus, swipe gestures, unlabeled icon buttons — is a problem. Does not test functionality — focuses purely on whether the design is comfortable, clear, and follows well-established conventions.',
+	'modern_ui': 'A design-forward user immersed in current visual trends and modern SaaS apps. Expects bold color palettes, expressive typography, dark mode support, smooth micro-interactions, and a distinct visual identity. Bland corporate aesthetics, dated skeuomorphic patterns, or stale layouts are failures. Does not test functionality — focuses purely on whether the design feels current, engaging, and visually appealing.',
+	'layout_auditor_ui': 'A meticulous spacing perfectionist who evaluates every margin, padding, and gutter. Checks that sibling components share identical spacing, vertical rhythm is consistent across sections, card grids align to an implicit baseline grid, and no element feels cramped or adrift. Misaligned buttons, irregular gaps between list items, or inconsistent padding inside cards are immediate red flags. Does not test functionality — focuses purely on spatial consistency and breathing room.',
 }
 
 
@@ -419,7 +432,110 @@ def _render_persona_for_execution(persona: str) -> str:
 			lines.append('→ You actively wander off the expected path. Try unexpected navigation, unusual feature combinations.')
 		if traits.intent == 'adversarial':
 			lines.append('→ You are actively trying to break things. Use XSS payloads, SQL fragments, probe hidden endpoints.')
+		if test_type == 'design':
+			if traits.aesthetic_era == 'classic':
+				lines.append(
+					'→ You value readability and familiar patterns. Judge font size, label clarity, contrast for aging eyes, and whether controls use explicit text labels instead of icon-only affordances.'
+				)
+			elif traits.aesthetic_era == 'experimental':
+				lines.append(
+					'→ You expect modern, visually engaging design. Judge bold color choices, expressive typography, dark mode awareness, smooth transitions, and overall visual personality. Bland or dated aesthetics are failures.'
+				)
+			else:
+				lines.append(
+					'→ You expect clean, contemporary design. Judge type scale, systematic spacing, polished details, and visual consistency across pages.'
+				)
+			if traits.layout_strictness == TraitLevel.high:
+				lines.append(
+					'→ You are a spacing perfectionist. Every margin, padding, and gutter must follow a consistent scale. Flag misaligned elements, irregular gaps, and inconsistent padding between sibling components.'
+				)
+			if traits.visual_density_preference == TraitLevel.low:
+				lines.append(
+					'→ You prefer spacious layouts with generous whitespace. Cramped or information-dense screens feel overwhelming — flag them.'
+				)
+			elif traits.visual_density_preference == TraitLevel.high:
+				lines.append(
+					'→ You prefer information-dense layouts. Wasted space and overly sparse screens feel empty — flag them.'
+				)
 	return '\n'.join(lines)
+
+
+_PERSONA_SUGGESTION_INSTRUCTIONS: dict[str, str] = {
+	'happy_path': (
+		'As a standard user completing the expected flow, suggest 1-3 features that would make '
+		'the happy path smoother (e.g. clearer confirmation feedback, streamlined form flows, '
+		'better success states, progress indicators for multi-step processes).'
+	),
+	'confused_novice': (
+		'As a confused first-time user, suggest 1-3 features that would help you orient yourself '
+		'(e.g. onboarding checklists, guided tours, empty-state guidance, clearer CTAs, '
+		'contextual help tooltips, "what is this?" hints).'
+	),
+	'adversarial': (
+		'As a security tester, suggest 1-3 security UX improvements based on what you observed '
+		'(e.g. 2FA prompts, rate-limit feedback, error messaging that does not leak internals, '
+		'CAPTCHA on sensitive actions, input sanitization indicators).'
+	),
+	'edge_case': (
+		'As a boundary-condition tester, suggest 1-3 error-recovery features based on what you observed '
+		'(e.g. auto-save, progress persistence, undo/redo, clear recovery paths after errors, '
+		'input length indicators, character limit warnings).'
+	),
+	'explorer': (
+		'As an exploratory user taking unexpected paths, suggest 1-3 discoverability improvements '
+		'(e.g. global search, keyboard shortcuts, breadcrumb navigation, contextual related-feature links, '
+		'site map, "you might also like" suggestions).'
+	),
+	'impatient_user': (
+		'As an impatient user who wants instant feedback, suggest 1-3 speed or responsiveness improvements '
+		'(e.g. skeleton loaders, optimistic UI updates, progress bars, reduced click-depth, '
+		'prefetching on hover, instant search).'
+	),
+	'angry_user': (
+		'As a frustrated user, suggest 1-3 error-recovery features that would reduce frustration '
+		'(e.g. auto-save on form abandonment, undo for destructive actions, clear "start over" paths, '
+		'graceful handling of rapid interactions, queue/debounce feedback).'
+	),
+	'classic_ui': (
+		'As a user who values readability and familiarity, suggest 1-3 accessibility or legibility '
+		'improvements (e.g. font-size control, high-contrast mode, larger buttons with text labels, '
+		'persistent visible navigation, reduced reliance on icons without text).'
+	),
+	'modern_ui': (
+		'As a design-forward user, suggest 1-3 improvements to make the design feel more current '
+		'and engaging (e.g. dark mode toggle, micro-interactions, expressive typography, gamification elements, '
+		'branded illustrations, smooth transitions).'
+	),
+	'layout_auditor_ui': (
+		'As a spacing perfectionist, suggest 1-3 design-system improvements to resolve spacing issues '
+		'(e.g. a spacing scale with 4/8/16/24/32px tokens, a consistent grid system, '
+		'component-level padding standards, vertical rhythm baseline).'
+	),
+}
+
+
+def _build_suggestion_instruction(
+	persona: str,
+	discovered_personas: tuple[PersonaResult, TraitSchema] | None = None,
+) -> str:
+	"""Return the feature suggestion instruction block for a persona."""
+	instruction = _PERSONA_SUGGESTION_INSTRUCTIONS.get(persona)
+	if instruction is None and discovered_personas:
+		from murphy.personas.bridge import get_discovered_suggestion_instruction
+
+		instruction = get_discovered_suggestion_instruction(persona, discovered_personas[0]) or None
+	if instruction is None:
+		instruction = (
+			'Based on your persona perspective, suggest 1-3 concrete feature or UX improvements '
+			'that would enhance the experience for users like you.'
+		)
+	return (
+		f'FEATURE SUGGESTIONS:\n'
+		f'In your ScenarioExecutionVerdict, populate the feature_suggestions field with 1-3 concrete, '
+		f'actionable improvement suggestions based on what you observed during testing.\n'
+		f'{instruction}\n'
+		f'Each suggestion should be a single sentence describing a specific, implementable improvement.\n'
+	)
 
 
 def build_execution_prompt(
@@ -464,6 +580,7 @@ def build_execution_prompt(
 		f'  (5) In your final done() response, include a "Missing UI elements" section noting: what was expected, that it was absent, what you used instead, and a recommendation that the missing element should ideally be present for better user clarity.\n\n'
 		f'PERSONA BEHAVIOR:\n'
 		f'{persona_block}\n\n'
+		f'{_build_suggestion_instruction(scenario.test_persona, discovered_personas)}\n'
 		f'EDGE CASE / ADVERSARIAL TESTING:\n'
 		f'- For edge_case or adversarial tests: ATTEMPT the action even if controls appear disabled. Click the submit/publish button, try form submission — observe what happens.\n'
 		f'- Do NOT just search for error messages or describe what you see. Actually interact with the form: leave fields empty, then click submit. Report the observed behavior (disabled button, inline validation, error toast, silent rejection, etc.).\n'

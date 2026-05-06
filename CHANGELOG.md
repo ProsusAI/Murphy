@@ -7,6 +7,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [1.1.0] - 2026-04-07
 
 ### Added
+- Per-persona feature suggestions: each persona now produces 1–3 concrete, actionable feature/UX improvement suggestions grounded in what it observed during testing; suggestions are included in HTML reports, Markdown reports, and the executive summary
+- Discovered personas carry a tailored `suggestion_instruction` generated during labeling, producing persona-grounded suggestions instead of generic ones
+- New built-in UI-focused personas — `classic_ui` (readability, contrast, familiar patterns), `modern_ui` (current aesthetics, dark-mode, micro-interactions), and `layout_auditor_ui` (spacing consistency, alignment, grid adherence) — with dedicated trait schemas and judge evaluation criteria
+- Smart screenshot selection for the judge: screenshots are now chosen by action signal strength (navigation, input, errors, final step) instead of simple recency, so the judge sees the most informative visual progression
+- Dynamic personas generated from real user sessions and events via PostHog integration, replacing static persona definitions during evaluation runs
+- `--discover-personas` CLI flag to run the persona discovery pipeline before test generation and save results to `{output_dir}/personas.json`
+- `--personas [PATH]` CLI flag to reuse previously discovered personas (defaults to `{output_dir}/personas.json`)
+- Token usage reporting: persona-discovery and Murphy-execution token totals are now tracked via `TokenCost`, logged at the end of a run, and included in the JSON/Markdown evaluation reports (new `TokenUsage` model on `EvaluationReport`)
+- Configurable persona pipeline: trait schema and personas are discovered from real sessions, each session is scored against those traits, and the resulting trait vectors are clustered to produce personas; all stages are tunable via environment variables (`PERSONA_DISCOVERY_SESSIONS`, `PERSONA_SCORING_SESSIONS`, `PERSONA_MIN_EVENTS`, `PERSONA_NUM_CLUSTERS`, `PERSONA_MAX_CLUSTERS`, `PERSONA_LLM_CONCURRENCY`, `PERSONA_MONTHS_BACK`, `EMBEDDING_MODEL`, `EMBEDDING_DEVICE`, `POSTHOG_*`)
 - Multi-provider LLM support: `--provider` and `--model` flags for OpenAI, Google Gemini, Anthropic Claude, Azure OpenAI, Mistral, Groq, DeepSeek, Cerebras, Ollama, OpenRouter, and Browser Use
 - Separate `--judge-provider` and `--judge-model` flags for using a different model for verdicts
 - `provider` field in REST API request models (`/analyze`, `/generate-plan`, `/execute`, `/evaluate`)
@@ -17,6 +26,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Agent history saved as JSON per test in `output/agent_history/`
 
 ### Fixed
+- Discovered personas now use their pre-computed persona block in the execution prompt instead of regenerating it
 - UTF-8 surrogate encoding error (`ModelProviderError: 'utf-8' codec can't encode character`)
 - Occasional infinite verify loop during test execution
 - Pages URL incorrect in reporting and trace visualization
@@ -24,6 +34,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Agent not reporting missing validation indicators
 
 ### Changed
+- Feature suggestions are produced only by the agent (removed duplicate suggestion generation from the judge) and the report section is now collapsible
 - Removed actions column from results main page in the UI
 
 ### Added

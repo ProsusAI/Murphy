@@ -58,6 +58,10 @@ For each cluster, provide:
   assessing whether a website handled this persona well. Each question should
   reference a specific trait dimension, e.g., "Would a user with low technical
   literacy understand this error message?"
+- suggestion_instruction: Write a single instruction for this persona to suggest
+  feature improvements during testing. Format: "As a <persona role>, suggest 1-3
+  <improvement category> (e.g. <2-3 concrete examples>)." The examples should be
+  grounded in what this persona would care about based on their trait profile.
 
 Be specific and grounded in the centroid scores. Avoid generic labels."""
 
@@ -177,6 +181,7 @@ def build_persona_result(
 				execution_hints=desc.execution_hints if desc else [],
 				judge_questions=desc.judge_questions if desc else [],
 				centroid_embedding=centroid_emb,
+				suggestion_instruction=desc.suggestion_instruction if desc else '',
 			)
 		)
 

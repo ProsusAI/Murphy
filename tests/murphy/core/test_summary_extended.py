@@ -166,7 +166,7 @@ async def test_generate_executive_summary_with_trait_and_feedback():
 	results = [
 		_make_result(
 			feedback_quality=fq,
-			trait_evaluations={'technical_literacy': 'User understood the flow'},
+			trait_evaluations={'technical_literacy': 'pass'},
 		)
 	]
 	analysis = _make_analysis()

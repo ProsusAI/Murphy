@@ -234,9 +234,15 @@ def test_judge_verdict_with_feedback_quality():
 
 
 def test_judge_verdict_with_trait_evaluations():
-	v = _make_verdict(trait_evaluations={'patience': 'Good', 'exploration': 'Poor'})
-	assert v.trait_evaluations is not None
+	v = _make_verdict(
+		trait_evaluations=[
+			{'trait_name': 'patience', 'assessment': 'pass'},
+			{'trait_name': 'exploration', 'assessment': 'fail'},
+		]
+	)
 	assert len(v.trait_evaluations) == 2
+	assert v.trait_evaluations_dict['patience'] == 'pass'
+	assert v.trait_evaluations_dict['exploration'] == 'fail'
 
 
 # ─── TestResult ───────────────────────────────────────────────────────────────
