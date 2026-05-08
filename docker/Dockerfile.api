@@ -7,12 +7,13 @@
 # Required env vars: MURPHY_API_KEY, OPENAI_API_KEY
 # Optional env vars: MURPHY_MAX_CONCURRENT_JOBS (default: 2), MURPHY_API_PORT (default: 8000)
 
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     UV_CACHE_DIR=/root/.cache/uv \
     UV_LINK_MODE=copy \
+    UV_PYTHON_PREFERENCE=only-system \
     CHROME_PATH=/usr/bin/chromium
 
 # Install Chromium + minimal deps
@@ -33,12 +34,22 @@ WORKDIR /app
 
 # Install dependencies first (layer caching)
 COPY pyproject.toml uv.lock* /app/
-RUN uv venv --python 3.11 && uv sync --no-dev --no-install-project
+RUN uv venv --python 3.12 && uv sync --no-dev --no-install-project
 
 # Copy source
 COPY . /app
 RUN uv sync --no-dev
 
+# Create non-root user 1000:1000 with a home directory so browser-use's
+# config/profile dirs (~/.config/browseruse, ~/.cache, etc.) have a writable
+# location when ECS runs the container as user 1000.
+RUN groupadd --gid 1000 murphy && \
+    useradd --uid 1000 --gid 1000 --create-home --home-dir /home/murphy murphy && \
+    chown -R murphy:murphy /app /home/murphy
+
+ENV HOME=/home/murphy
+USER murphy:murphy
+
 EXPOSE 8000
 
-CMD ["uv", "run", "uvicorn", "murphy.api:app", "--host", "0.0.0.0", "--port", "8000", "--timeout-keep-alive", "1800"]
+CMD ["/app/.venv/bin/uvicorn", "murphy.api.rest:app", "--host", "0.0.0.0", "--port", "8000", "--timeout-keep-alive", "1800"]

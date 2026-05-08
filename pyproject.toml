@@ -210,3 +210,15 @@ dev-dependencies = [
     "pytest-timeout>=2.4.0",
     "pytest-cov>=7.0.0",
 ]
+
+# Pull torch from the PyTorch CPU-only index. The default PyPI wheel bundles
+# ~2.5 GB of unused NVIDIA CUDA libraries — Fargate has no GPU and torch falls
+# back to CPU mode either way, so the CUDA payload is dead weight that bloats
+# the container image and slows cold starts.
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
