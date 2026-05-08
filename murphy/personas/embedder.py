@@ -12,6 +12,7 @@ import logging
 from typing import Any
 
 import numpy as np
+import tiktoken
 from openai import AsyncOpenAI
 
 from murphy.personas.compressor import compress_session
@@ -20,9 +21,23 @@ from murphy.personas.models import AnalyticsSession
 logger = logging.getLogger(__name__)
 
 EMBEDDING_MODEL = 'text-embedding-3-small'
-EMBEDDING_BATCH_SIZE = 50  # session timelines are long; keep well under the 300k token/request limit
-# EMBEDDING_MAX_CHARS = 30000  # ~7,500 tokens; under the 8,192 token/string limit
-EMBEDDING_MAX_CHARS = 6000
+EMBEDDING_BATCH_SIZE = 10
+EMBEDDING_MAX_TOKENS = 8000
+
+_ENCODER = tiktoken.get_encoding('cl100k_base')
+
+
+def _truncate_to_tokens(text: str) -> str:
+	tokens = _ENCODER.encode(text)
+	if len(tokens) <= EMBEDDING_MAX_TOKENS:
+		return text
+	logger.warning(
+		'Truncating session from %d to %d tokens (%.0f%% kept)',
+		len(tokens),
+		EMBEDDING_MAX_TOKENS,
+		EMBEDDING_MAX_TOKENS / len(tokens) * 100,
+	)
+	return _ENCODER.decode(tokens[:EMBEDDING_MAX_TOKENS])
 
 
 async def embed_texts(texts: list[str]) -> np.ndarray:
@@ -31,7 +46,7 @@ async def embed_texts(texts: list[str]) -> np.ndarray:
 	all_embeddings: list[list[float]] = []
 
 	for i in range(0, len(texts), EMBEDDING_BATCH_SIZE):
-		batch = [t[:EMBEDDING_MAX_CHARS] for t in texts[i : i + EMBEDDING_BATCH_SIZE]]
+		batch = [_truncate_to_tokens(t) for t in texts[i : i + EMBEDDING_BATCH_SIZE]]
 		resp = await client.embeddings.create(model=EMBEDDING_MODEL, input=batch)
 		for item in sorted(resp.data, key=lambda x: x.index):
 			all_embeddings.append(item.embedding)

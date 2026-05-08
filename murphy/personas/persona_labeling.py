@@ -39,8 +39,7 @@ with defined low and high anchors. Score interpretation: 1–2.5 = low, 2.5–4 
 For each cluster, provide:
 - A short, memorable archetype name (2-4 words, e.g. "Power Explorer",
   "Cautious Evaluator", "Quick Scanner")
-- A 2-3 sentence description of who this user is: their motivations,
-  typical behavior, and relationship with the product
+- A 2-3 sentence description of who this user is: their motivations, typical behavior, and relationship with the product, grounded in the centroid scores — every trait you mention MUST match its score (≥4=high, 2.5–4=moderate, ≤2.5=low). A score of 4.7 is HIGH, not moderate. A score of 1.5 is LOW, not moderate. Before writing, identify which scores are clearly high (≥4) or clearly low (≤2.5) and lead with those — they define the persona. Never contradict the scores.
 - The 2-3 traits that most distinguish this persona from the others
   (list dimension names where this cluster's centroid diverges most
   from the overall mean)
