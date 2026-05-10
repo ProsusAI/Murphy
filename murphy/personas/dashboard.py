@@ -31,6 +31,7 @@ st.set_page_config(
 # Data loading helpers
 # ---------------------------------------------------------------------------
 
+
 def _load_json(raw: bytes | str) -> dict[str, Any]:
 	if isinstance(raw, bytes):
 		raw = raw.decode('utf-8')
@@ -43,9 +44,9 @@ def _validate(data: dict[str, Any]) -> tuple[bool, str]:
 	if 'schema' not in data or 'result' not in data:
 		return False, "Missing required keys 'schema' and 'result'."
 	if 'dimensions' not in data['schema']:
-		return False, "schema.dimensions is missing."
+		return False, 'schema.dimensions is missing.'
 	if 'personas' not in data['result']:
-		return False, "result.personas is missing."
+		return False, 'result.personas is missing.'
 	return True, ''
 
 
@@ -162,18 +163,18 @@ def render_personas(data: dict[str, Any]) -> None:
 
 	header_left, header_right = st.columns([3, 1])
 	with header_left:
-		st.markdown(f"### {persona.get('name', 'Persona')}")
+		st.markdown(f'### {persona.get("name", "Persona")}')
 		st.markdown(persona.get('description', ''))
 	with header_right:
 		st.metric('Sessions', persona.get('size', 0))
 		if persona.get('test_orientation'):
-			st.markdown(f"**Test orientation:** `{persona['test_orientation']}`")
+			st.markdown(f'**Test orientation:** `{persona["test_orientation"]}`')
 
 	if persona.get('distinguishing_traits'):
 		st.markdown('**Distinguishing traits:**')
 		cols = st.columns(len(persona['distinguishing_traits']) or 1)
 		for i, t in enumerate(persona['distinguishing_traits']):
-			cols[i].markdown(f"- {t}  \n  _score: {centroid.get(t, float('nan')):.2f}_")
+			cols[i].markdown(f'- {t}  \n  _score: {centroid.get(t, float("nan")):.2f}_')
 
 	st.divider()
 
@@ -281,15 +282,13 @@ def render_comparison(data: dict[str, Any]) -> None:
 
 def render_dimensions(data: dict[str, Any]) -> None:
 	dims = data['schema'].get('dimensions', [])
-	st.write(
-		f'**{len(dims)} trait dimensions** — each persona is scored 1–5 on every dimension.'
-	)
+	st.write(f'**{len(dims)} trait dimensions** — each persona is scored 1–5 on every dimension.')
 	for d in dims:
 		with st.expander(d['name']):
 			if d.get('description'):
-				st.markdown(f"**Description:** {d['description']}")
+				st.markdown(f'**Description:** {d["description"]}')
 			if d.get('why_chosen'):
-				st.markdown(f"**Why chosen:** {d['why_chosen']}")
+				st.markdown(f'**Why chosen:** {d["why_chosen"]}')
 			lc, hc = st.columns(2)
 			with lc:
 				st.markdown('**Low (1)**')
@@ -318,7 +317,10 @@ def render_assignments(data: dict[str, Any]) -> None:
 		counts = df['persona'].value_counts().reset_index()
 		counts.columns = ['Persona', 'Sessions']
 		fig = px.bar(
-			counts, x='Persona', y='Sessions', color='Persona',
+			counts,
+			x='Persona',
+			y='Sessions',
+			color='Persona',
 			color_discrete_sequence=PERSONA_COLORS,
 		)
 		fig.update_layout(showlegend=False, height=360, margin=dict(l=10, r=10, t=10, b=10))
@@ -329,11 +331,13 @@ def render_assignments(data: dict[str, Any]) -> None:
 		if 'user_id' in df.columns:
 			unique_users = df.groupby('persona')['user_id'].nunique().reset_index(name='Unique users')
 			fig = px.bar(
-				unique_users, x='persona', y='Unique users', color='persona',
+				unique_users,
+				x='persona',
+				y='Unique users',
+				color='persona',
 				color_discrete_sequence=PERSONA_COLORS,
 			)
-			fig.update_layout(showlegend=False, height=360, margin=dict(l=10, r=10, t=10, b=10),
-								xaxis_title='Persona')
+			fig.update_layout(showlegend=False, height=360, margin=dict(l=10, r=10, t=10, b=10), xaxis_title='Persona')
 			st.plotly_chart(fig, use_container_width=True)
 		else:
 			st.caption('No user_id field in assignments.')
@@ -358,6 +362,7 @@ def render_assignments(data: dict[str, Any]) -> None:
 # Sidebar / file selection
 # ---------------------------------------------------------------------------
 
+
 def _find_sample_files() -> list[Path]:
 	root = Path(__file__).resolve().parents[2]
 	output = root / 'murphy' / 'output'
@@ -369,7 +374,9 @@ def _find_sample_files() -> list[Path]:
 def load_source() -> dict[str, Any] | None:
 	st.sidebar.header('Data source')
 	uploaded = st.sidebar.file_uploader(
-		'Upload personas.json', type=['json'], accept_multiple_files=False,
+		'Upload personas.json',
+		type=['json'],
+		accept_multiple_files=False,
 	)
 
 	sample_files = _find_sample_files()
@@ -410,6 +417,7 @@ def load_source() -> dict[str, Any] | None:
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def main() -> None:
 	st.title('🧭 Murphy Persona Dashboard')

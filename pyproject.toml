@@ -125,6 +125,7 @@ exclude = [
     "debug/*",
     "tests/scripts/*",
     "tests/old/*",
+    "murphy/personas/dashboard.py",
     "browser_use/dom/playground/*",
     "browser_use/mcp/*",
     "browser_use/skill_cli/*",
