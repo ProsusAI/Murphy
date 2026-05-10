@@ -27,6 +27,7 @@ from murphy.models import TokenUsage
 from murphy.personas.clustering import cluster_sessions
 from murphy.personas.compressor import compress_session
 from murphy.personas.discovery import run_discovery
+from murphy.personas.embedder import embed_sessions
 from murphy.personas.models import AnalyticsSession
 from murphy.personas.persona_labeling import build_persona_result, label_personas
 from murphy.personas.pipeline_models import PersonaResult, SessionScore, TraitSchema
@@ -272,7 +273,8 @@ async def run_persona_pipeline(
 
 		cluster_sizes = [int((clustering.labels == i).sum()) for i in range(clustering.k)]
 		labels = await label_personas(llm, schema, clustering.centroids, cluster_sizes)
-		persona_result = build_persona_result(schema, scores, clustering, labels)
+		session_embeddings = await embed_sessions(score_sessions, person_contexts)
+		persona_result = build_persona_result(schema, scores, clustering, labels, session_embeddings)
 		logger.info(
 			'Persona pipeline complete: %d personas (silhouette=%.4f)',
 			persona_result.num_clusters,

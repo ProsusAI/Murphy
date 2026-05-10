@@ -119,6 +119,7 @@ class Persona(BaseModel):
 	success_criteria_guidance: str = ''
 	execution_hints: list[str] = Field(default_factory=list)
 	judge_questions: list[str] = Field(default_factory=list)
+	centroid_embedding: list[float] | None = None
 
 
 class PersonaResult(BaseModel):
