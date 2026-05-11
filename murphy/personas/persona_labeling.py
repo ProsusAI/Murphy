@@ -34,7 +34,7 @@ You are a behavioral scientist naming user personas from clustered session data.
 
 You will receive a set of persona clusters, each described by its centroid
 scores on several behavioral trait dimensions. Each dimension has a 1-5 scale
-with defined low and high anchors.
+with defined low and high anchors. Score interpretation: 1–2.5 = low, 2.5–4 = medium, 4–5 = high.
 
 For each cluster, provide:
 - A short, memorable archetype name (2-4 words, e.g. "Power Explorer",

@@ -42,7 +42,9 @@ def build_discovered_persona_distribution_text(result: PersonaResult, schema: Tr
 		centroid_dict = {s.trait_name: s.score for s in persona.centroid}
 		trait_summary = ', '.join(f'{d}={centroid_dict.get(d, "?")}' for d in dim_names)
 		orientation = persona.test_orientation or 'ux'
-		lines.append(f'- {slug} (~{pct}%, {orientation}): {persona.description} [Traits: {trait_summary}]')
+		lines.append(
+			f'- {slug} (~{pct}%, {orientation}): {persona.description} [Traits (1–5 scale: 1–2.5=low, 2.5–4=medium, 4–5=high): {trait_summary}]'
+		)
 	return '\n'.join(lines)
 
 
@@ -75,7 +77,7 @@ def render_discovered_persona_for_execution(
 	lines.append(f'Character: {persona.description}')
 	orientation = persona.test_orientation or 'ux'
 	lines.append(f'Test type: {orientation}')
-	lines.append('Trait profile:')
+	lines.append('Trait profile (1–5 scale: 1–2.5=low, 2.5–4=medium, 4–5=high):')
 	for d in dim_names:
 		lines.append(f'  {d}: {centroid_dict.get(d, "?")}')
 	for hint in persona.execution_hints:
@@ -109,7 +111,7 @@ def build_discovered_judge_context(
 			'## Test type rule: Silent sanitization is CORRECT behavior. Only fail on crash, data leak, or code execution.'
 		)
 	lines.append('')
-	lines.append('## Trait profile (discovered dimensions):')
+	lines.append('## Trait profile (discovered dimensions, 1–5 scale: 1–2.5=low, 2.5–4=medium, 4–5=high):')
 	for d in dim_names:
 		lines.append(f'- **{d}**: {centroid_dict.get(d, "?")}')
 	lines.append('')
