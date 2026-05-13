@@ -14,7 +14,7 @@ DEFAULT_MAX_ACTIONS_PER_STEP = 3
 QUALITY_MAX_RETRIES = 2
 
 # Hard cap on parallel browser sessions to avoid resource exhaustion
-MAX_PARALLEL_SESSIONS = 5
+MAX_PARALLEL_SESSIONS = 10
 
 # Exploration agent step limit (capped below DEFAULT_MAX_STEPS for speed)
 EXPLORE_MAX_STEPS = 14
