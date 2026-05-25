@@ -24,6 +24,23 @@ if TYPE_CHECKING:
 	pass
 
 
+CDP_READY_TIMEOUT_ENV = 'TIMEOUT_BrowserCDPReady'
+DEFAULT_CDP_READY_TIMEOUT = 180.0
+
+
+def cdp_ready_timeout() -> float:
+	"""Return the timeout for local Chromium to expose its CDP endpoint."""
+	value = os.getenv(CDP_READY_TIMEOUT_ENV)
+	if value:
+		try:
+			parsed = float(value)
+			if parsed >= 0:
+				return parsed
+		except ValueError:
+			pass
+	return DEFAULT_CDP_READY_TIMEOUT
+
+
 class LocalBrowserWatchdog(BaseWatchdog):
 	"""Manages local browser subprocess lifecycle."""
 
@@ -155,7 +172,7 @@ class LocalBrowserWatchdog(BaseWatchdog):
 				process = psutil.Process(subprocess.pid)
 
 				# Wait for CDP to be ready and get the URL
-				cdp_url = await self._wait_for_cdp_url(debug_port)
+				cdp_url = await self._wait_for_cdp_url(debug_port, timeout=cdp_ready_timeout())
 
 				# Success! Clean up only the temp dirs we created but didn't use
 				currently_used_dir = str(profile.user_data_dir)

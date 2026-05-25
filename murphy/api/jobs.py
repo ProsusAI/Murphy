@@ -107,14 +107,22 @@ async def _acquire_semaphore() -> bool:
 
 async def _execute_with_semaphore(job: Job, core_fn: Any, req: Any, timeout: int | float) -> None:
 	"""Run core_fn under semaphore, update job status on completion/failure."""
+	task: asyncio.Task[Any] | None = None
 	try:
 		effective = _effective_timeout(timeout)
-		job.result = await asyncio.wait_for(core_fn(req), timeout=effective)
+		task = asyncio.create_task(core_fn(req))
+		job.result = await asyncio.wait_for(task, timeout=effective)
 		job.status = 'completed'
-	except TimeoutError:
-		logger.error('Job %s timed out after %ds', job.id, _effective_timeout(timeout))
-		job.status = 'failed'
-		job.error = f'Job timed out after {_effective_timeout(timeout)}s'
+	except TimeoutError as exc:
+		if task is not None and task.done() and not task.cancelled():
+			tb = traceback.format_exc()
+			logger.error('Job %s failed: %s\n%s', job.id, exc, tb)
+			job.status = 'failed'
+			job.error = f'{type(exc).__name__}: {exc}'
+		else:
+			logger.error('Job %s timed out after %ds', job.id, _effective_timeout(timeout))
+			job.status = 'failed'
+			job.error = f'Job timed out after {_effective_timeout(timeout)}s'
 	except Exception as exc:
 		tb = traceback.format_exc()
 		logger.error('Job %s failed: %s\n%s', job.id, exc, tb)

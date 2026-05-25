@@ -32,6 +32,8 @@
 
 13. **Broader empty-response detection** (`browser_use/llm/openai/chat.py`) — Changed empty-content check from `is None` to falsy (`not content`) to also catch empty strings; updated error message and status code to 502 (provider-side issue).
 
+14. **Configurable local CDP readiness timeout** (`browser_use/browser/watchdogs/local_browser_watchdog.py`) — Added `TIMEOUT_BrowserCDPReady` with a 180-second default so slower containerized Chromium startups can wait longer for `/json/version` without modifying the event-level browser start timeouts.
+
 ## Syncing with Upstream
 
 ```bash

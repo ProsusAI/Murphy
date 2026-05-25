@@ -125,6 +125,19 @@ async def test_execute_with_semaphore_timeout(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_execute_with_semaphore_preserves_inner_timeout(monkeypatch):
+	monkeypatch.setattr('murphy.api.jobs.MURPHY_JOB_TIMEOUT_OVERRIDE', None)
+
+	async def browser_start_fn(req):
+		raise TimeoutError('Browser did not start within 180 seconds')
+
+	job = Job(id='browser-timeout')
+	await _execute_with_semaphore(job, browser_start_fn, {}, timeout=1800)
+	assert job.status == 'failed'
+	assert job.error == 'TimeoutError: Browser did not start within 180 seconds'
+
+
+@pytest.mark.asyncio
 async def test_execute_with_semaphore_exception(monkeypatch):
 	monkeypatch.setattr('murphy.api.jobs.MURPHY_JOB_TIMEOUT_OVERRIDE', None)
 
