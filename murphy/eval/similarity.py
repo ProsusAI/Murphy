@@ -278,4 +278,6 @@ async def evaluate_similarity(
 		scoring_reasoning=session_score.reasoning,
 		embedding_similarity=emb_sim,
 		rationale=rationale,
+		llm_ceiling=persona.llm_ceiling,
+		embedding_ceiling=persona.embedding_ceiling,
 	)

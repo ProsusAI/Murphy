@@ -127,6 +127,9 @@ class Persona(BaseModel):
 	judge_questions: list[str] = Field(default_factory=list)
 	centroid_embedding: list[float] | None = None
 	suggestion_instruction: str = ''
+	llm_ceiling: float | None = None
+	embedding_ceiling: float | None = None
+	ceiling_n_sessions: int = 0
 
 
 class PersonaResult(BaseModel):

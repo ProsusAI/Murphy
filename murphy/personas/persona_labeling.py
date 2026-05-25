@@ -13,6 +13,7 @@ from typing import Any
 import numpy as np
 
 from browser_use.llm import ChatOpenAI, SystemMessage, UserMessage
+from murphy.personas.ceiling import pairwise_embedding_ceiling, pairwise_llm_ceiling
 from murphy.personas.clustering import ClusteringResult
 from murphy.personas.pipeline_models import (
 	DimensionScore,
@@ -161,11 +162,17 @@ def build_persona_result(
 		size = int(np.sum(clustering.labels == cluster_idx))
 
 		centroid_emb: list[float] | None = None
+		embedding_ceiling: float | None = None
+
+		cluster_session_scores = [s for i, s in enumerate(scores) if clustering.labels[i] == cluster_idx]
+		llm_ceiling = pairwise_llm_ceiling(cluster_session_scores)
+
 		if session_embeddings:
-			member_ids = [s.session_id for i, s in enumerate(scores) if clustering.labels[i] == cluster_idx]
+			member_ids = [s.session_id for s in cluster_session_scores]
 			vecs = [session_embeddings[sid] for sid in member_ids if sid in session_embeddings]
 			if vecs:
 				centroid_emb = np.mean(np.stack(vecs), axis=0).tolist()
+				embedding_ceiling = pairwise_embedding_ceiling([v.tolist() for v in vecs])
 
 		desc = label_map.get(cluster_idx)
 		personas.append(
@@ -182,6 +189,9 @@ def build_persona_result(
 				judge_questions=desc.judge_questions if desc else [],
 				centroid_embedding=centroid_emb,
 				suggestion_instruction=desc.suggestion_instruction if desc else '',
+				llm_ceiling=llm_ceiling,
+				embedding_ceiling=embedding_ceiling,
+				ceiling_n_sessions=len(cluster_session_scores),
 			)
 		)
 

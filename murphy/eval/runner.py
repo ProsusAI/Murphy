@@ -126,6 +126,8 @@ def build_markdown_report(report_data: dict[str, Any]) -> str:
 	by_persona_llm: dict[str, list[float]] = defaultdict(list)
 	by_persona_emb: dict[str, list[float]] = defaultdict(list)
 	by_persona_dims: dict[str, list[dict]] = defaultdict(list)
+	by_persona_llm_ceil: dict[str, list[float]] = defaultdict(list)
+	by_persona_emb_ceil: dict[str, list[float]] = defaultdict(list)
 	for r in results:
 		by_persona_llm[r['persona_name']].append(r['overall_similarity_score'])
 		emb = r.get('embedding_similarity')
@@ -133,13 +135,42 @@ def build_markdown_report(report_data: dict[str, Any]) -> str:
 			by_persona_emb[r['persona_name']].append(emb)
 		for dim in r['dimensions']:
 			by_persona_dims[r['persona_name']].append(dim)
+		llm_ceil = r.get('llm_ceiling')
+		if llm_ceil is not None:
+			by_persona_llm_ceil[r['persona_name']].append(llm_ceil)
+		emb_ceil = r.get('embedding_ceiling')
+		if emb_ceil is not None:
+			by_persona_emb_ceil[r['persona_name']].append(emb_ceil)
 
 	has_embeddings = bool(by_persona_emb)
+	has_ceiling = bool(by_persona_llm_ceil)
 
 	# ── Summary table ─────────────────────────────────────────────────────────
 	lines.append('## Summary')
 	lines.append('')
-	if has_embeddings:
+	if has_embeddings and has_ceiling:
+		lines.append('| Persona | Tests | LLM Match | LLM Ceiling | Emb Sim | Emb Ceiling | Strongest match | Biggest gap |')
+		lines.append('|---------|-------|-----------|-------------|---------|-------------|-----------------|-------------|')
+		for persona_name, llm_scores in sorted(by_persona_llm.items()):
+			avg_llm = sum(llm_scores) / len(llm_scores)
+			emb_scores = by_persona_emb.get(persona_name, [])
+			avg_emb = f'{sum(emb_scores) / len(emb_scores):.2f}' if emb_scores else '—'
+			llm_ceil_scores = by_persona_llm_ceil.get(persona_name, [])
+			llm_ceil_str = f'{round(sum(llm_ceil_scores) / len(llm_ceil_scores) * 100)}%' if llm_ceil_scores else '—'
+			emb_ceil_scores = by_persona_emb_ceil.get(persona_name, [])
+			emb_ceil_str = f'{sum(emb_ceil_scores) / len(emb_ceil_scores):.2f}' if emb_ceil_scores else '—'
+			bar = _make_bar(avg_llm)
+			pct = round(avg_llm * 100)
+			emoji = _similarity_emoji(avg_llm)
+			dims = by_persona_dims[persona_name]
+			best = min(dims, key=lambda d: abs(d['delta']))
+			worst = max(dims, key=lambda d: abs(d['delta']))
+			best_cell = f'{_short_trait(best["trait_name"])} ({_delta_str(best["delta"])})'
+			worst_cell = f'{_short_trait(worst["trait_name"])} ({_delta_str(worst["delta"])})'
+			lines.append(
+				f'| {persona_name} | {len(llm_scores)} | `{bar}` {pct}% {emoji} | {llm_ceil_str} | {avg_emb} | {emb_ceil_str} | {best_cell} | {worst_cell} |'
+			)
+	elif has_embeddings:
 		lines.append('| Persona | Tests | LLM Match | Emb Sim | Strongest match | Biggest gap |')
 		lines.append('|---------|-------|-----------|---------|-----------------|-------------|')
 		for persona_name, llm_scores in sorted(by_persona_llm.items()):
@@ -185,9 +216,19 @@ def build_markdown_report(report_data: dict[str, Any]) -> str:
 		lines.append(f'### {r["test_scenario_name"]}')
 		lines.append(f'**Persona:** `{r["persona_slug"]}`')
 		lines.append('')
+		llm_ceiling = r.get('llm_ceiling')
+		emb_ceiling = r.get('embedding_ceiling')
 		header = f'**LLM match:** `{bar}` {pct}% {emoji}'
+		if llm_ceiling is not None:
+			ceil_pct = round(llm_ceiling * 100)
+			pct_of_ceil = round(overall / llm_ceiling * 100) if llm_ceiling > 0 else 0
+			header += f' _(ceiling {ceil_pct}%, {pct_of_ceil}% of ceiling)_'
 		if emb is not None:
 			header += f'  ·  **Embedding sim:** {emb:.3f}'
+			if emb_ceiling is not None:
+				emb_ceil_pct = round(emb_ceiling * 100)
+				emb_pct_of_ceil = round(emb / emb_ceiling * 100) if emb_ceiling > 0 else 0
+				header += f' _(ceiling {emb_ceil_pct}%, {emb_pct_of_ceil}% of ceiling)_'
 		lines.append(header)
 		lines.append('')
 		lines.append('| Trait Dimension | Murphy | Real Users | Delta |')

@@ -35,6 +35,8 @@ class PersonaSimilarityResult(BaseModel):
 	scoring_reasoning: str  # LLM rationale from score_session()
 	embedding_similarity: float | None = None  # 0–1 cosine sim of timeline embeddings; None if centroid_embedding not available
 	rationale: TestRationale | None = None  # structured LLM rationale for best match, biggest gap, embedding
+	llm_ceiling: float | None = None  # avg pairwise LLM similarity among real-user sessions in the cluster
+	embedding_ceiling: float | None = None  # avg pairwise embedding cosine similarity among real-user sessions
 
 
 class SimilarityReport(BaseModel):

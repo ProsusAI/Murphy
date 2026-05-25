@@ -214,7 +214,7 @@ class PostHogClient:
 
 		# 2. Fetch events for all selected sessions (batched to avoid PostHog timeouts)
 		events_by_session: dict[str, list[dict[str, Any]]] = defaultdict(list)
-		batch_size = 20
+		batch_size = 8
 		for i in range(0, len(all_session_ids), batch_size):
 			batch_ids = all_session_ids[i : i + batch_size]
 			escaped_sids = ', '.join(f"'{sid}'" for sid in batch_ids)

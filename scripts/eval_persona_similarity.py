@@ -67,6 +67,8 @@ def _resolve_agent_history(run_dir: Path, scenario_index: int) -> Path | None:
 	if not adir.is_dir():
 		return None
 	matches = sorted(adir.glob(f'test_{scenario_index:02d}_*.json'))
+	if not matches:
+		matches = sorted(adir.glob(f'test_{scenario_index:02d}_*/*.json'))
 	return matches[0] if matches else None
 
 
