@@ -1,6 +1,6 @@
 """Murphy — AI-driven website evaluation powered by browser-use."""
 
-__version__ = '1.1.0'
+__version__ = '1.1.3'
 
 from murphy.core.analysis import analyze_website as analyze_website
 from murphy.core.execution import execute_tests as execute_tests
