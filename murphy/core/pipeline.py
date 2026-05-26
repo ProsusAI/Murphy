@@ -25,6 +25,7 @@ from murphy.evaluate import (
 from murphy.io.fixtures import ensure_dummy_fixture_files
 from murphy.llm import create_llm
 from murphy.models import DEFAULT_MAX_TESTS, ReportSummary, TestPlan, TestResult, WebsiteAnalysis
+from murphy.process.model import NavigationModel
 
 
 async def run_analyze(
@@ -91,6 +92,8 @@ async def run_execute(
 		browser_session = BrowserSession(browser_profile=BrowserProfile(headless=True, keep_alive=False))
 		await browser_session.start()
 	try:
+		nav_model_path = (output_dir or Path('./murphy/output')) / 'navigation_model.json'
+		navigation_model = NavigationModel(nav_model_path)
 		results = await execute_tests_with_session(
 			url,
 			test_plan,
@@ -102,6 +105,7 @@ async def run_execute(
 			max_concurrent=max_concurrent,
 			judge_llm=judge_llm,
 			output_dir=output_dir,
+			navigation_model=navigation_model,
 		)
 		summary = build_summary(results)
 		return results, summary

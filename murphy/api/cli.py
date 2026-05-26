@@ -269,6 +269,11 @@ async def _async_main(args: argparse.Namespace) -> None:
 			if not use_feedback and analysis:
 				write_reports_and_print(args.url, analysis, results, output_dir)
 
+		from murphy.process.model import NavigationModel
+
+		nav_model_path = output_dir / 'navigation_model.json'
+		navigation_model = NavigationModel(nav_model_path)
+
 		if not args.ui:
 			results = await execute_tests_with_session(
 				args.url,
@@ -284,6 +289,7 @@ async def _async_main(args: argparse.Namespace) -> None:
 				output_dir=output_dir,
 				use_feedback=use_feedback,
 				analysis=analysis,
+				navigation_model=navigation_model,
 			)
 			if use_feedback:
 				# Feedback already POSTed per persona — just summarise to stdout.
@@ -315,6 +321,7 @@ async def _async_main(args: argparse.Namespace) -> None:
 				output_dir=output_dir,
 				use_feedback=use_feedback,
 				analysis=analysis,
+				navigation_model=navigation_model,
 			)
 
 		state = ServerState(

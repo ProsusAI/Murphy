@@ -57,3 +57,4 @@ output/
 murphy/output/
 murphy/browser_profile/
 browser_profile/
+.claude/worktrees/

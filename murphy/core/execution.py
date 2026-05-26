@@ -28,6 +28,7 @@ from murphy.models import (
 	WebsiteAnalysis,
 	agent_config_session_id,
 )
+from murphy.process.model import NavigationModel
 from murphy.prompts import build_execution_prompt, build_persona_feedback_prompt
 
 logger = logging.getLogger(__name__)
@@ -199,6 +200,7 @@ async def _execute_single_test(
 	use_feedback: bool = False,
 	feedback_collector: list[dict] | None = None,
 	analysis: WebsiteAnalysis | None = None,
+	navigation_model: NavigationModel | None = None,
 ) -> TestResult:
 	"""Execute one test scenario and return its TestResult.
 
@@ -271,8 +273,13 @@ async def _execute_single_test(
 			return test_result
 
 		# ── Standard mode: full ScenarioExecutionVerdict + murphy_judge ──
+		nav_hints = navigation_model.get_hints(url) if navigation_model else None
 		task_prompt = build_execution_prompt(
-			goal or f'Evaluate {url}', scenario, url, available_file_paths=file_paths_str or None
+			goal or f'Evaluate {url}',
+			scenario,
+			url,
+			available_file_paths=file_paths_str or None,
+			navigation_hints=nav_hints,
 		)
 
 		agent_kwargs = {
@@ -338,6 +345,10 @@ async def _execute_single_test(
 			if p not in seen_urls:
 				seen_urls.add(p)
 				unique_pages.append(p)
+
+		if navigation_model is not None:
+			navigation_model.update(url, unique_pages)
+			navigation_model.save()
 
 		# Save full browser-use history to output/agent_history/ when output_dir is set
 		if output_dir is not None:
@@ -507,6 +518,7 @@ async def execute_tests(
 	judge_llm: BaseChatModel | None = None,
 	output_dir: Path | None = None,
 	use_feedback: bool = False,
+	navigation_model: NavigationModel | None = None,
 ) -> list[TestResult]:
 	"""Execute tests without a pre-existing session (creates its own)."""
 	from browser_use.browser.profile import BrowserProfile
@@ -526,6 +538,7 @@ async def execute_tests(
 			judge_llm=judge_llm,
 			output_dir=output_dir,
 			use_feedback=use_feedback,
+			navigation_model=navigation_model,
 		)
 	finally:
 		await browser_session.kill()
@@ -546,6 +559,7 @@ async def execute_tests_with_session(
 	output_dir: Path | None = None,
 	use_feedback: bool = False,
 	analysis: WebsiteAnalysis | None = None,
+	navigation_model: NavigationModel | None = None,
 ) -> list[TestResult]:
 	"""Phase 3 execution reusing an existing browser session.
 
@@ -591,6 +605,7 @@ async def execute_tests_with_session(
 				use_feedback=use_feedback,
 				feedback_collector=feedback_collector if use_feedback else None,
 				analysis=analysis,
+				navigation_model=navigation_model,
 			)
 			results.append(test_result)
 
@@ -645,6 +660,7 @@ async def execute_tests_with_session(
 					use_feedback=use_feedback,
 					feedback_collector=feedback_collector if use_feedback else None,
 					analysis=analysis,
+					navigation_model=navigation_model,
 				)
 				results_slots[index_0] = result
 

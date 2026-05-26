@@ -132,6 +132,7 @@ exclude = [
     "discover/",
     "list/",
     "./visualize_*.py",
+    "scripts/",
 ]
 venvPath = "."
 venv = ".venv"

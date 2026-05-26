@@ -590,11 +590,25 @@ def build_persona_feedback_prompt(
 	)
 
 
+def _render_navigation_hints(hints: list[str] | None) -> str:
+	if not hints:
+		return ''
+	pages = '\n'.join(f'  - {h}' for h in hints)
+	return (
+		f'NAVIGATION GUIDE (from previous runs on this site):\n'
+		f'These pages are most commonly visited when testing this site. '
+		f'Use them as a guide — navigate through these if relevant to your task, '
+		f'but adapt freely if the UI looks different or your persona would take a different path.\n'
+		f'{pages}\n\n'
+	)
+
+
 def build_execution_prompt(
 	global_task: str,
 	scenario: TestScenario,
 	start_url: str,
 	available_file_paths: list[str] | None = None,
+	navigation_hints: list[str] | None = None,
 ) -> str:
 	"""Build execution prompt with validation rules."""
 	criteria_block = f'Success criteria: {scenario.success_criteria}\n\n' if scenario.success_criteria else ''
@@ -604,6 +618,7 @@ def build_execution_prompt(
 		f'Description: {scenario.description}\n\n'
 		f'Steps:\n{scenario.steps_description}\n\n'
 		f'{criteria_block}'
+		f'{_render_navigation_hints(navigation_hints)}'
 		f'IMPORTANT: You are already logged in. Be direct and efficient. '
 		f'Complete the test as fast as possible with minimal steps.\n\n'
 		f'ADAPTATION RULES:\n'
