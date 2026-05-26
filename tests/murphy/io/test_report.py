@@ -20,6 +20,7 @@ from murphy.models import (
 	Feature,
 	FeedbackQualityScore,
 	JudgeVerdict,
+	LiteResult,
 	PageInfo,
 	ReportSummary,
 	TestResult,
@@ -304,6 +305,55 @@ def test_write_markdown_report_basic():
 		assert '# Evaluation Report' in content
 		assert 'Results at a Glance' in content
 		assert 'Test search' in content
+
+
+def test_write_markdown_report_includes_lite_result_details():
+	lite_result = LiteResult(
+		grade=6,
+		flaws=[
+			'The primary action is visually disconnected from the form.',
+			'The sidebar creates an oversized left gutter.',
+			'The textarea is wider than the content hierarchy supports.',
+			'Spacing between the label and field is inconsistent.',
+			'The disabled button state lacks a clear explanation.',
+			'The form feels unanchored in the available whitespace.',
+		],
+		improvements=[
+			'Constrain the form to a readable max width.',
+			'Align the label, field, and button to one column.',
+			'Use consistent vertical spacing tokens.',
+			'Reduce sidebar visual density.',
+			'Explain why the disabled action is unavailable.',
+		],
+		fixes=[
+			'Set a max-width on the main form container.',
+			'Align the button with the textarea edge.',
+			'Apply shared spacing variables to the form stack.',
+			'Reduce sidebar item padding variance.',
+			'Add helper text for the disabled Next button.',
+		],
+		other_feedback=['The visual language is otherwise modern and consistent.'],
+	)
+	result = _make_result(
+		judgement=None,
+		lite_result=lite_result,
+		reason='Lite mode grade: 6',
+	)
+	report = _make_report(results=[result])
+
+	with tempfile.TemporaryDirectory() as tmpdir:
+		content = write_markdown_report(report, Path(tmpdir)).read_text()
+
+	assert '| Test | Persona | Grade | Flaws | Improvements | Fixes | Duration |' in content
+	assert '| Test search | Happy Path | 6/10 | 6 | 5 | 5 | 5s |' in content
+	assert '**Lite Evaluation:**' in content
+	assert '**Grade:** 6/10' in content
+	assert '**Flaws:**' in content
+	assert '**Improvements:**' in content
+	assert '**Fixes:**' in content
+	assert '**Other feedback:**' in content
+	for item in lite_result.flaws + lite_result.improvements + lite_result.fixes + lite_result.other_feedback:
+		assert f'- {item}' in content
 
 
 def test_write_markdown_report_includes_passed_section():

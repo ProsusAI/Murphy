@@ -27,7 +27,7 @@ from browser_use.tokens.service import TokenCost
 
 if TYPE_CHECKING:
 	from murphy.api.server import ServerState
-	from murphy.models import TestPlan, TestResult
+	from murphy.models import TestPlan, TestResult, TokenUsage, WebsiteAnalysis
 
 load_dotenv()
 
@@ -41,6 +41,35 @@ BROWSER_PROFILE_DIR = (
 )
 
 
+def _write_reports_and_log_results(
+	url: str,
+	analysis: WebsiteAnalysis | None,
+	results: list[TestResult],
+	output_dir: Path,
+	*,
+	use_lite: bool,
+	persona_discovery_tokens: TokenUsage | None = None,
+	murphy_tokens: TokenUsage | None = None,
+) -> None:
+	"""Write report artifacts when analysis context exists, then log the mode-specific terminal summary."""
+	if analysis:
+		from murphy.core.summary import write_reports_and_print
+
+		write_reports_and_print(
+			url,
+			analysis,
+			results,
+			output_dir,
+			persona_discovery_tokens=persona_discovery_tokens,
+			murphy_tokens=murphy_tokens,
+		)
+	elif not use_lite:
+		_log_results_summary(results)
+
+	if use_lite:
+		_log_lite_summary(results)
+
+
 def main() -> int:
 	parser = argparse.ArgumentParser(
 		prog='murphy',
@@ -52,7 +81,7 @@ def main() -> int:
 	parser.add_argument('--no-auth', action='store_true', help='Skip auth detection entirely, treat site as public')
 	parser.add_argument('--features', help='Path to existing features markdown (skips analysis, goes to test generation)')
 	parser.add_argument('--plan', help='Path to existing YAML test plan (skips analysis + test generation)')
-	parser.add_argument('--lite', action='store_true', help='Run faster lite mode: skip test generation, judge, and reports')
+	parser.add_argument('--lite', action='store_true', help='Run faster lite mode: skip test generation and judge')
 	parser.add_argument('--max-tests', type=int, default=None, help='Max test scenarios (default: number of personas)')
 	parser.add_argument(
 		'--provider', default='openai', help='LLM provider (default: openai). e.g. google, anthropic, azure, mistral'
@@ -350,8 +379,6 @@ async def _async_main(args: argparse.Namespace) -> None:
 			return TokenUsage(input_tokens=total_input, output_tokens=total_output)
 
 		def _on_test_complete(results: list[TestResult]) -> None:
-			if use_lite:
-				return
 			if analysis:
 				write_reports_and_print(
 					args.url,
@@ -379,19 +406,15 @@ async def _async_main(args: argparse.Namespace) -> None:
 				use_lite=use_lite,
 				analysis=analysis,
 			)
-			if use_lite:
-				_log_lite_summary(results)
-			elif analysis:
-				write_reports_and_print(
-					args.url,
-					analysis,
-					results,
-					output_dir,
-					persona_discovery_tokens=persona_discovery_tokens,
-					murphy_tokens=_get_murphy_tokens(),
-				)
-			else:
-				_log_results_summary(results)
+			_write_reports_and_log_results(
+				args.url,
+				analysis,
+				results,
+				output_dir,
+				use_lite=use_lite,
+				persona_discovery_tokens=persona_discovery_tokens,
+				murphy_tokens=_get_murphy_tokens(),
+			)
 			return
 
 		# ── Server UI mode (--ui) ──
@@ -434,19 +457,15 @@ async def _async_main(args: argparse.Namespace) -> None:
 			while True:
 				await asyncio.sleep(1)
 				if state.done and state.results and not getattr(state, '_reports_written', False):
-					if use_lite:
-						_log_lite_summary(state.results)
-					elif analysis:
-						write_reports_and_print(
-							args.url,
-							analysis,
-							state.results,
-							output_dir,
-							persona_discovery_tokens=persona_discovery_tokens,
-							murphy_tokens=_get_murphy_tokens(),
-						)
-					else:
-						_log_results_summary(state.results)
+					_write_reports_and_log_results(
+						args.url,
+						analysis,
+						state.results,
+						output_dir,
+						use_lite=use_lite,
+						persona_discovery_tokens=persona_discovery_tokens,
+						murphy_tokens=_get_murphy_tokens(),
+					)
 					state._reports_written = True  # type: ignore[attr-defined]
 		except KeyboardInterrupt:
 			pass

@@ -1,5 +1,6 @@
 """Extended tests for summary — generate_executive_summary and write_reports_and_print with mocks."""
 
+import json
 import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
@@ -11,6 +12,7 @@ from murphy.models import (
 	ExecutiveSummary,
 	Feature,
 	JudgeVerdict,
+	LiteResult,
 	PageInfo,
 	ReportSummary,
 	TestResult,
@@ -198,6 +200,41 @@ def test_write_reports_and_print():
 		md_path = output_dir / 'evaluation_report.md'
 		assert json_path.exists()
 		assert md_path.exists()
+
+
+def test_write_reports_and_print_preserves_lite_result_details():
+	analysis = _make_analysis()
+	lite_result = LiteResult(
+		grade=6,
+		flaws=['Unclear first step'],
+		improvements=['Clarify the first step'],
+		fixes=['Add helper text beside the first field'],
+		other_feedback=['The rest of the flow is understandable'],
+	)
+	results = [
+		_make_result(
+			judgement=None,
+			lite_result=lite_result,
+			reason='Lite mode grade: 6',
+		)
+	]
+
+	with tempfile.TemporaryDirectory() as tmpdir:
+		output_dir = Path(tmpdir)
+		write_reports_and_print('https://example.com', analysis, results, output_dir)
+
+		json_path = output_dir / 'evaluation_report.json'
+		md_path = output_dir / 'evaluation_report.md'
+		assert json_path.exists()
+		assert md_path.exists()
+
+		json_content = json.loads(json_path.read_text())
+		assert json_content['results'][0]['lite_result']['grade'] == 6
+		md_content = md_path.read_text()
+		assert '**Grade:** 6/10' in md_content
+		assert '- Unclear first step' in md_content
+		assert '- Clarify the first step' in md_content
+		assert '- Add helper text beside the first field' in md_content
 
 
 def test_write_reports_and_print_with_executive_summary():
