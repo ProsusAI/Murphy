@@ -131,7 +131,7 @@ async def test_core_generate_plan_propagates_lite():
 async def test_core_execute_propagates_lite():
 	with patch('murphy.core.pipeline.run_execute', new_callable=AsyncMock) as run_execute:
 		run_execute.return_value = ([], ReportSummary(total=0, passed=0, failed=0, pass_rate=0.0, by_priority={}))
-		req = ExecuteRequest(url='https://example.com', test_plan=TestPlan(scenarios=[]), lite=True)
+		req = ExecuteRequest(url='https://example.com', test_plan=TestPlan(scenarios=[]), lite=True)  # type: ignore[call-arg]
 
 		await _core_execute(req)
 
