@@ -78,6 +78,9 @@ uv run murphy --url https://example.com
 # Goal-directed: explores with focus, skips feature discovery, generates plan directly
 uv run murphy --url https://example.com --goal "test the checkout flow"
 
+# Lite mode: faster, simpler run that skips test generation, judge, and reports
+uv run murphy --url https://example.com --goal "test the checkout flow" --lite
+
 # Site requires login — opens browser for manual auth first (local only, not Docker)
 uv run murphy --url https://example.com --auth
 
@@ -114,6 +117,8 @@ An AI agent navigates the site, discovers pages, and catalogs features. Murphy s
 An AI agent explores the site with the given goal in mind, then synthesizes a test plan directly from the exploration. Murphy saves an editable `test_plan.yaml` and pauses for review. No `features.md` is generated — the exploration replaces broad feature discovery.
 
 **Execution (both strategies):** An AI agent runs each test scenario in a real browser, and a separate judge LLM evaluates pass/fail. Saves `evaluation_report.json` and `evaluation_report.md`.
+
+**Lite mode (`--lite`):** Murphy builds a compact persona plan directly from the goal or available analysis, then runs a lighter browser-agent prompt that returns structured `flaws`, `improvements`, `fixes`, and `other_feedback`. It skips LLM test generation, the judge, report generation, and interactive review pauses.
 
 You can resume from any point by passing `--features` or `--plan` with a previously generated (and optionally edited) file.
 

@@ -70,7 +70,7 @@ async def _core_generate_plan(req: GeneratePlanRequest) -> dict[str, Any]:
 	from murphy.core.pipeline import run_generate_plan
 
 	test_plan = await run_generate_plan(
-		req.url, req.analysis, req.model, provider=req.provider, max_tests=req.max_tests, goal=req.goal
+		req.url, req.analysis, req.model, provider=req.provider, max_tests=req.max_tests, goal=req.goal, lite=req.lite
 	)
 	return test_plan.model_dump()
 
@@ -101,6 +101,7 @@ async def _core_execute(req: ExecuteRequest) -> dict[str, Any]:
 		goal=req.goal,
 		max_steps=req.max_steps,
 		max_concurrent=req.max_concurrent,
+		lite=req.lite,
 	)
 	return ExecuteResult(results=results, summary=summary).model_dump()
 
@@ -109,7 +110,9 @@ async def _core_evaluate(req: EvaluateRequest) -> dict[str, Any]:
 	"""Run exploration-first evaluation: explore site → generate test plan."""
 	from murphy.core.pipeline import run_evaluate
 
-	test_plan = await run_evaluate(req.url, req.model, provider=req.provider, max_tests=req.max_tests, goal=req.goal)
+	test_plan = await run_evaluate(
+		req.url, req.model, provider=req.provider, max_tests=req.max_tests, goal=req.goal, lite=req.lite
+	)
 	return test_plan.model_dump()
 
 

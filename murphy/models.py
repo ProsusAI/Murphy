@@ -432,6 +432,21 @@ class ScenarioExecutionVerdict(BaseModel):
 	)
 
 
+# ─── Lite mode feedback ───────────────────────────────────────────────────────
+
+
+class LiteResult(BaseModel):
+	"""Fast, structured output returned by Murphy lite mode."""
+
+	grade: int = Field(ge=1, le=10, description='Overall experience score from 1 (poor) to 10 (excellent).')
+	flaws: list[str] = Field(default_factory=list, description='Observed problems, friction, or broken behavior.')
+	improvements: list[str] = Field(default_factory=list, description='Product or UX improvements that would help users.')
+	fixes: list[str] = Field(default_factory=list, description='Concrete fixes that address the observed flaws.')
+	other_feedback: list[str] = Field(
+		default_factory=list, description='Additional observations that do not fit the other fields.'
+	)
+
+
 # ─── Judge verdict ─────────────────────────────────────────────────────────────
 
 
@@ -501,6 +516,7 @@ class TestResult(BaseModel):
 	trait_evaluations: dict[str, Literal['pass', 'fail']] | None = None
 	missing_signals: list[str] = Field(default_factory=list)
 	feature_suggestions: list[str] = Field(default_factory=list)
+	lite_result: LiteResult | None = None
 
 
 class ReportSummary(BaseModel):

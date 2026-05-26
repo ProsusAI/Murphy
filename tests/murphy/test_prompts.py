@@ -7,6 +7,7 @@ from murphy.prompts import (
 	build_analysis_prompt,
 	build_execution_prompt,
 	build_exploration_prompt,
+	build_lite_prompt,
 	build_plan_synthesis_prompt,
 	build_test_generation_prompt,
 	build_test_generation_system_message,
@@ -174,6 +175,30 @@ def test_execution_prompt_confused_novice_persona():
 	scenario = _make_scenario(test_persona='confused_novice')
 	prompt = build_execution_prompt('evaluate site', scenario, 'https://example.com')
 	assert 'confused_novice' in prompt
+
+
+# ─── build_lite_prompt ───────────────────────────────────────────────────────
+
+
+def test_lite_prompt_requests_structured_lite_fields():
+	scenario = _make_scenario(test_persona='happy_path')
+	prompt = build_lite_prompt(scenario, 'https://example.com', analysis=_make_analysis())
+
+	assert 'LiteResult' in prompt
+	assert 'flaws' in prompt
+	assert 'improvements' in prompt
+	assert 'fixes' in prompt
+	assert 'other_feedback' in prompt
+	assert 'SKIP' not in prompt
+
+
+def test_lite_prompt_reuses_persona_context():
+	scenario = _make_scenario(test_persona='confused_novice')
+	prompt = build_lite_prompt(scenario, 'https://example.com')
+
+	assert 'confused_novice' in prompt
+	assert 'first-time user' in prompt
+	assert 'Stay on the same domain' in prompt
 
 
 # ─── _build_persona_distribution_text ─────────────────────────────────────────

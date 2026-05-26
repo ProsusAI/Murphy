@@ -10,7 +10,7 @@ from murphy.browser.actions import register_domain_access_action, register_refre
 from murphy.browser.session_utils import prepare_session_for_task
 from murphy.config import EXPLORE_MAX_STEPS, QUALITY_MAX_RETRIES
 from murphy.core.quality import plan_quality_issues
-from murphy.models import PERSONA_REGISTRY, TestPlan
+from murphy.models import PERSONA_REGISTRY, TestPlan, TestScenario, WebsiteAnalysis
 from murphy.personas.bridge import get_discovered_persona_names
 from murphy.personas.pipeline_models import PersonaResult, TraitSchema
 from murphy.prompts import (
@@ -21,6 +21,59 @@ from murphy.prompts import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def make_lite_plan(
+	url: str,
+	goal: str | None = None,
+	analysis: WebsiteAnalysis | None = None,
+	max_tests: int | None = None,
+	discovered_personas: tuple[PersonaResult, TraitSchema] | None = None,
+) -> TestPlan:
+	"""Create a compact lite-mode plan without an LLM generation call."""
+	if discovered_personas:
+		personas = get_discovered_persona_names(discovered_personas[0])
+	else:
+		personas = list(PERSONA_REGISTRY.keys())
+	if max_tests is not None:
+		personas = personas[:max_tests]
+
+	core_features = [f for f in (analysis.features if analysis else []) if f.importance == 'core']
+	testable_features = [f for f in (analysis.features if analysis else []) if f.testability in ('testable', 'partial')]
+	primary_feature = (core_features or testable_features)[0] if (core_features or testable_features) else None
+	target_feature = primary_feature.name if primary_feature else (goal or 'overall site experience')
+	feature_category = primary_feature.category if primary_feature else 'other'
+	site_name = analysis.site_name if analysis else url
+	task = goal or f'Evaluate {site_name}'
+
+	steps_parts = [f'Explore {url} with focus on: {task}.']
+	if analysis and analysis.identified_user_flows:
+		steps_parts.append('Relevant user flows:\n' + '\n'.join(f'- {flow}' for flow in analysis.identified_user_flows))
+	if core_features:
+		steps_parts.append('Core features:\n' + '\n'.join(f'- {feature.name}' for feature in core_features))
+	steps_parts.append('Return concise lite output with flaws, improvements, fixes, and other observations.')
+	steps_description = '\n\n'.join(steps_parts)
+
+	scenarios: list[TestScenario] = []
+	for index, persona in enumerate(personas):
+		priority = 'critical' if index == 0 else 'high'
+		scenarios.append(
+			TestScenario(
+				name=f'Lite {persona.replace("_", " ")} review'[:100],
+				description=f'{task} as {persona} on {site_name}.',
+				priority=priority,  # type: ignore[arg-type]
+				feature_category=feature_category,
+				target_feature=target_feature,
+				test_persona=persona,
+				steps_description=steps_description,
+				success_criteria='Return structured flaws, improvements, fixes, and other observations for this goal.',
+			)
+		)
+
+	logger.info('\n%s', '=' * 60)
+	logger.info('Built %d lite scenarios without LLM test generation', len(scenarios))
+	logger.info('%s\n', '=' * 60)
+	return TestPlan(scenarios=scenarios)
 
 
 async def generate_tests(

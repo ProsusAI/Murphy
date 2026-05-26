@@ -7,6 +7,7 @@ Usage:
     murphy --url https://example.com --features features.md     # skip analysis, load features from file
     murphy --url https://example.com --plan plan.yaml           # skip analysis + generation, load test plan
     murphy --url https://example.com --goal "test the checkout flow"
+    murphy --url https://example.com --goal "test the checkout flow" --lite
 """
 
 from __future__ import annotations
@@ -51,6 +52,7 @@ def main() -> int:
 	parser.add_argument('--no-auth', action='store_true', help='Skip auth detection entirely, treat site as public')
 	parser.add_argument('--features', help='Path to existing features markdown (skips analysis, goes to test generation)')
 	parser.add_argument('--plan', help='Path to existing YAML test plan (skips analysis + test generation)')
+	parser.add_argument('--lite', action='store_true', help='Run faster lite mode: skip test generation, judge, and reports')
 	parser.add_argument('--max-tests', type=int, default=None, help='Max test scenarios (default: number of personas)')
 	parser.add_argument(
 		'--provider', default='openai', help='LLM provider (default: openai). e.g. google, anthropic, azure, mistral'
@@ -119,7 +121,7 @@ async def _async_main(args: argparse.Namespace) -> None:
 	from murphy.browser.patches import apply as apply_patches
 	from murphy.core.analysis import analyze_website
 	from murphy.core.execution import execute_tests_with_session
-	from murphy.core.generation import explore_and_generate_plan, generate_tests
+	from murphy.core.generation import explore_and_generate_plan, generate_tests, make_lite_plan
 	from murphy.core.summary import build_summary, write_reports_and_print
 	from murphy.io.features_io import read_features_markdown, write_features_markdown
 	from murphy.io.fixtures import ensure_dummy_fixture_files
@@ -222,6 +224,7 @@ async def _async_main(args: argparse.Namespace) -> None:
 
 		# ── Phase 1–2: Discover features & generate plan ──
 		use_exploration_first = bool(args.goal and not args.features and not args.plan)
+		use_lite = bool(args.lite)
 
 		if args.plan:
 			# Skip both analysis and test generation
@@ -231,6 +234,27 @@ async def _async_main(args: argparse.Namespace) -> None:
 			if url != args.url:
 				logger.warning('Plan URL (%s) differs from --url (%s). Using --url.', url, args.url)
 			logger.info('Loaded %d scenarios from %s', len(test_plan.scenarios), plan_path)
+		elif use_lite:
+			if args.features:
+				features_path = Path(args.features)
+				assert features_path.exists(), f'Features file not found: {features_path}'
+				analysis = read_features_markdown(features_path)
+				logger.info('Loaded %d features from %s', len(analysis.features), features_path)
+			elif not args.goal:
+				analysis = await analyze_website(args.url, llm, goal=args.goal, browser_session=browser_session)
+				features_path = write_features_markdown(analysis, output_dir)
+				logger.info('\n  Features saved: %s', features_path)
+
+			test_plan = make_lite_plan(
+				args.url,
+				goal=args.goal,
+				analysis=analysis,
+				max_tests=args.max_tests,
+				discovered_personas=discovered_personas,
+			)
+			plan_path = save_test_plan(args.url, test_plan, output_dir)
+			logger.info('\n  Lite plan saved: %s', plan_path)
+			logger.info('  Using %d lite scenarios.\n', len(test_plan.scenarios))
 		elif use_exploration_first:
 			# Exploration-first path: explore → summarize → synthesize plan
 			test_plan = await explore_and_generate_plan(
@@ -326,6 +350,8 @@ async def _async_main(args: argparse.Namespace) -> None:
 			return TokenUsage(input_tokens=total_input, output_tokens=total_output)
 
 		def _on_test_complete(results: list[TestResult]) -> None:
+			if use_lite:
+				return
 			if analysis:
 				write_reports_and_print(
 					args.url,
@@ -350,8 +376,12 @@ async def _async_main(args: argparse.Namespace) -> None:
 				judge_llm=judge_llm,
 				output_dir=output_dir,
 				discovered_personas=discovered_personas,
+				use_lite=use_lite,
+				analysis=analysis,
 			)
-			if analysis:
+			if use_lite:
+				_log_lite_summary(results)
+			elif analysis:
 				write_reports_and_print(
 					args.url,
 					analysis,
@@ -384,6 +414,8 @@ async def _async_main(args: argparse.Namespace) -> None:
 				judge_llm=judge_llm,
 				output_dir=output_dir,
 				discovered_personas=discovered_personas,
+				use_lite=use_lite,
+				analysis=analysis,
 			)
 
 		state = ServerState(
@@ -402,7 +434,9 @@ async def _async_main(args: argparse.Namespace) -> None:
 			while True:
 				await asyncio.sleep(1)
 				if state.done and state.results and not getattr(state, '_reports_written', False):
-					if analysis:
+					if use_lite:
+						_log_lite_summary(state.results)
+					elif analysis:
 						write_reports_and_print(
 							args.url,
 							analysis,
@@ -465,6 +499,25 @@ def _log_results_summary(results: list[TestResult]) -> None:
 	logger.info('Evaluation Complete')
 	logger.info('%s', '=' * 60)
 	logger.info('\n  Pass rate: %s%% (%d/%d)', summary.pass_rate, summary.passed, summary.total)
+
+
+def _log_lite_summary(results: list[TestResult]) -> None:
+	logger.info('\n%s', '=' * 60)
+	logger.info('Lite Mode Complete — %d scenario(s)', len(results))
+	logger.info('%s', '=' * 60)
+	for result in results:
+		lite_result = result.lite_result
+		if lite_result is None:
+			logger.info('  [%s] no lite result — %s', result.scenario.test_persona, result.reason)
+			continue
+		logger.info(
+			'  [%s] grade=%d flaws=%d improvements=%d fixes=%d',
+			result.scenario.test_persona,
+			lite_result.grade,
+			len(lite_result.flaws),
+			len(lite_result.improvements),
+			len(lite_result.fixes),
+		)
 
 
 if __name__ == '__main__':

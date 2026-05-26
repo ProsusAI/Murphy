@@ -1,9 +1,16 @@
 """Tests for execution helper functions (no browser/LLM calls)."""
 
+import json
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
 from murphy.core.execution import (
+	_execute_single_test,
 	_extract_form_fills,
 	_extract_urls_from_texts,
 )
+from murphy.models import LiteResult, TestScenario
 
 # ─── _extract_form_fills ─────────────────────────────────────────────────────
 
@@ -119,3 +126,66 @@ def test_extract_urls_from_texts_multiple():
 def test_extract_urls_from_texts_skips_none():
 	result = _extract_urls_from_texts(['', 'https://ok.com'])
 	assert result == ['https://ok.com']
+
+
+# ─── Lite execution ──────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_execute_single_test_lite_mode_skips_judge_and_returns_lite_result():
+	scenario = TestScenario(
+		name='Lite agent creation',
+		description='Assess the agent creation flow',
+		priority='critical',
+		feature_category='forms',
+		target_feature='Agent creation',
+		test_persona='happy_path',
+		steps_description='Try to create an agent',
+		success_criteria='Return structured flaws, improvements, fixes, and other observations.',
+	)
+	lite_result = LiteResult(
+		grade=7,
+		flaws=['Creation has unclear required fields'],
+		improvements=['Show progress while creating the agent'],
+		fixes=['Label the create button clearly'],
+		other_feedback=['The main navigation is understandable'],
+	)
+	history = MagicMock()
+	history.final_result.return_value = json.dumps(lite_result.model_dump())
+	history.model_actions.return_value = [{'click': {'index': 1}}]
+	history.errors.return_value = []
+	history.total_duration_seconds.return_value = 3.5
+	history.urls.return_value = ['https://example.com/agents']
+	history.screenshot_paths.return_value = []
+
+	agent = MagicMock()
+	agent.tools = MagicMock()
+	agent.run = AsyncMock(return_value=history)
+
+	with (
+		patch('murphy.core.execution.Agent', return_value=agent) as agent_cls,
+		patch('murphy.core.execution.murphy_judge', new_callable=AsyncMock) as judge,
+		patch('murphy.browser.session_utils.prepare_session_for_task', new_callable=AsyncMock),
+		patch('murphy.browser.actions.register_domain_access_action'),
+		patch('murphy.browser.actions.register_refresh_dom_action'),
+	):
+		result = await _execute_single_test(
+			url='https://example.com',
+			scenario=scenario,
+			llm=MagicMock(),
+			browser_session=MagicMock(),
+			goal='Test agent creation flow',
+			fixture_paths=None,
+			max_steps=5,
+			index=1,
+			total=1,
+			use_lite=True,
+		)
+
+	agent_cls.assert_called_once()
+	assert agent_cls.call_args.kwargs['output_model_schema'] is LiteResult
+	judge.assert_not_awaited()
+	assert result.success is True
+	assert result.judgement is None
+	assert result.lite_result == lite_result
+	assert result.reason == 'Lite mode grade: 7'

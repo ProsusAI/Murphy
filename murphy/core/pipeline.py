@@ -22,6 +22,7 @@ from murphy.evaluate import (
 	execute_tests_with_session,
 	explore_and_generate_plan,
 	generate_tests,
+	make_lite_plan,
 )
 from murphy.io.fixtures import ensure_dummy_fixture_files
 from murphy.llm import create_llm
@@ -61,9 +62,12 @@ async def run_generate_plan(
 	provider: str = 'openai',
 	max_tests: int | None = None,
 	goal: str | None = None,
+	lite: bool = False,
 ) -> TestPlan:
 	"""Generate test plan from analysis."""
 	apply_patches()
+	if lite:
+		return make_lite_plan(url, goal=goal, analysis=analysis, max_tests=max_tests)
 	llm = create_llm(model, provider=provider)
 	return await generate_tests(url, analysis, llm, max_tests, goal=goal)
 
@@ -83,6 +87,7 @@ async def run_execute(
 	save_callback: Any = None,
 	progress_state: Any = None,
 	output_dir: Path | None = None,
+	lite: bool = False,
 ) -> tuple[list[TestResult], ReportSummary]:
 	"""Execute tests and return results + summary."""
 	apply_patches()
@@ -112,6 +117,7 @@ async def run_execute(
 			max_concurrent=max_concurrent,
 			judge_llm=judge_llm,
 			output_dir=output_dir,
+			use_lite=lite,
 		)
 		summary = build_summary(results)
 		return results, summary
@@ -128,9 +134,12 @@ async def run_evaluate(
 	max_tests: int | None = None,
 	goal: str | None = None,
 	browser_session: BrowserSession | None = None,
+	lite: bool = False,
 ) -> TestPlan:
 	"""Exploration-first: explore site then generate test plan."""
 	apply_patches()
+	if lite:
+		return make_lite_plan(url, goal=goal, max_tests=max_tests)
 	kill_stale_browser()
 	task = goal or f'Evaluate the website at {url}'
 	llm = create_llm(model, provider=provider)

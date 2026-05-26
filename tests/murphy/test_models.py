@@ -11,6 +11,7 @@ from murphy.models import (
 	FeedbackQualityScore,
 	InteractiveElement,
 	JudgeVerdict,
+	LiteResult,
 	PageInfo,
 	ReportSummary,
 	ScenarioExecutionVerdict,
@@ -122,14 +123,25 @@ def test_trait_vector_extra_forbidden():
 
 
 def test_persona_registry_completeness():
-	expected_personas = {'happy_path', 'confused_novice', 'adversarial', 'edge_case', 'explorer', 'impatient_user', 'angry_user'}
+	expected_personas = {
+		'happy_path',
+		'confused_novice',
+		'adversarial',
+		'edge_case',
+		'explorer',
+		'impatient_user',
+		'angry_user',
+		'classic_ui',
+		'modern_ui',
+		'layout_auditor_ui',
+	}
 	assert set(PERSONA_REGISTRY.keys()) == expected_personas
 
 
 def test_persona_registry_values_are_trait_vector_and_test_type():
 	for persona, (traits, test_type) in PERSONA_REGISTRY.items():
 		assert isinstance(traits, TraitVector), f'{persona} traits not TraitVector'
-		assert test_type in ('ux', 'security', 'boundary'), f'{persona} test_type invalid: {test_type}'
+		assert test_type in ('ux', 'security', 'boundary', 'design'), f'{persona} test_type invalid: {test_type}'
 
 
 # ─── ScenarioExecutionVerdict ─────────────────────────────────────────────────
@@ -155,6 +167,25 @@ def test_scenario_execution_verdict_with_fields():
 	)
 	assert v.success is False
 	assert 'Button' in v.reason
+
+
+# ─── LiteResult ───────────────────────────────────────────────────────────────
+
+
+def test_lite_result_requires_grade_between_one_and_ten():
+	result = LiteResult(
+		grade=8,
+		flaws=['Agent creation has unclear validation errors'],
+		improvements=['Add clearer progress feedback'],
+		fixes=['Show inline errors next to required fields'],
+		other_feedback=['The flow is discoverable from the dashboard'],
+	)
+
+	assert result.grade == 8
+	assert result.flaws == ['Agent creation has unclear validation errors']
+
+	with pytest.raises(ValidationError):
+		LiteResult(grade=11, flaws=[], improvements=[], fixes=[], other_feedback=[])
 
 
 # ─── TestScenario ─────────────────────────────────────────────────────────────
@@ -186,9 +217,10 @@ def test_test_scenario_rejects_invalid_priority():
 		_make_scenario(priority='urgent')
 
 
-def test_test_scenario_rejects_invalid_persona():
-	with pytest.raises(ValidationError):
-		_make_scenario(test_persona='robot')
+def test_test_scenario_accepts_custom_persona_names():
+	"""Discovered personas are runtime strings, not limited to the built-in registry."""
+	scenario = _make_scenario(test_persona='enterprise_admin')
+	assert scenario.test_persona == 'enterprise_admin'
 
 
 def test_test_scenario_rejects_invalid_category():
@@ -277,6 +309,22 @@ def test_test_result_nullable_success():
 	"""success=None represents a crashed test."""
 	r = _make_result(success=None, judgement=None)
 	assert r.success is None
+
+
+def test_test_result_serializes_lite_result():
+	lite_result = LiteResult(
+		grade=6,
+		flaws=['The create button is hard to find'],
+		improvements=['Add onboarding copy'],
+		fixes=['Make the create button primary'],
+		other_feedback=['Navigation is otherwise clear'],
+	)
+	r = _make_result(judgement=None, lite_result=lite_result, reason='Lite mode grade: 6')
+
+	dumped = r.model_dump()
+
+	assert dumped['lite_result']['grade'] == 6
+	assert dumped['lite_result']['flaws'] == ['The create button is hard to find']
 
 
 # ─── WebsiteAnalysis ─────────────────────────────────────────────────────────
