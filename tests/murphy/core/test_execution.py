@@ -248,3 +248,58 @@ async def test_execute_single_test_lite_mode_low_grade_is_plain_failed_test():
 	assert result.failure_category is None
 	assert result.lite_result == lite_result
 	assert result.reason == 'Lite mode grade: 4'
+
+
+@pytest.mark.asyncio
+async def test_execute_single_test_lite_mode_saves_agent_history_when_output_dir_set(tmp_path):
+	scenario = TestScenario(
+		name='Lite agent creation',
+		description='Assess the agent creation flow',
+		priority='critical',
+		feature_category='forms',
+		target_feature='Agent creation',
+		test_persona='happy_path',
+		steps_description='Try to create an agent',
+		success_criteria='Return structured flaws, improvements, fixes, and other observations.',
+	)
+	lite_result = LiteResult(
+		grade=7,
+		flaws=['Creation has unclear required fields'],
+		improvements=['Show progress while creating the agent'],
+		fixes=['Label the create button clearly'],
+		other_feedback=[],
+	)
+	history = MagicMock()
+	history.final_result.return_value = json.dumps(lite_result.model_dump())
+	history.model_actions.return_value = [{'click': {'index': 1}}]
+	history.errors.return_value = []
+	history.total_duration_seconds.return_value = 3.5
+	history.urls.return_value = ['https://example.com/agents']
+	history.screenshot_paths.return_value = []
+
+	agent = MagicMock()
+	agent.tools = MagicMock()
+	agent.run = AsyncMock(return_value=history)
+
+	with (
+		patch('murphy.core.execution.Agent', return_value=agent),
+		patch('murphy.core.execution.murphy_judge', new_callable=AsyncMock),
+		patch('murphy.browser.session_utils.prepare_session_for_task', new_callable=AsyncMock),
+		patch('murphy.browser.actions.register_domain_access_action'),
+		patch('murphy.browser.actions.register_refresh_dom_action'),
+	):
+		await _execute_single_test(
+			url='https://example.com',
+			scenario=scenario,
+			llm=MagicMock(),
+			browser_session=MagicMock(),
+			goal='Test agent creation flow',
+			fixture_paths=None,
+			max_steps=5,
+			index=1,
+			total=1,
+			output_dir=tmp_path,
+			use_lite=True,
+		)
+
+	history.save_to_file.assert_called_once_with(tmp_path / 'agent_history' / 'test_01_lite_agent_creation.json')

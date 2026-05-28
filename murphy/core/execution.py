@@ -103,6 +103,26 @@ async def _collect_session_urls(browser_session: BrowserSession) -> list[str]:
 	return urls
 
 
+def _save_agent_history(
+	history: AgentHistoryList,
+	scenario: TestScenario,
+	index: int,
+	output_dir: Path | None,
+) -> None:
+	"""Persist full browser-use history for UI trace and graph views."""
+	if output_dir is None:
+		return
+
+	slug = _slugify(scenario.name)
+	history_path = output_dir / 'agent_history' / f'test_{index:02d}_{slug}.json'
+	try:
+		history_path.parent.mkdir(parents=True, exist_ok=True)
+		history.save_to_file(history_path)
+		logger.debug('  Agent history saved: %s', history_path)
+	except Exception as e:
+		logger.warning('  Failed to save agent history: %s', e)
+
+
 # ─── Single-test execution helper ──────────────────────────────────────────────
 
 
@@ -157,6 +177,7 @@ async def _execute_single_test(
 			register_refresh_dom_action(agent.tools, browser_session)
 
 			history = await agent.run(max_steps=max_steps)
+			_save_agent_history(history, scenario, index, output_dir)
 			lite_result = _parse_structured_output(history, LiteResult)
 			if lite_result is None:
 				lite_result = LiteResult(
@@ -273,15 +294,7 @@ async def _execute_single_test(
 				seen_urls.add(p)
 				unique_pages.append(p)
 
-		# Save full browser-use history to output/agent_history/ when output_dir is set
-		if output_dir is not None:
-			slug = _slugify(scenario.name)
-			history_path = output_dir / 'agent_history' / f'test_{index:02d}_{slug}.json'
-			try:
-				history.save_to_file(history_path)
-				logger.debug('  Agent history saved: %s', history_path)
-			except Exception as e:
-				logger.warning('  Failed to save agent history: %s', e)
+		_save_agent_history(history, scenario, index, output_dir)
 
 		test_result = TestResult(
 			scenario=scenario,
