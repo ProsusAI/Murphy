@@ -1,9 +1,143 @@
 """Tests for execution helper functions (no browser/LLM calls)."""
 
+from typing import Any
+
+import pytest
+
 from murphy.core.execution import (
+	_execute_single_test,
 	_extract_form_fills,
 	_extract_urls_from_texts,
+	execute_tests_with_session,
 )
+from murphy.models import TestPlan as MurphyTestPlan
+from murphy.models import TestResult as MurphyTestResult
+from murphy.models import TestScenario as MurphyTestScenario
+
+
+def _make_scenario(name: str = 'Test scenario') -> MurphyTestScenario:
+	return MurphyTestScenario(
+		name=name,
+		description='Exercise a feature',
+		priority='high',
+		feature_category='navigation',
+		target_feature='Navigation',
+		test_persona='happy_path',
+		steps_description='Navigate through the site',
+		success_criteria='The page loads successfully',
+	)
+
+
+def _make_result(scenario: MurphyTestScenario) -> MurphyTestResult:
+	return MurphyTestResult(
+		scenario=scenario,
+		success=True,
+		judgement=None,
+		actions=[],
+		errors=[],
+		duration=0.0,
+	)
+
+
+class _OriginalSession:
+	browser_profile = None
+
+
+class _FakeFreshSession:
+	instances: list['_FakeFreshSession'] = []
+
+	def __init__(self, browser_profile: Any):
+		self.browser_profile = browser_profile
+		self.started = False
+		self.killed = False
+		_FakeFreshSession.instances.append(self)
+
+	async def start(self) -> None:
+		self.started = True
+
+	async def kill(self) -> None:
+		self.killed = True
+
+
+class _UnhealthySession:
+	is_cdp_connected = False
+	cdp_url = None
+	session_manager = None
+	agent_focus_target_id = None
+
+	def __init__(self):
+		self.event_bus = type('EventBus', (), {'handlers': {}})()
+
+
+# ─── Sequential BrowserSession isolation ─────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_execute_tests_with_session_uses_fresh_session_per_sequential_test(monkeypatch):
+	_FakeFreshSession.instances.clear()
+	scenarios = [_make_scenario('First'), _make_scenario('Second')]
+	seen_sessions: list[_FakeFreshSession] = []
+
+	async def fake_execute_single_test(**kwargs):
+		session = kwargs['browser_session']
+		seen_sessions.append(session)
+		return _make_result(kwargs['scenario'])
+
+	monkeypatch.setattr('murphy.core.execution.BrowserSession', _FakeFreshSession)
+	monkeypatch.setattr('murphy.core.execution._execute_single_test', fake_execute_single_test)
+
+	results = await execute_tests_with_session(
+		url='https://example.com',
+		test_plan=MurphyTestPlan(scenarios=scenarios),
+		llm=object(),
+		browser_session=_OriginalSession(),
+		max_concurrent=1,
+	)
+
+	assert len(results) == 2
+	assert len(_FakeFreshSession.instances) == 2
+	assert seen_sessions == _FakeFreshSession.instances
+	assert all(session.started for session in _FakeFreshSession.instances)
+	assert all(session.killed for session in _FakeFreshSession.instances)
+	assert len(set(id(session) for session in seen_sessions)) == 2
+
+
+# ─── Pre-agent browser session health checks ─────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_execute_single_test_returns_test_limitation_when_browser_session_unhealthy(monkeypatch):
+	agent_was_called = False
+
+	async def fake_prepare_session_for_task(*args, **kwargs):
+		return False
+
+	class FakeAgent:
+		def __init__(self, **kwargs):
+			nonlocal agent_was_called
+			agent_was_called = True
+			raise AssertionError('Agent should not run with unhealthy browser session')
+
+	monkeypatch.setattr('murphy.browser.session_utils.prepare_session_for_task', fake_prepare_session_for_task)
+	monkeypatch.setattr('murphy.core.execution.Agent', FakeAgent)
+
+	result = await _execute_single_test(
+		url='https://example.com',
+		scenario=_make_scenario(),
+		llm=object(),
+		browser_session=_UnhealthySession(),
+		goal=None,
+		fixture_paths=None,
+		max_steps=1,
+		index=1,
+		total=1,
+	)
+
+	assert agent_was_called is False
+	assert result.success is False
+	assert result.failure_category == 'test_limitation'
+	assert result.errors
+	assert 'Browser session' in result.errors[0]
 
 # ─── _extract_form_fills ─────────────────────────────────────────────────────
 

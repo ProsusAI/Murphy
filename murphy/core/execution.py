@@ -103,6 +103,30 @@ async def _collect_session_urls(browser_session: BrowserSession) -> list[str]:
 	return urls
 
 
+def _browser_session_health(browser_session: BrowserSession) -> dict[str, Any]:
+	"""Return the browser/CDP readiness signals needed before an agent runs."""
+	event_handlers = getattr(getattr(browser_session, 'event_bus', None), 'handlers', {}) or {}
+	return {
+		'cdp_connected': browser_session.is_cdp_connected,
+		'cdp_url': browser_session.cdp_url,
+		'session_manager': browser_session.session_manager is not None,
+		'focus_target': browser_session.agent_focus_target_id,
+		'navigate_handlers': len(event_handlers.get('NavigateToUrlEvent', [])),
+		'state_handlers': len(event_handlers.get('BrowserStateRequestEvent', [])),
+	}
+
+
+def _browser_session_ready(health: dict[str, Any]) -> bool:
+	"""Return True only when browser-use has the CDP and event wiring it needs."""
+	return bool(
+		health['cdp_connected']
+		and health['session_manager']
+		and health['focus_target']
+		and health['navigate_handlers'] > 0
+		and health['state_handlers'] > 0
+	)
+
+
 # ─── Single-test execution helper ──────────────────────────────────────────────
 
 
@@ -131,7 +155,11 @@ async def _execute_single_test(
 
 	try:
 		# Stabilize session between tests
-		await prepare_session_for_task(browser_session, url, force_navigate=True)
+		session_prepared = await prepare_session_for_task(browser_session, url, force_navigate=True)
+		health = _browser_session_health(browser_session)
+		logger.info('  Browser session health before agent run: %s', health)
+		if not session_prepared or not _browser_session_ready(health):
+			raise RuntimeError(f'Browser session unavailable before agent run: prepared={session_prepared}, health={health}')
 
 		file_paths_str = [str(p) for p in fixture_paths] if fixture_paths else []
 		task_prompt = build_execution_prompt(
@@ -439,26 +467,36 @@ async def execute_tests_with_session(
 	logger.info('%s\n', '=' * 60)
 
 	if max_concurrent <= 1:
-		# ── Sequential path (unchanged behavior) ──
+		# ── Sequential path ──
+		from browser_use.browser.profile import BrowserProfile
+
 		results: list[TestResult] = []
 		for i, scenario in enumerate(test_plan.scenarios, 1):
 			if progress_state is not None:
 				progress_state.current_test = i
 
-			test_result = await _execute_single_test(
-				url=url,
-				scenario=scenario,
-				llm=llm,
-				browser_session=browser_session,
-				goal=goal,
-				fixture_paths=fixture_paths,
-				max_steps=max_steps,
-				index=i,
-				total=total,
-				judge_llm=judge_llm,
-				output_dir=output_dir,
-				discovered_personas=discovered_personas,
-			)
+			test_session = BrowserSession(browser_profile=BrowserProfile(headless=True, keep_alive=False))
+			await test_session.start()
+			try:
+				test_result = await _execute_single_test(
+					url=url,
+					scenario=scenario,
+					llm=llm,
+					browser_session=test_session,
+					goal=goal,
+					fixture_paths=fixture_paths,
+					max_steps=max_steps,
+					index=i,
+					total=total,
+					judge_llm=judge_llm,
+					output_dir=output_dir,
+					discovered_personas=discovered_personas,
+				)
+			finally:
+				try:
+					await test_session.kill()
+				except Exception as exc:
+					logger.warning('  Failed to kill per-test browser session: %s', exc)
 			results.append(test_result)
 
 			if save_callback:
