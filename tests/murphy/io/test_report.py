@@ -385,6 +385,43 @@ def test_write_markdown_report_includes_failure_sections():
 		assert 'Website Issues' in content
 
 
+def test_write_markdown_report_failed_lite_result_is_not_test_limitation():
+	lite_result = LiteResult(
+		grade=4,
+		flaws=['The create flow is hard to find'],
+		improvements=['Expose a clearer create action'],
+		fixes=['Add a primary Create Agent button'],
+		other_feedback=[],
+	)
+	failed_lite_result = _make_result(
+		success=False,
+		judgement=None,
+		lite_result=lite_result,
+		failure_category=None,
+		reason='Lite mode grade: 4',
+	)
+	report = _make_report(
+		results=[failed_lite_result],
+		summary=ReportSummary(
+			total=1,
+			passed=0,
+			failed=1,
+			pass_rate=0.0,
+			website_issues=0,
+			test_limitations=0,
+			by_priority={'high': {'passed': 0, 'failed': 1}},
+		),
+	)
+
+	with tempfile.TemporaryDirectory() as tmpdir:
+		content = write_markdown_report(report, Path(tmpdir)).read_text()
+
+	assert '## Failed Tests' in content
+	assert '## Test Limitations' not in content
+	assert 'Lite mode grade: 4' in content
+	assert '**Grade:** 4/10' in content
+
+
 def test_write_markdown_report_includes_features_discovered():
 	report = _make_report()
 	with tempfile.TemporaryDirectory() as tmpdir:

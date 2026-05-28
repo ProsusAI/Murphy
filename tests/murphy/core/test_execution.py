@@ -189,3 +189,62 @@ async def test_execute_single_test_lite_mode_skips_judge_and_returns_lite_result
 	assert result.judgement is None
 	assert result.lite_result == lite_result
 	assert result.reason == 'Lite mode grade: 7'
+
+
+@pytest.mark.asyncio
+async def test_execute_single_test_lite_mode_low_grade_is_plain_failed_test():
+	scenario = TestScenario(
+		name='Lite confused user',
+		description='Assess the agent creation flow for confusion',
+		priority='high',
+		feature_category='forms',
+		target_feature='Agent creation',
+		test_persona='confused_novice',
+		steps_description='Try to create an agent',
+		success_criteria='Return structured flaws, improvements, fixes, and other observations.',
+	)
+	lite_result = LiteResult(
+		grade=4,
+		flaws=['The create flow is hard to find'],
+		improvements=['Expose a clearer create action'],
+		fixes=['Add a primary Create Agent button'],
+		other_feedback=[],
+	)
+	history = MagicMock()
+	history.final_result.return_value = json.dumps(lite_result.model_dump())
+	history.model_actions.return_value = [{'click': {'index': 1}}]
+	history.errors.return_value = []
+	history.total_duration_seconds.return_value = 2.0
+	history.urls.return_value = ['https://example.com']
+	history.screenshot_paths.return_value = []
+
+	agent = MagicMock()
+	agent.tools = MagicMock()
+	agent.run = AsyncMock(return_value=history)
+
+	with (
+		patch('murphy.core.execution.Agent', return_value=agent),
+		patch('murphy.core.execution.murphy_judge', new_callable=AsyncMock) as judge,
+		patch('murphy.browser.session_utils.prepare_session_for_task', new_callable=AsyncMock),
+		patch('murphy.browser.actions.register_domain_access_action'),
+		patch('murphy.browser.actions.register_refresh_dom_action'),
+	):
+		result = await _execute_single_test(
+			url='https://example.com',
+			scenario=scenario,
+			llm=MagicMock(),
+			browser_session=MagicMock(),
+			goal='Test agent creation flow',
+			fixture_paths=None,
+			max_steps=5,
+			index=1,
+			total=1,
+			use_lite=True,
+		)
+
+	judge.assert_not_awaited()
+	assert result.success is False
+	assert result.judgement is None
+	assert result.failure_category is None
+	assert result.lite_result == lite_result
+	assert result.reason == 'Lite mode grade: 4'

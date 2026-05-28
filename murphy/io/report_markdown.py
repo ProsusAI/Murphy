@@ -161,6 +161,7 @@ def write_markdown_report(report: EvaluationReport, output_dir: Path) -> Path:
 	# Partition results
 	website_issues = [r for r in report.results if r.failure_category == 'website_issue']
 	test_limitations = [r for r in report.results if r.failure_category == 'test_limitation']
+	failed_tests = [r for r in report.results if r.success is not True and r.failure_category is None]
 	passed_tests = [r for r in report.results if r.success]
 
 	# Scorecard
@@ -309,6 +310,21 @@ def write_markdown_report(report: EvaluationReport, output_dir: Path) -> Path:
 		for i, r in enumerate(test_limitations, 1):
 			persona_label = r.scenario.test_persona.replace('_', ' ').title()
 			summary_text = f'\u26a0\ufe0f {i}. {r.scenario.name} — {persona_label}'
+			detail_lines = [
+				f'**Persona:** {persona_label}',
+				'',
+				f'**What was tested:** {r.scenario.description}',
+				'',
+			]
+			_render_test_detail(r, i, detail_lines)
+			lines += ['<details>', f'<summary>{summary_text}</summary>', ''] + detail_lines + ['</details>', '']
+
+	# ── Generic failed tests section ──────────────────────────────────────────
+	if failed_tests:
+		lines += ['## Failed Tests', '']
+		for i, r in enumerate(failed_tests, 1):
+			persona_label = r.scenario.test_persona.replace('_', ' ').title()
+			summary_text = f'\u274c {i}. {r.scenario.name} — {persona_label}'
 			detail_lines = [
 				f'**Persona:** {persona_label}',
 				'',

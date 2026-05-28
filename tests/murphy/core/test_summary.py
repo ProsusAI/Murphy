@@ -1,7 +1,7 @@
 """Tests for summary building and failure classification."""
 
 from murphy.core.summary import build_summary, classify_failure
-from murphy.models import JudgeVerdict, TestResult, TestScenario
+from murphy.models import JudgeVerdict, LiteResult, TestResult, TestScenario
 
 
 def _make_scenario(**overrides) -> TestScenario:
@@ -73,6 +73,18 @@ def test_classify_failure_crashed_no_judgement():
 def test_classify_failure_failed_no_judgement():
 	r = _make_result(success=False, judgement=None)
 	assert classify_failure(r) == 'test_limitation'
+
+
+def test_classify_failure_failed_lite_result_is_plain_failure():
+	lite_result = LiteResult(
+		grade=4,
+		flaws=['The create flow is hard to find'],
+		improvements=['Expose a clearer create action'],
+		fixes=['Add a primary Create Agent button'],
+		other_feedback=[],
+	)
+	r = _make_result(success=False, judgement=None, lite_result=lite_result)
+	assert classify_failure(r) is None
 
 
 # ─── build_summary ────────────────────────────────────────────────────────────

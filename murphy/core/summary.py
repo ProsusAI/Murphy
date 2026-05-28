@@ -29,6 +29,8 @@ def classify_failure(result: TestResult) -> Literal['website_issue', 'test_limit
 	"""
 	if result.success is True:
 		return None
+	if result.lite_result is not None:
+		return None
 	# Crashed tests: success=None with no judgement → test infrastructure failure
 	if result.success is None:
 		return 'test_limitation'
