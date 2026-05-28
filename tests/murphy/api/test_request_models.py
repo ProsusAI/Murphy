@@ -100,7 +100,7 @@ def test_execute_request_defaults():
 	assert r.test_plan is None
 	assert r.evaluate_job_id is None
 	assert r.max_steps == 15
-	assert r.max_concurrent == 1
+	assert r.max_concurrent == 3
 
 
 def test_execute_request_with_json_string_test_plan():
