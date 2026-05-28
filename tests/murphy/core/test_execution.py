@@ -1,9 +1,11 @@
 """Tests for execution helper functions (no browser/LLM calls)."""
 
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
+from browser_use.browser.session import BrowserSession
+from browser_use.llm import BaseChatModel
 from murphy.core.execution import (
 	_execute_single_test,
 	_extract_form_fills,
@@ -89,8 +91,8 @@ async def test_execute_tests_with_session_uses_fresh_session_per_sequential_test
 	results = await execute_tests_with_session(
 		url='https://example.com',
 		test_plan=MurphyTestPlan(scenarios=scenarios),
-		llm=object(),
-		browser_session=_OriginalSession(),
+		llm=cast(BaseChatModel, object()),
+		browser_session=cast(BrowserSession, _OriginalSession()),
 		max_concurrent=1,
 	)
 
@@ -99,7 +101,7 @@ async def test_execute_tests_with_session_uses_fresh_session_per_sequential_test
 	assert seen_sessions == _FakeFreshSession.instances
 	assert all(session.started for session in _FakeFreshSession.instances)
 	assert all(session.killed for session in _FakeFreshSession.instances)
-	assert len(set(id(session) for session in seen_sessions)) == 2
+	assert len({id(session) for session in seen_sessions}) == 2
 
 
 # ─── Pre-agent browser session health checks ─────────────────────────────────
@@ -124,8 +126,8 @@ async def test_execute_single_test_returns_test_limitation_when_browser_session_
 	result = await _execute_single_test(
 		url='https://example.com',
 		scenario=_make_scenario(),
-		llm=object(),
-		browser_session=_UnhealthySession(),
+		llm=cast(BaseChatModel, object()),
+		browser_session=cast(BrowserSession, _UnhealthySession()),
 		goal=None,
 		fixture_paths=None,
 		max_steps=1,
@@ -137,7 +139,10 @@ async def test_execute_single_test_returns_test_limitation_when_browser_session_
 	assert result.success is False
 	assert result.failure_category == 'test_limitation'
 	assert result.errors
-	assert 'Browser session' in result.errors[0]
+	first_error = result.errors[0]
+	assert first_error is not None
+	assert 'Browser session' in first_error
+
 
 # ─── _extract_form_fills ─────────────────────────────────────────────────────
 
