@@ -209,6 +209,11 @@ def _save_agent_history(
 		logger.warning('  Failed to save agent history: %s', e)
 
 
+def _disable_unused_murphy_actions(agent: Agent) -> None:
+	"""Remove browser-use tools that Murphy does not consume."""
+	agent.tools.exclude_action('write_file')
+
+
 # ─── Single-test execution helper ──────────────────────────────────────────────
 
 
@@ -261,6 +266,7 @@ async def _execute_single_test(
 					'output_model_schema': LiteResult,
 				}
 				agent = Agent(**agent_kwargs)
+				_disable_unused_murphy_actions(agent)
 				register_domain_access_action(agent.tools, browser_session)
 				register_refresh_dom_action(agent.tools, browser_session)
 				return await agent.run(max_steps=max_steps)
@@ -334,6 +340,7 @@ async def _execute_single_test(
 		agent_kwargs['output_model_schema'] = ScenarioExecutionVerdict
 
 		agent = Agent(**agent_kwargs)
+		_disable_unused_murphy_actions(agent)
 		# Register custom actions
 		register_domain_access_action(agent.tools, browser_session)
 		register_refresh_dom_action(agent.tools, browser_session)

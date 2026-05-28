@@ -10,7 +10,7 @@ from murphy.core.execution import (
 	_extract_form_fills,
 	_extract_urls_from_texts,
 )
-from murphy.models import LiteResult, TestScenario
+from murphy.models import JudgeVerdict, LiteResult, ScenarioExecutionVerdict, TestScenario
 
 # ─── _extract_form_fills ─────────────────────────────────────────────────────
 
@@ -184,6 +184,7 @@ async def test_execute_single_test_lite_mode_skips_judge_and_returns_lite_result
 
 	agent_cls.assert_called_once()
 	assert agent_cls.call_args.kwargs['output_model_schema'] is LiteResult
+	agent.tools.exclude_action.assert_any_call('write_file')
 	judge.assert_not_awaited()
 	assert result.success is True
 	assert result.judgement is None
@@ -445,3 +446,61 @@ async def test_execute_single_test_lite_mode_does_not_retry_after_meaningful_int
 	agent_cls.assert_called_once()
 	judge.assert_not_awaited()
 	assert result.lite_result == lite_result
+
+
+@pytest.mark.asyncio
+async def test_execute_single_test_normal_mode_excludes_write_file_tool():
+	scenario = TestScenario(
+		name='Agent creation',
+		description='Create an agent from the homepage',
+		priority='critical',
+		feature_category='forms',
+		target_feature='Agent creation',
+		test_persona='happy_path',
+		steps_description='Create an agent and verify it appears',
+		success_criteria='The agent exists after creation.',
+	)
+	verdict = ScenarioExecutionVerdict(success=True, reason='Agent was created')
+	history = MagicMock()
+	history.final_result.return_value = json.dumps(verdict.model_dump())
+	history.model_actions.return_value = [{'click': {'index': 1}}, {'done': {'success': True}}]
+	history.errors.return_value = []
+	history.total_duration_seconds.return_value = 4.0
+	history.urls.return_value = ['https://example.com/agents/1']
+	history.screenshot_paths.return_value = []
+
+	agent = MagicMock()
+	agent.tools = MagicMock()
+	agent.run = AsyncMock(return_value=history)
+	judgement = JudgeVerdict(
+		reasoning='Trace shows the agent was created.',
+		verdict=True,
+		failure_reason='',
+		impossible_task=False,
+		reached_captcha=False,
+		failure_category=None,
+	)
+
+	with (
+		patch('murphy.core.execution.Agent', return_value=agent),
+		patch('murphy.core.execution.murphy_judge', new_callable=AsyncMock, return_value=judgement) as judge,
+		patch('murphy.browser.session_utils.prepare_session_for_task', new_callable=AsyncMock),
+		patch('murphy.browser.actions.register_domain_access_action'),
+		patch('murphy.browser.actions.register_refresh_dom_action'),
+	):
+		result = await _execute_single_test(
+			url='https://example.com',
+			scenario=scenario,
+			llm=MagicMock(),
+			browser_session=MagicMock(),
+			goal='Test agent creation flow',
+			fixture_paths=None,
+			max_steps=5,
+			index=1,
+			total=1,
+		)
+
+	agent.tools.exclude_action.assert_any_call('write_file')
+	judge.assert_awaited_once()
+	assert result.success is True
+	assert result.judgement == judgement
