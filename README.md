@@ -229,6 +229,8 @@ murphy-api
 
 Endpoints: `/analyze`, `/generate-plan`, `/execute`, `/evaluate`, `/jobs/{job_id}`. Each POST endpoint supports synchronous, async+webhook, and async+polling modes. Auth via `X-API-Key` header.
 
+For agent polling, `/jobs/{job_id}` accepts an optional `poll_attempt` query parameter as a no-op nonce, e.g. `/jobs/<job_id>?poll=30&poll_attempt=1`.
+
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#rest-api-murphy-api) for full endpoint documentation.
 
 ---

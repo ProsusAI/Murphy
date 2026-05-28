@@ -59,7 +59,7 @@ Murphy exposes a REST API via FastAPI for programmatic evaluation. Start with `m
 | `POST` | `/generate-plan` | Test plan generation from analysis |
 | `POST` | `/execute` | Test execution from plan |
 | `POST` | `/evaluate` | Combined explore + plan generation |
-| `GET` | `/jobs/{job_id}` | Job status polling (supports long-poll via `?poll=N`) |
+| `GET` | `/jobs/{job_id}` | Job status polling (supports long-poll via `?poll=N` and client polling nonce via `?poll_attempt=N`) |
 
 ### Execution modes
 
@@ -68,6 +68,8 @@ Every `POST` endpoint supports three modes:
 1. **Synchronous** (default) — blocks until completion, returns `200` with result
 2. **Async + webhook** (`webhook_url` set) — returns `202` with `job_id`, POSTs result to the webhook URL on completion
 3. **Async + polling** (`"async": true`) — returns `202` with `job_id`, poll `/jobs/{job_id}` for result
+
+Polling clients may include `poll_attempt=N` as a no-op nonce, for example `/jobs/{job_id}?poll=30&poll_attempt=1`. Murphy ignores this value; it exists so agent-generated tool calls can vary their arguments while repeatedly checking the same long-running job.
 
 Authentication is via `X-API-Key` header when `MURPHY_API_KEY` is set. Concurrent jobs are limited by `MURPHY_MAX_CONCURRENT_JOBS` (default: 2).
 

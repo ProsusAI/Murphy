@@ -91,6 +91,29 @@ def test_get_job_running(client, monkeypatch):
 	assert resp.json()['status'] == 'running'
 
 
+def test_get_job_accepts_poll_attempt_nonce(client, monkeypatch):
+	monkeypatch.setattr('murphy.api.rest.MURPHY_API_KEY', '')
+	job = Job(id='nonce-job', status='completed', result={'data': 42})
+	_jobs['nonce-job'] = job
+
+	resp = client.get('/jobs/nonce-job?poll_attempt=1')
+	assert resp.status_code == 200
+	assert resp.json() == {
+		'id': 'nonce-job',
+		'status': 'completed',
+		'result': {'data': 42},
+		'error': None,
+		'finished_at': None,
+	}
+
+
+def test_get_job_openapi_exposes_poll_attempt(client):
+	schema = client.get('/openapi.json').json()
+	parameters = schema['paths']['/jobs/{job_id}']['get']['parameters']
+
+	assert any(param['name'] == 'poll_attempt' and param['in'] == 'query' for param in parameters)
+
+
 def test_get_job_strips_whitespace(client, monkeypatch):
 	monkeypatch.setattr('murphy.api.rest.MURPHY_API_KEY', '')
 	job = Job(id='my-job', status='completed', result={})

@@ -17,10 +17,10 @@ Three modes per endpoint:
 from __future__ import annotations
 
 import asyncio
-from typing import Any
+from typing import Annotated, Any
 
 import uvicorn
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 
 from murphy.api.jobs import dispatch, get_job
@@ -148,7 +148,14 @@ async def evaluate(req: EvaluateRequest) -> JSONResponse:
 
 
 @app.get('/jobs/{job_id}', dependencies=[Depends(_verify_api_key)])
-async def get_job_status(job_id: str, poll: int = 0) -> dict[str, Any]:
+async def get_job_status(
+	job_id: str,
+	poll: int = 0,
+	poll_attempt: Annotated[
+		int | None,
+		Query(description='Client-supplied nonce for agent polling; ignored by Murphy.'),
+	] = None,
+) -> dict[str, Any]:
 	"""Get job status. If poll>0, long-poll: block up to `poll` seconds waiting for completion."""
 	job = get_job(job_id.strip())
 	if not job:
