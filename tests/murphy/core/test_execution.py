@@ -303,3 +303,145 @@ async def test_execute_single_test_lite_mode_saves_agent_history_when_output_dir
 		)
 
 	history.save_to_file.assert_called_once_with(tmp_path / 'agent_history' / 'test_01_lite_agent_creation.json')
+
+
+@pytest.mark.asyncio
+async def test_execute_single_test_lite_mode_retries_premature_done_without_interaction():
+	scenario = TestScenario(
+		name='Lite objective smoke test',
+		description='Test the objective flow',
+		priority='critical',
+		feature_category='forms',
+		target_feature='Objective flow',
+		test_persona='happy_path',
+		steps_description='Attempt the objective and verify the outcome',
+		success_criteria='Return structured flaws, improvements, fixes, and other observations.',
+	)
+	first_result = LiteResult(
+		grade=5,
+		flaws=['The flow was unclear from the landing page'],
+		improvements=[],
+		fixes=[],
+		other_feedback=[],
+	)
+	second_result = LiteResult(
+		grade=7,
+		flaws=['The flow required extra guidance'],
+		improvements=['Clarify the first step'],
+		fixes=['Add inline guidance'],
+		other_feedback=[],
+	)
+
+	first_history = MagicMock()
+	first_history.final_result.return_value = json.dumps(first_result.model_dump())
+	first_history.model_actions.return_value = [
+		{'navigate': {'url': 'https://example.com'}},
+		{'done': {'success': True}},
+	]
+	first_history.errors.return_value = []
+	first_history.total_duration_seconds.return_value = 1.0
+	first_history.urls.return_value = ['https://example.com']
+	first_history.screenshot_paths.return_value = []
+
+	second_history = MagicMock()
+	second_history.final_result.return_value = json.dumps(second_result.model_dump())
+	second_history.model_actions.return_value = [
+		{'click': {'index': 1}},
+		{'done': {'success': True}},
+	]
+	second_history.errors.return_value = []
+	second_history.total_duration_seconds.return_value = 2.0
+	second_history.urls.return_value = ['https://example.com/result']
+	second_history.screenshot_paths.return_value = []
+
+	first_agent = MagicMock()
+	first_agent.tools = MagicMock()
+	first_agent.run = AsyncMock(return_value=first_history)
+	second_agent = MagicMock()
+	second_agent.tools = MagicMock()
+	second_agent.run = AsyncMock(return_value=second_history)
+
+	with (
+		patch('murphy.core.execution.Agent', side_effect=[first_agent, second_agent]) as agent_cls,
+		patch('murphy.core.execution.murphy_judge', new_callable=AsyncMock) as judge,
+		patch('murphy.browser.session_utils.prepare_session_for_task', new_callable=AsyncMock),
+		patch('murphy.browser.actions.register_domain_access_action'),
+		patch('murphy.browser.actions.register_refresh_dom_action'),
+	):
+		result = await _execute_single_test(
+			url='https://example.com',
+			scenario=scenario,
+			llm=MagicMock(),
+			browser_session=MagicMock(),
+			goal='Test objective flow',
+			fixture_paths=None,
+			max_steps=5,
+			index=1,
+			total=1,
+			use_lite=True,
+		)
+
+	assert agent_cls.call_count == 2
+	assert 'stopped before meaningful in-app interaction' in agent_cls.call_args_list[1].kwargs['task']
+	judge.assert_not_awaited()
+	assert result.lite_result == second_result
+	assert result.actions == second_history.model_actions.return_value
+
+
+@pytest.mark.asyncio
+async def test_execute_single_test_lite_mode_does_not_retry_after_meaningful_interaction():
+	scenario = TestScenario(
+		name='Lite objective smoke test',
+		description='Test the objective flow',
+		priority='critical',
+		feature_category='forms',
+		target_feature='Objective flow',
+		test_persona='happy_path',
+		steps_description='Attempt the objective and verify the outcome',
+		success_criteria='Return structured flaws, improvements, fixes, and other observations.',
+	)
+	lite_result = LiteResult(
+		grade=7,
+		flaws=['The flow required extra guidance'],
+		improvements=[],
+		fixes=[],
+		other_feedback=[],
+	)
+	history = MagicMock()
+	history.final_result.return_value = json.dumps(lite_result.model_dump())
+	history.model_actions.return_value = [
+		{'input_text': {'index': 3, 'text': 'test value'}},
+		{'done': {'success': True}},
+	]
+	history.errors.return_value = []
+	history.total_duration_seconds.return_value = 2.0
+	history.urls.return_value = ['https://example.com/result']
+	history.screenshot_paths.return_value = []
+
+	agent = MagicMock()
+	agent.tools = MagicMock()
+	agent.run = AsyncMock(return_value=history)
+
+	with (
+		patch('murphy.core.execution.Agent', return_value=agent) as agent_cls,
+		patch('murphy.core.execution.murphy_judge', new_callable=AsyncMock) as judge,
+		patch('murphy.browser.session_utils.prepare_session_for_task', new_callable=AsyncMock),
+		patch('murphy.browser.actions.register_domain_access_action'),
+		patch('murphy.browser.actions.register_refresh_dom_action'),
+	):
+		result = await _execute_single_test(
+			url='https://example.com',
+			scenario=scenario,
+			llm=MagicMock(),
+			browser_session=MagicMock(),
+			goal='Test objective flow',
+			fixture_paths=None,
+			max_steps=5,
+			index=1,
+			total=1,
+			use_lite=True,
+		)
+
+	agent_cls.assert_called_once()
+	judge.assert_not_awaited()
+	assert result.lite_result == lite_result

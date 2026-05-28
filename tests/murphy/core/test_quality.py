@@ -13,7 +13,7 @@ def _make_scenario(**overrides) -> TestScenario:
 		target_feature='Login form',
 		test_persona='happy_path',
 		steps_description='1. Navigate to login page\n2. Enter valid email\n3. Enter password\n4. Click submit',
-		success_criteria='User is redirected to dashboard and sees confirmation message',
+		success_criteria='Login succeeds: user is redirected to dashboard and sees confirmation message',
 	)
 	defaults.update(overrides)
 	return TestScenario.model_validate(defaults)

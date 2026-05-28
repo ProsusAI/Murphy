@@ -163,6 +163,27 @@ def test_make_lite_plan_creates_persona_scenarios_without_llm():
 	assert all('flaws, improvements, fixes' in s.success_criteria for s in plan.scenarios)
 
 
+def test_make_lite_plan_interactive_goal_requires_objective_attempt_and_verification():
+	plan = make_lite_plan('https://example.com', goal='Test agent creation flow', analysis=_make_analysis(), max_tests=1)
+	steps = plan.scenarios[0].steps_description
+
+	assert 'most plausible in-app route' in steps
+	assert 'Attempt the objective' in steps
+	assert 'harmless test input' in steps
+	assert 'Advance or submit only when safe' in steps
+	assert 'Verify the resulting UI state' in steps
+
+
+def test_make_lite_plan_state_change_goal_uses_generalized_steps():
+	plan = make_lite_plan('https://example.com', goal='Test dark mode switching', analysis=_make_analysis(), max_tests=1)
+	steps = plan.scenarios[0].steps_description
+
+	assert 'Change the requested state' in steps
+	assert 'Verify the resulting UI state' in steps
+	assert 'appearance' not in steps.lower()
+	assert 'theme control' not in steps.lower()
+
+
 def test_make_lite_plan_uses_analysis_context_when_available():
 	plan = make_lite_plan('https://example.com', goal=None, analysis=_make_analysis(), max_tests=1)
 	scenario = plan.scenarios[0]

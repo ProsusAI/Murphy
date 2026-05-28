@@ -89,6 +89,92 @@ def _extract_urls_from_texts(texts: list[str]) -> list[str]:
 	return urls
 
 
+_INTERACTIVE_SCENARIO_KEYWORDS = (
+	'add',
+	'book',
+	'buy',
+	'change',
+	'checkout',
+	'complete',
+	'configure',
+	'create',
+	'delete',
+	'disable',
+	'download',
+	'edit',
+	'enable',
+	'filter',
+	'login',
+	'order',
+	'purchase',
+	'save',
+	'search',
+	'select',
+	'send',
+	'set up',
+	'setup',
+	'sign in',
+	'sign up',
+	'submit',
+	'switch',
+	'test',
+	'toggle',
+	'try',
+	'update',
+	'upload',
+	'use',
+)
+
+_MEANINGFUL_LITE_ACTIONS = {
+	'click',
+	'click_element',
+	'drag_drop',
+	'input',
+	'input_text',
+	'press_key',
+	'select_dropdown_option',
+	'send_keys',
+	'upload_file',
+}
+
+
+def _lite_scenario_requires_interaction(scenario: TestScenario) -> bool:
+	"""Return True when a lite scenario describes an interactive objective."""
+	scenario_text = ' '.join(
+		[
+			scenario.name,
+			scenario.description,
+			scenario.target_feature,
+			scenario.steps_description,
+			scenario.success_criteria,
+		]
+	).lower()
+	return any(keyword in scenario_text for keyword in _INTERACTIVE_SCENARIO_KEYWORDS)
+
+
+def _has_meaningful_lite_interaction(actions: list[dict[str, Any]]) -> bool:
+	"""Return True when actions include an in-app interaction beyond navigation/inspection."""
+	for action in actions:
+		for key in action:
+			if key == 'interacted_element':
+				continue
+			if key in _MEANINGFUL_LITE_ACTIONS:
+				return True
+	return False
+
+
+def _build_lite_retry_prompt(task_prompt: str) -> str:
+	"""Append a one-shot continuation instruction for premature lite completions."""
+	return (
+		task_prompt
+		+ '\n\nRETRY REQUIRED:\n'
+		+ 'Your previous lite attempt stopped before meaningful in-app interaction. '
+		+ 'Continue the objective now. You must use the most plausible in-app controls before returning LiteResult, '
+		+ 'unless blocked by login, captcha, missing permissions, destructive/payment action, '
+		+ 'support/contact/feedback form, external-domain route, or no plausible route after two in-app paths.'
+	)
+
+
 async def _collect_session_urls(browser_session: BrowserSession) -> list[str]:
 	"""Collect current + historical tab URLs from browser session."""
 	urls: list[str] = []
@@ -164,19 +250,27 @@ async def _execute_single_test(
 				analysis=analysis,
 				discovered_personas=discovered_personas,
 			)
-			agent_kwargs: dict[str, Any] = {
-				'task': task_prompt,
-				'llm': llm,
-				'browser_session': browser_session,
-				'use_judge': False,
-				'max_actions_per_step': 3,
-				'output_model_schema': LiteResult,
-			}
-			agent = Agent(**agent_kwargs)
-			register_domain_access_action(agent.tools, browser_session)
-			register_refresh_dom_action(agent.tools, browser_session)
 
-			history = await agent.run(max_steps=max_steps)
+			async def _run_lite_agent(prompt: str) -> AgentHistoryList:
+				agent_kwargs: dict[str, Any] = {
+					'task': prompt,
+					'llm': llm,
+					'browser_session': browser_session,
+					'use_judge': False,
+					'max_actions_per_step': 3,
+					'output_model_schema': LiteResult,
+				}
+				agent = Agent(**agent_kwargs)
+				register_domain_access_action(agent.tools, browser_session)
+				register_refresh_dom_action(agent.tools, browser_session)
+				return await agent.run(max_steps=max_steps)
+
+			history = await _run_lite_agent(task_prompt)
+			all_actions = history.model_actions()
+			if _lite_scenario_requires_interaction(scenario) and not _has_meaningful_lite_interaction(all_actions):
+				logger.info('  Lite run stopped before meaningful interaction; retrying once with stricter objective guidance.')
+				history = await _run_lite_agent(_build_lite_retry_prompt(task_prompt))
+
 			_save_agent_history(history, scenario, index, output_dir)
 			lite_result = _parse_structured_output(history, LiteResult)
 			if lite_result is None:

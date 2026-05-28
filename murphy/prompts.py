@@ -567,7 +567,7 @@ def build_lite_prompt(
 		site_context = ''
 
 	return (
-		f'You are running Murphy lite mode: a faster, simpler website review.\n\n'
+		f'You are running Murphy lite mode: a fast objective-driven website test.\n\n'
 		f'{persona_block}\n\n'
 		f'{site_context}'
 		f'Task: {scenario.description}\n\n'
@@ -575,8 +575,12 @@ def build_lite_prompt(
 		f'Start URL: {start_url}\n\n'
 		f'Rules:\n'
 		f'- Stay on the same domain as {start_url}.\n'
-		f'- Be direct and stop as soon as you have enough evidence for useful lite output.\n'
-		f'- Do not submit feedback forms on the site itself; observe and report only.\n'
+		f'- You must attempt the stated objective before returning the LiteResult.\n'
+		f'- Do not stop at first-impression UX feedback if there is any plausible in-app path to continue.\n'
+		f'- If a control is ambiguous but plausibly relevant to the objective, use it and report the ambiguity afterward.\n'
+		f'- Terminal states: objective completed and verified, objective attempted but blocked, or no plausible route found after trying at least two in-app paths.\n'
+		f'- You may submit ordinary app forms needed for the objective using harmless test data.\n'
+		f'- Do not submit support/contact/feedback forms, payment actions, destructive confirmations, or external-domain flows.\n'
 		f'- If the app blocks you with login, captcha, or missing permissions, report that as a flaw and stop.\n\n'
 		f'Return exactly one LiteResult object with these fields:\n'
 		f'- grade: integer from 1 to 10 for the overall experience.\n'

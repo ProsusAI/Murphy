@@ -201,6 +201,27 @@ def test_lite_prompt_reuses_persona_context():
 	assert 'Stay on the same domain' in prompt
 
 
+def test_lite_prompt_requires_objective_attempt_before_result():
+	scenario = _make_scenario(test_persona='happy_path')
+	prompt = build_lite_prompt(scenario, 'https://example.com')
+
+	assert 'fast objective-driven website test' in prompt
+	assert 'attempt the stated objective' in prompt
+	assert 'Terminal states' in prompt
+	assert 'stop as soon as you have enough evidence' not in prompt
+
+
+def test_lite_prompt_keeps_objective_rules_generalized():
+	scenario = _make_scenario(test_persona='happy_path')
+	prompt = build_lite_prompt(scenario, 'https://example.com')
+	lower_prompt = prompt.lower()
+
+	assert 'create agent' not in lower_prompt
+	assert 'dark mode' not in lower_prompt
+	assert 'theme control' not in lower_prompt
+	assert 'ordinary app forms needed for the objective' in prompt
+
+
 # ─── _build_persona_distribution_text ─────────────────────────────────────────
 
 
