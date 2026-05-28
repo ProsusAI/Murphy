@@ -7,7 +7,10 @@ import re
 import traceback
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+	from murphy.process.model import NavigationModel
 
 from browser_use import Agent
 from browser_use.agent.views import AgentHistoryList
@@ -121,6 +124,7 @@ async def _execute_single_test(
 	output_dir: Path | None = None,
 	use_lite: bool = False,
 	analysis: WebsiteAnalysis | None = None,
+	navigation_model: 'NavigationModel | None' = None,
 ) -> TestResult:
 	"""Execute one test scenario and return its TestResult.
 
@@ -138,11 +142,13 @@ async def _execute_single_test(
 		file_paths_str = [str(p) for p in fixture_paths] if fixture_paths else []
 
 		if use_lite:
+			nav_hints = navigation_model.get_hints(url, goal) if navigation_model else None
 			task_prompt = build_lite_prompt(
 				scenario,
 				url,
 				analysis=analysis,
 				discovered_personas=discovered_personas,
+				navigation_hints=nav_hints,
 			)
 			agent_kwargs: dict[str, Any] = {
 				'task': task_prompt,
@@ -179,6 +185,10 @@ async def _execute_single_test(
 					seen_urls.add(page_url)
 					unique_pages.append(page_url)
 
+			if navigation_model is not None:
+				navigation_model.update(url, unique_pages, goal)
+				navigation_model.save()
+
 			success = lite_result.grade >= 5
 			logger.info('  Lite result: grade=%d (%.1fs)', lite_result.grade, history.total_duration_seconds())
 			test_result = TestResult(
@@ -197,12 +207,14 @@ async def _execute_single_test(
 			test_result.failure_category = classify_failure(test_result)
 			return test_result
 
+		nav_hints = navigation_model.get_hints(url, goal) if navigation_model else None
 		task_prompt = build_execution_prompt(
 			goal or f'Evaluate {url}',
 			scenario,
 			url,
 			available_file_paths=file_paths_str or None,
 			discovered_personas=discovered_personas,
+			navigation_hints=nav_hints,
 		)
 
 		agent_kwargs: dict[str, Any] = {
@@ -272,6 +284,10 @@ async def _execute_single_test(
 			if p not in seen_urls:
 				seen_urls.add(p)
 				unique_pages.append(p)
+
+		if navigation_model is not None:
+			navigation_model.update(url, unique_pages, goal)
+			navigation_model.save()
 
 		# Save full browser-use history to output/agent_history/ when output_dir is set
 		if output_dir is not None:
@@ -444,6 +460,7 @@ async def execute_tests(
 	discovered_personas: tuple['PersonaResult', 'TraitSchema'] | None = None,
 	use_lite: bool = False,
 	analysis: WebsiteAnalysis | None = None,
+	navigation_model: 'NavigationModel | None' = None,
 ) -> list[TestResult]:
 	"""Execute tests without a pre-existing session (creates its own)."""
 	from browser_use.browser.profile import BrowserProfile
@@ -465,6 +482,7 @@ async def execute_tests(
 			discovered_personas=discovered_personas,
 			use_lite=use_lite,
 			analysis=analysis,
+			navigation_model=navigation_model,
 		)
 	finally:
 		await browser_session.kill()
@@ -486,6 +504,7 @@ async def execute_tests_with_session(
 	discovered_personas: tuple['PersonaResult', 'TraitSchema'] | None = None,
 	use_lite: bool = False,
 	analysis: WebsiteAnalysis | None = None,
+	navigation_model: 'NavigationModel | None' = None,
 ) -> list[TestResult]:
 	"""Phase 3 execution reusing an existing browser session.
 
@@ -529,6 +548,7 @@ async def execute_tests_with_session(
 				discovered_personas=discovered_personas,
 				use_lite=use_lite,
 				analysis=analysis,
+				navigation_model=navigation_model,
 			)
 			results.append(test_result)
 
@@ -580,6 +600,7 @@ async def execute_tests_with_session(
 					discovered_personas=discovered_personas,
 					use_lite=use_lite,
 					analysis=analysis,
+					navigation_model=navigation_model,
 				)
 				results_slots[index_0] = result
 

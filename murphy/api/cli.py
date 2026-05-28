@@ -230,7 +230,7 @@ async def _async_main(args: argparse.Namespace) -> None:
 			# Skip both analysis and test generation
 			plan_path = Path(args.plan)
 			assert plan_path.exists(), f'Plan file not found: {plan_path}'
-			url, test_plan = load_test_plan(plan_path)
+			url, test_plan, _plan_goal = load_test_plan(plan_path)
 			if url != args.url:
 				logger.warning('Plan URL (%s) differs from --url (%s). Using --url.', url, args.url)
 			logger.info('Loaded %d scenarios from %s', len(test_plan.scenarios), plan_path)
@@ -252,7 +252,7 @@ async def _async_main(args: argparse.Namespace) -> None:
 				max_tests=args.max_tests,
 				discovered_personas=discovered_personas,
 			)
-			plan_path = save_test_plan(args.url, test_plan, output_dir)
+			plan_path = save_test_plan(args.url, test_plan, output_dir, goal=args.goal)
 			logger.info('\n  Lite plan saved: %s', plan_path)
 			logger.info('  Using %d lite scenarios.\n', len(test_plan.scenarios))
 		elif use_exploration_first:
@@ -268,7 +268,7 @@ async def _async_main(args: argparse.Namespace) -> None:
 			)
 
 			# Save test plan to YAML
-			plan_path = save_test_plan(args.url, test_plan, output_dir)
+			plan_path = save_test_plan(args.url, test_plan, output_dir, goal=args.goal)
 			logger.info('\n  Test plan saved: %s', plan_path)
 			print('  Review and edit the file, then press Enter to continue.')
 			print('  (Add, remove, or modify test scenarios as needed.)\n')
@@ -277,7 +277,7 @@ async def _async_main(args: argparse.Namespace) -> None:
 			await loop.run_in_executor(None, lambda: input('  Press Enter to continue...  '))
 
 			# Re-read in case user edited
-			_, test_plan = load_test_plan(plan_path)
+			_, test_plan, _ = load_test_plan(plan_path)
 			logger.info('  Using %d test scenarios.\n', len(test_plan.scenarios))
 		else:
 			if args.features:
@@ -309,7 +309,7 @@ async def _async_main(args: argparse.Namespace) -> None:
 			)
 
 			# Save test plan to YAML
-			plan_path = save_test_plan(args.url, test_plan, output_dir)
+			plan_path = save_test_plan(args.url, test_plan, output_dir, goal=args.goal)
 			logger.info('\n  Test plan saved: %s', plan_path)
 			print('  Review and edit the file, then press Enter to continue.')
 			print('  (Add, remove, or modify test scenarios as needed.)\n')
@@ -318,7 +318,7 @@ async def _async_main(args: argparse.Namespace) -> None:
 			await loop.run_in_executor(None, lambda: input('  Press Enter to continue...  '))
 
 			# Re-read in case user edited
-			_, test_plan = load_test_plan(plan_path)
+			_, test_plan, _ = load_test_plan(plan_path)
 			logger.info('  Using %d test scenarios.\n', len(test_plan.scenarios))
 
 		# Ensure analysis exists for report writing (--goal and --plan paths skip feature discovery)
@@ -362,6 +362,11 @@ async def _async_main(args: argparse.Namespace) -> None:
 					murphy_tokens=_get_murphy_tokens(),
 				)
 
+		from murphy.process.model import NavigationModel
+
+		nav_model_path = output_dir / 'navigation_model.json'
+		navigation_model = NavigationModel(nav_model_path)
+
 		if not args.ui:
 			results = await execute_tests_with_session(
 				args.url,
@@ -378,6 +383,7 @@ async def _async_main(args: argparse.Namespace) -> None:
 				discovered_personas=discovered_personas,
 				use_lite=use_lite,
 				analysis=analysis,
+				navigation_model=navigation_model,
 			)
 			if use_lite:
 				_log_lite_summary(results)
@@ -416,6 +422,7 @@ async def _async_main(args: argparse.Namespace) -> None:
 				discovered_personas=discovered_personas,
 				use_lite=use_lite,
 				analysis=analysis,
+				navigation_model=navigation_model,
 			)
 
 		state = ServerState(

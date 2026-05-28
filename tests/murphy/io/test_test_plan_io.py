@@ -36,7 +36,7 @@ def test_save_and_load_roundtrip():
 		path = save_test_plan('https://example.com', plan, Path(tmpdir))
 		assert path.exists()
 
-		loaded_url, loaded_plan = load_test_plan(path)
+		loaded_url, loaded_plan, _ = load_test_plan(path)
 		assert loaded_url == 'https://example.com'
 		assert len(loaded_plan.scenarios) == len(plan.scenarios)
 		for orig, loaded in zip(plan.scenarios, loaded_plan.scenarios):
@@ -110,5 +110,5 @@ def test_empty_plan_roundtrip():
 	plan = TestPlan(scenarios=[])
 	with tempfile.TemporaryDirectory() as tmpdir:
 		path = save_test_plan('https://example.com', plan, Path(tmpdir))
-		loaded_url, loaded_plan = load_test_plan(path)
+		loaded_url, loaded_plan, _ = load_test_plan(path)
 		assert loaded_plan.scenarios == []

@@ -538,11 +538,25 @@ def _build_suggestion_instruction(
 	)
 
 
+def _render_navigation_hints(hints: list[str] | None) -> str:
+	if not hints:
+		return ''
+	pages = '\n'.join(f'  - {h}' for h in hints)
+	return (
+		f'NAVIGATION GUIDE (from previous runs on this site with this goal):\n'
+		f'These pages are most commonly visited when testing this goal on this site. '
+		f'Use them as a guide — navigate through these if relevant to your task, '
+		f'but adapt freely if the UI looks different or your persona would take a different path.\n'
+		f'{pages}\n\n'
+	)
+
+
 def build_lite_prompt(
 	scenario: TestScenario,
 	start_url: str,
 	analysis: WebsiteAnalysis | None = None,
 	discovered_personas: tuple[PersonaResult, TraitSchema] | None = None,
+	navigation_hints: list[str] | None = None,
 ) -> str:
 	"""Build the lean execution prompt for Murphy lite mode."""
 	if discovered_personas and scenario.test_persona not in PERSONA_REGISTRY:
@@ -573,6 +587,7 @@ def build_lite_prompt(
 		f'Task: {scenario.description}\n\n'
 		f'Steps:\n{scenario.steps_description}\n\n'
 		f'Start URL: {start_url}\n\n'
+		f'{_render_navigation_hints(navigation_hints)}'
 		f'Rules:\n'
 		f'- Stay on the same domain as {start_url}.\n'
 		f'- Be direct and stop as soon as you have enough evidence for useful lite output.\n'
@@ -593,6 +608,7 @@ def build_execution_prompt(
 	start_url: str,
 	available_file_paths: list[str] | None = None,
 	discovered_personas: tuple[PersonaResult, TraitSchema] | None = None,
+	navigation_hints: list[str] | None = None,
 ) -> str:
 	"""Build execution prompt with validation rules."""
 	# Resolve persona behavior block — use discovered if persona not in predefined registry
@@ -610,6 +626,7 @@ def build_execution_prompt(
 		f'Description: {scenario.description}\n\n'
 		f'Steps:\n{scenario.steps_description}\n\n'
 		f'Success criteria: {scenario.success_criteria}\n\n'
+		f'{_render_navigation_hints(navigation_hints)}'
 		f'IMPORTANT: You are already logged in. Be direct and efficient. '
 		f'Complete the test as fast as possible with minimal steps.\n\n'
 		f'ADAPTATION RULES:\n'
