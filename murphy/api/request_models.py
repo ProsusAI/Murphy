@@ -54,7 +54,7 @@ class ExecuteRequest(BaseModel):
 	judge_provider: str | None = None
 	judge_model: str | None = None
 	max_steps: int = 15
-	max_concurrent: int = 3
+	max_concurrent: int = 1
 	webhook_url: str | None = None
 	async_mode: bool = Field(False, alias='async')
 
