@@ -5,6 +5,7 @@ import time
 
 import pytest
 
+import murphy.api.jobs as jobs
 from murphy.api.jobs import (
 	JOB_TTL_SECONDS,
 	Job,
@@ -18,11 +19,15 @@ from murphy.api.jobs import (
 
 
 @pytest.fixture(autouse=True)
-def _clean_job_store():
-	"""Clear the global job store before/after each test."""
+def _clean_job_store(monkeypatch):
+	"""Clear global job state before/after each test."""
 	_jobs.clear()
+	monkeypatch.setattr(jobs, '_active_job_count', 0, raising=False)
+	monkeypatch.setattr(jobs, '_cleanup_lock', asyncio.Lock(), raising=False)
+	monkeypatch.setattr('murphy.browser.cleanup.kill_stale_browser', lambda: None)
 	yield
 	_jobs.clear()
+	monkeypatch.setattr(jobs, '_active_job_count', 0, raising=False)
 
 
 # ─── Job model ────────────────────────────────────────────────────────────────
@@ -112,16 +117,73 @@ async def test_execute_with_semaphore_success(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_execute_with_semaphore_runs_cleanup_before_first_job(monkeypatch):
+	events: list[str] = []
+	monkeypatch.setattr('murphy.api.jobs.MURPHY_JOB_TIMEOUT_OVERRIDE', None)
+	monkeypatch.setattr('murphy.browser.cleanup.kill_stale_browser', lambda: events.append('cleanup'))
+
+	async def core_fn(req):
+		events.append('core')
+		assert jobs._active_job_count == 1
+		return {'status': 'ok'}
+
+	job = Job(id='first-job')
+	await _execute_with_semaphore(job, core_fn, {}, timeout=30)
+
+	assert events == ['cleanup', 'core']
+	assert job.status == 'completed'
+	assert jobs._active_job_count == 0
+
+
+@pytest.mark.asyncio
+async def test_execute_with_semaphore_skips_cleanup_when_another_job_active(monkeypatch):
+	events: list[str] = []
+	monkeypatch.setattr('murphy.api.jobs.MURPHY_JOB_TIMEOUT_OVERRIDE', None)
+	monkeypatch.setattr(jobs, '_active_job_count', 1)
+	monkeypatch.setattr('murphy.browser.cleanup.kill_stale_browser', lambda: events.append('cleanup'))
+
+	async def core_fn(req):
+		events.append('core')
+		assert jobs._active_job_count == 2
+		return {'status': 'ok'}
+
+	job = Job(id='overlap-job')
+	await _execute_with_semaphore(job, core_fn, {}, timeout=30)
+
+	assert events == ['core']
+	assert job.status == 'completed'
+	assert jobs._active_job_count == 1
+
+
+@pytest.mark.asyncio
+async def test_execute_with_semaphore_decrements_active_count_on_exception(monkeypatch):
+	monkeypatch.setattr('murphy.api.jobs.MURPHY_JOB_TIMEOUT_OVERRIDE', None)
+	monkeypatch.setattr('murphy.browser.cleanup.kill_stale_browser', lambda: None)
+
+	async def failing_fn(req):
+		assert jobs._active_job_count == 1
+		raise ValueError('boom')
+
+	job = Job(id='active-count-failure')
+	await _execute_with_semaphore(job, failing_fn, {}, timeout=30)
+
+	assert job.status == 'failed'
+	assert jobs._active_job_count == 0
+
+
+@pytest.mark.asyncio
 async def test_execute_with_semaphore_timeout(monkeypatch):
 	monkeypatch.setattr('murphy.api.jobs.MURPHY_JOB_TIMEOUT_OVERRIDE', None)
 
 	async def slow_fn(req):
+		assert jobs._active_job_count == 1
 		await asyncio.sleep(10)
 
 	job = Job(id='slow')
 	await _execute_with_semaphore(job, slow_fn, {}, timeout=0.1)
 	assert job.status == 'failed'
 	assert job.error is not None and 'timed out' in job.error
+	assert jobs._active_job_count == 0
 
 
 @pytest.mark.asyncio

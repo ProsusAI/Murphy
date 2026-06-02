@@ -36,7 +36,7 @@ def browser_lifecycle(monkeypatch):
 	return events
 
 
-async def test_run_analyze_does_not_run_startup_cleanup_and_clears_own_pid(monkeypatch, browser_lifecycle):
+async def test_run_analyze_leaves_stale_cleanup_to_job_dispatch_and_clears_own_pid(monkeypatch, browser_lifecycle):
 	async def fake_analyze_website(*args, **kwargs):
 		return 'analysis'
 
@@ -50,7 +50,7 @@ async def test_run_analyze_does_not_run_startup_cleanup_and_clears_own_pid(monke
 	assert ('clear', 123) in browser_lifecycle
 
 
-async def test_run_execute_does_not_run_startup_cleanup_and_clears_own_pid(monkeypatch, browser_lifecycle):
+async def test_run_execute_leaves_stale_cleanup_to_job_dispatch_and_clears_own_pid(monkeypatch, browser_lifecycle):
 	async def fake_execute_tests_with_session(*args, **kwargs):
 		return []
 
@@ -71,7 +71,7 @@ async def test_run_execute_does_not_run_startup_cleanup_and_clears_own_pid(monke
 	assert ('clear', 123) in browser_lifecycle
 
 
-async def test_run_evaluate_does_not_run_startup_cleanup_and_clears_own_pid(monkeypatch, browser_lifecycle):
+async def test_run_evaluate_leaves_stale_cleanup_to_job_dispatch_and_clears_own_pid(monkeypatch, browser_lifecycle):
 	async def fake_explore_and_generate_plan(*args, **kwargs):
 		return MurphyTestPlan(scenarios=[])
 

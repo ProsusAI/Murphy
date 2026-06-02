@@ -13,6 +13,7 @@ from browser_use import Agent
 from browser_use.agent.views import AgentHistoryList
 from browser_use.browser.session import BrowserSession
 from browser_use.llm import BaseChatModel
+from murphy.browser.cleanup import clear_browser_pid, get_browser_pid_from_session, record_browser_pid
 from murphy.core.judge import murphy_judge
 from murphy.core.summary import classify_failure
 from murphy.io.report_helpers import _slugify
@@ -341,6 +342,9 @@ async def _create_session_pool(
 		)
 		session = BrowserSession(browser_profile=profile)
 		await session.start()
+		browser_pid = get_browser_pid_from_session(session)
+		if browser_pid:
+			record_browser_pid(browser_pid)
 
 		# Inject auth cookies if available
 		if cookies:
@@ -389,10 +393,13 @@ async def _cleanup_session_pool(sessions: list[BrowserSession], original_session
 	for session in sessions:
 		if session is original_session:
 			continue
+		browser_pid = get_browser_pid_from_session(session)
 		try:
 			await session.kill()
-		except Exception:
-			pass
+			if browser_pid:
+				clear_browser_pid(browser_pid)
+		except Exception as exc:
+			logger.warning('Failed to kill pooled browser session: %s', exc)
 
 
 # ─── Execute & Report ─────────────────────────────────────────────────────────
@@ -477,6 +484,9 @@ async def execute_tests_with_session(
 
 			test_session = BrowserSession(browser_profile=BrowserProfile(headless=True, keep_alive=False))
 			await test_session.start()
+			browser_pid = get_browser_pid_from_session(test_session)
+			if browser_pid:
+				record_browser_pid(browser_pid)
 			try:
 				test_result = await _execute_single_test(
 					url=url,
@@ -495,6 +505,8 @@ async def execute_tests_with_session(
 			finally:
 				try:
 					await test_session.kill()
+					if browser_pid:
+						clear_browser_pid(browser_pid)
 				except Exception as exc:
 					logger.warning('  Failed to kill per-test browser session: %s', exc)
 			results.append(test_result)

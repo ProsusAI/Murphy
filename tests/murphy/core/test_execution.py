@@ -1,5 +1,6 @@
 """Tests for execution helper functions (no browser/LLM calls)."""
 
+from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
@@ -7,6 +8,8 @@ import pytest
 from browser_use.browser.session import BrowserSession
 from browser_use.llm import BaseChatModel
 from murphy.core.execution import (
+	_cleanup_session_pool,
+	_create_session_pool,
 	_execute_single_test,
 	_extract_form_fills,
 	_extract_urls_from_texts,
@@ -52,6 +55,7 @@ class _FakeFreshSession:
 		self.browser_profile = browser_profile
 		self.started = False
 		self.killed = False
+		self.pid = 1000 + len(_FakeFreshSession.instances)
 		_FakeFreshSession.instances.append(self)
 
 	async def start(self) -> None:
@@ -59,6 +63,12 @@ class _FakeFreshSession:
 
 	async def kill(self) -> None:
 		self.killed = True
+
+
+class _FakeKillFailSession(_FakeFreshSession):
+	async def kill(self) -> None:
+		self.killed = True
+		raise RuntimeError('kill failed')
 
 
 class _UnhealthySession:
@@ -102,6 +112,143 @@ async def test_execute_tests_with_session_uses_fresh_session_per_sequential_test
 	assert all(session.started for session in _FakeFreshSession.instances)
 	assert all(session.killed for session in _FakeFreshSession.instances)
 	assert len({id(session) for session in seen_sessions}) == 2
+
+
+@pytest.mark.asyncio
+async def test_execute_tests_with_session_tracks_fresh_sequential_session_pids(monkeypatch):
+	_FakeFreshSession.instances.clear()
+	scenarios = [_make_scenario('First'), _make_scenario('Second')]
+	events: list[tuple[str, int]] = []
+
+	async def fake_execute_single_test(**kwargs):
+		return _make_result(kwargs['scenario'])
+
+	monkeypatch.setattr('murphy.core.execution.BrowserSession', _FakeFreshSession)
+	monkeypatch.setattr('murphy.core.execution._execute_single_test', fake_execute_single_test)
+	monkeypatch.setattr('murphy.core.execution.get_browser_pid_from_session', lambda session: session.pid, raising=False)
+	monkeypatch.setattr('murphy.core.execution.record_browser_pid', lambda pid: events.append(('record', pid)), raising=False)
+	monkeypatch.setattr('murphy.core.execution.clear_browser_pid', lambda pid: events.append(('clear', pid)), raising=False)
+
+	await execute_tests_with_session(
+		url='https://example.com',
+		test_plan=MurphyTestPlan(scenarios=scenarios),
+		llm=cast(BaseChatModel, object()),
+		browser_session=cast(BrowserSession, _OriginalSession()),
+		max_concurrent=1,
+	)
+
+	assert events == [
+		('record', 1000),
+		('clear', 1000),
+		('record', 1001),
+		('clear', 1001),
+	]
+
+
+@pytest.mark.asyncio
+async def test_execute_tests_with_session_keeps_sequential_pid_marker_when_kill_fails(monkeypatch):
+	_FakeFreshSession.instances.clear()
+	events: list[tuple[str, int]] = []
+
+	async def fake_execute_single_test(**kwargs):
+		return _make_result(kwargs['scenario'])
+
+	monkeypatch.setattr('murphy.core.execution.BrowserSession', _FakeKillFailSession)
+	monkeypatch.setattr('murphy.core.execution._execute_single_test', fake_execute_single_test)
+	monkeypatch.setattr('murphy.core.execution.get_browser_pid_from_session', lambda session: session.pid, raising=False)
+	monkeypatch.setattr('murphy.core.execution.record_browser_pid', lambda pid: events.append(('record', pid)), raising=False)
+	monkeypatch.setattr('murphy.core.execution.clear_browser_pid', lambda pid: events.append(('clear', pid)), raising=False)
+
+	await execute_tests_with_session(
+		url='https://example.com',
+		test_plan=MurphyTestPlan(scenarios=[_make_scenario()]),
+		llm=cast(BaseChatModel, object()),
+		browser_session=cast(BrowserSession, _OriginalSession()),
+		max_concurrent=1,
+	)
+
+	assert events == [('record', 1000)]
+
+
+@pytest.mark.asyncio
+async def test_create_session_pool_records_extra_session_pids(monkeypatch):
+	_FakeFreshSession.instances.clear()
+	events: list[tuple[str, int]] = []
+
+	class FakeSend:
+		class Network:
+			@staticmethod
+			async def getAllCookies(**kwargs):
+				return {'cookies': []}
+
+		class Runtime:
+			@staticmethod
+			async def evaluate(**kwargs):
+				return {'result': {'value': '[]'}}
+
+	class OriginalSession:
+		browser_profile = None
+
+		async def get_or_create_cdp_session(self):
+			return SimpleNamespace(session_id='original', cdp_client=SimpleNamespace(send=FakeSend))
+
+	monkeypatch.setattr('murphy.core.execution.BrowserSession', _FakeFreshSession)
+	monkeypatch.setattr('browser_use.browser.profile.BrowserProfile', lambda **kwargs: SimpleNamespace(kwargs=kwargs))
+	monkeypatch.setattr('murphy.core.execution.get_browser_pid_from_session', lambda session: session.pid, raising=False)
+	monkeypatch.setattr('murphy.core.execution.record_browser_pid', lambda pid: events.append(('record', pid)), raising=False)
+
+	sessions = await _create_session_pool(
+		pool_size=3,
+		original_session=cast(BrowserSession, OriginalSession()),
+	)
+
+	assert len(sessions) == 3
+	assert events == [('record', 1000), ('record', 1001)]
+
+
+@pytest.mark.asyncio
+async def test_cleanup_session_pool_clears_extra_session_pids_but_not_original(monkeypatch):
+	events: list[tuple[str, int]] = []
+	original = _OriginalSession()
+	extra_one = _FakeFreshSession(browser_profile=None)
+	extra_two = _FakeFreshSession(browser_profile=None)
+
+	monkeypatch.setattr('murphy.core.execution.get_browser_pid_from_session', lambda session: session.pid, raising=False)
+	monkeypatch.setattr('murphy.core.execution.clear_browser_pid', lambda pid: events.append(('clear', pid)), raising=False)
+
+	await _cleanup_session_pool(
+		[
+			cast(BrowserSession, original),
+			cast(BrowserSession, extra_one),
+			cast(BrowserSession, extra_two),
+		],
+		cast(BrowserSession, original),
+	)
+
+	assert extra_one.killed is True
+	assert extra_two.killed is True
+	assert events == [('clear', extra_one.pid), ('clear', extra_two.pid)]
+
+
+@pytest.mark.asyncio
+async def test_cleanup_session_pool_keeps_pid_marker_when_kill_fails(monkeypatch):
+	events: list[tuple[str, int]] = []
+	original = _OriginalSession()
+	extra = _FakeKillFailSession(browser_profile=None)
+
+	monkeypatch.setattr('murphy.core.execution.get_browser_pid_from_session', lambda session: session.pid, raising=False)
+	monkeypatch.setattr('murphy.core.execution.clear_browser_pid', lambda pid: events.append(('clear', pid)), raising=False)
+
+	await _cleanup_session_pool(
+		[
+			cast(BrowserSession, original),
+			cast(BrowserSession, extra),
+		],
+		cast(BrowserSession, original),
+	)
+
+	assert extra.killed is True
+	assert events == []
 
 
 # ─── Pre-agent browser session health checks ─────────────────────────────────

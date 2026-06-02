@@ -50,6 +50,8 @@ def _evict_expired_jobs() -> None:
 
 # Semaphore to limit concurrent browser jobs
 _job_semaphore = asyncio.Semaphore(MURPHY_MAX_CONCURRENT_JOBS)
+_active_job_count = 0
+_cleanup_lock = asyncio.Lock()
 
 
 def get_job(job_id: str) -> Job | None:
@@ -105,10 +107,31 @@ async def _acquire_semaphore() -> bool:
 		return False
 
 
+async def _enter_job_execution() -> None:
+	"""Run stale browser cleanup before the first active job, then mark this job active."""
+	global _active_job_count
+	async with _cleanup_lock:
+		if _active_job_count == 0:
+			from murphy.browser.cleanup import kill_stale_browser
+
+			kill_stale_browser()
+		_active_job_count += 1
+
+
+async def _exit_job_execution() -> None:
+	"""Mark a job inactive while preserving a valid active-job count."""
+	global _active_job_count
+	async with _cleanup_lock:
+		_active_job_count = max(0, _active_job_count - 1)
+
+
 async def _execute_with_semaphore(job: Job, core_fn: Any, req: Any, timeout: int | float) -> None:
 	"""Run core_fn under semaphore, update job status on completion/failure."""
 	task: asyncio.Task[Any] | None = None
+	entered = False
 	try:
+		await _enter_job_execution()
+		entered = True
 		effective = _effective_timeout(timeout)
 		task = asyncio.create_task(core_fn(req))
 		job.result = await asyncio.wait_for(task, timeout=effective)
@@ -129,6 +152,8 @@ async def _execute_with_semaphore(job: Job, core_fn: Any, req: Any, timeout: int
 		job.status = 'failed'
 		job.error = f'{type(exc).__name__}: {exc}'
 	finally:
+		if entered:
+			await _exit_job_execution()
 		job.finished_at = time.monotonic()
 		_job_semaphore.release()
 
