@@ -4,6 +4,18 @@ All notable changes to Murphy will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.2.0] - 2026-06-02
+
+### Added
+- Lite mode (`--lite` CLI flag / `lite: true` in the REST API) for a faster, simpler run aimed at quick product feedback: Murphy builds a compact persona plan directly from the goal or available analysis, then runs a lighter browser-agent prompt
+- Lite runs return a structured `LiteResult` per scenario with a 1–10 `grade` plus `flaws`, `improvements`, `fixes`, and `other_feedback`, summarised in a dedicated terminal output
+- `lite` field on the `/generate-plan`, `/evaluate`, and `/execute` REST API request models
+- `LITE_MODE.md` documentation describing the mode, what it skips, and how to run it
+
+### Changed
+- Lite mode skips LLM test generation, the Murphy judge, full JSON/Markdown report generation, and interactive review pauses
+- Disabled the unused `write_file` tool in Murphy runs
+
 ## [1.1.0] - 2026-04-07
 
 ### Added
