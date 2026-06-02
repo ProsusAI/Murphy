@@ -180,6 +180,7 @@ async def _async_main(args: argparse.Namespace) -> None:
 		discovered_personas = (persona_result, schema)
 
 	browser_session: BrowserSession | None = None
+	browser_pid: int | None = None
 	analysis: WebsiteAnalysis | None = None
 
 	try:
@@ -422,7 +423,8 @@ async def _async_main(args: argparse.Namespace) -> None:
 	finally:
 		if browser_session:
 			await browser_session.kill()
-		clear_browser_pid()
+		if browser_pid:
+			clear_browser_pid(browser_pid)
 
 
 async def _open_mode(output_dir: Path) -> None:

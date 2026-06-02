@@ -1,7 +1,7 @@
 """Browser process cleanup for Murphy.
 
 Ensures orphan Chromium processes from crashed runs are cleaned up,
-and records the current browser PID so the next run can kill it if needed.
+and records current browser PIDs so process-exit cleanup can kill them if needed.
 """
 
 from __future__ import annotations
@@ -14,7 +14,9 @@ import psutil
 
 logger = logging.getLogger(__name__)
 
+# Legacy single-slot file kept so an upgrade can clean a browser from the old layout.
 PID_FILE = Path('/tmp/murphy_browser.pid')
+PID_DIR = Path('/tmp/murphy_browsers')
 PROJECT_BROWSER_PROFILE_DIR = Path(__file__).resolve().parent.parent / 'browser_profile'
 DOCKER_BROWSER_PROFILE_DIR = Path('/tmp/murphy_browser_profile')
 TEMP_PROFILE_MARKER = 'browseruse-tmp-'
@@ -23,16 +25,16 @@ _atexit_registered = False
 
 
 def kill_stale_browser() -> None:
-	"""Kill a leftover Chromium process from a previous crashed run.
+	"""Kill leftover Chromium processes from a previous crashed process.
 
-	Reads the PID file written by a prior Murphy session and also scans for
+	Reads tracked PID files written by prior Murphy sessions and also scans for
 	orphaned Chrome helper processes still attached to Murphy-managed profiles.
+	This is intended for process startup, before any current jobs are running.
 	"""
 	killed_pids: set[int] = set()
 
 	try:
-		if PID_FILE.exists():
-			pid = int(PID_FILE.read_text().strip())
+		for pid in _iter_tracked_pids():
 			killed_pids.update(_terminate_process_tree(pid))
 		orphan_pids = [pid for pid in _find_stale_browser_pids() if pid not in killed_pids]
 		for pid in orphan_pids:
@@ -42,41 +44,41 @@ def kill_stale_browser() -> None:
 			logger.info('Killed stale Murphy browser processes: %s', ', '.join(str(pid) for pid in sorted(killed_pids)))
 		else:
 			logger.info('No stale browser process found')
-	except ValueError:
-		logger.warning('Ignoring invalid Murphy browser PID file: %s', PID_FILE)
 	except psutil.Error as exc:
 		logger.warning('Failed to clean stale Murphy browser processes: %s', exc)
 	finally:
-		PID_FILE.unlink(missing_ok=True)
+		_clear_tracking_files()
 
 
 def record_browser_pid(pid: int) -> None:
-	"""Write the browser PID to disk so it can be cleaned up after a crash."""
-	PID_FILE.write_text(str(pid))
+	"""Track a browser PID so it can be cleaned up after a crash."""
+	PID_DIR.mkdir(parents=True, exist_ok=True)
+	(PID_DIR / f'{pid}.pid').write_text(str(pid))
 	_register_atexit_cleanup()
 
 
-def clear_browser_pid() -> None:
-	"""Remove the PID file (called on graceful shutdown)."""
-	PID_FILE.unlink(missing_ok=True)
+def clear_browser_pid(pid: int) -> None:
+	"""Stop tracking one gracefully closed browser PID."""
+	(PID_DIR / f'{pid}.pid').unlink(missing_ok=True)
 
 
 def _atexit_cleanup() -> None:
 	"""Last-resort cleanup when the Python process exits."""
-	if not PID_FILE.exists():
+	if not PID_FILE.exists() and not PID_DIR.exists():
 		return
+	killed_pids: set[int] = set()
 	try:
-		pid = int(PID_FILE.read_text().strip())
-		killed_pids = _terminate_process_tree(pid)
+		for pid in _iter_tracked_pids():
+			killed_pids.update(_terminate_process_tree(pid))
 		if killed_pids:
 			logger.info(
 				'atexit: killed Murphy browser processes: %s',
 				', '.join(str(killed_pid) for killed_pid in sorted(killed_pids)),
 			)
-	except (ValueError, psutil.Error):
+	except psutil.Error:
 		logger.debug('atexit: Murphy browser cleanup did not complete cleanly', exc_info=True)
 	finally:
-		PID_FILE.unlink(missing_ok=True)
+		_clear_tracking_files()
 
 
 def _register_atexit_cleanup() -> None:
@@ -93,6 +95,39 @@ def get_browser_pid_from_session(browser_session: object) -> int | None:
 	if watchdog is None:
 		return None
 	return getattr(watchdog, 'browser_pid', None)
+
+
+def _iter_tracked_pids() -> list[int]:
+	"""Return tracked browser PIDs from the current directory layout plus legacy file."""
+	pids: list[int] = []
+	if PID_DIR.exists():
+		for path in sorted(PID_DIR.glob('*.pid')):
+			pid = _read_pid_file(path)
+			if pid is not None:
+				pids.append(pid)
+
+	pid = _read_pid_file(PID_FILE)
+	if pid is not None:
+		pids.append(pid)
+
+	return pids
+
+
+def _read_pid_file(path: Path) -> int | None:
+	if not path.exists():
+		return None
+	try:
+		return int(path.read_text().strip())
+	except ValueError:
+		logger.warning('Ignoring invalid Murphy browser PID file: %s', path)
+		return None
+
+
+def _clear_tracking_files() -> None:
+	if PID_DIR.exists():
+		for path in PID_DIR.glob('*.pid'):
+			path.unlink(missing_ok=True)
+	PID_FILE.unlink(missing_ok=True)
 
 
 def _terminate_process_tree(pid: int) -> set[int]:

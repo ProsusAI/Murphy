@@ -28,6 +28,20 @@ def test_health(client):
 	assert resp.json() == {'status': 'ok'}
 
 
+def test_lifespan_runs_browser_startup_cleanup_once(monkeypatch):
+	from murphy.browser import cleanup, patches
+
+	calls: list[str] = []
+	monkeypatch.setattr(patches, 'apply', lambda: calls.append('patches'))
+	monkeypatch.setattr(cleanup, 'kill_stale_browser', lambda: calls.append('cleanup'))
+
+	with TestClient(app) as client:
+		assert client.get('/health').status_code == 200
+		assert client.get('/health').status_code == 200
+
+	assert calls == ['patches', 'cleanup']
+
+
 # ─── Auth ────────────────────────────────────────────────────────────────────
 
 

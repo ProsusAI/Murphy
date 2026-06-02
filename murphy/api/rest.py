@@ -17,6 +17,7 @@ Three modes per endpoint:
 from __future__ import annotations
 
 import asyncio
+from contextlib import asynccontextmanager
 from typing import Annotated, Any
 
 import uvicorn
@@ -115,10 +116,22 @@ async def _core_evaluate(req: EvaluateRequest) -> dict[str, Any]:
 
 # ─── FastAPI app ──────────────────────────────────────────────────────────────
 
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+	from murphy.browser.cleanup import kill_stale_browser
+	from murphy.browser.patches import apply as apply_patches
+
+	apply_patches()
+	kill_stale_browser()
+	yield
+
+
 app = FastAPI(
 	title='Murphy API',
 	description='AI-driven website evaluation — REST API',
 	version='0.1.0',
+	lifespan=lifespan,
 )
 
 
