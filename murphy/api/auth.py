@@ -97,7 +97,7 @@ async def _llm_classify_page(llm: BaseChatModel, url: str, title: str, body: str
 
 async def auto_login(
 	browser_session: BrowserSession,
-	llm: ChatOpenAI,
+	llm: BaseChatModel,
 	url: str,
 	username: str,
 	password: str,
