@@ -523,6 +523,8 @@ async def execute_tests_with_session(
 	# Clamp: no more sessions than scenarios, and enforce hard cap
 	effective_concurrent = min(max_concurrent, total, MAX_PARALLEL_SESSIONS)
 
+	if browser_session.browser_profile is not None:
+		browser_session.browser_profile.keep_alive = True
 	highlight = browser_session.browser_profile.dom_highlight_elements if browser_session.browser_profile else True
 	sessions = await _create_session_pool(
 		pool_size=effective_concurrent,
