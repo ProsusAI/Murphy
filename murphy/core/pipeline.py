@@ -9,8 +9,11 @@ prompts, auth flow, and UI mode.
 
 from __future__ import annotations
 
+import logging
+import time
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from browser_use.browser.profile import BrowserProfile
 from browser_use.browser.session import BrowserSession
@@ -27,6 +30,17 @@ from murphy.io.fixtures import ensure_dummy_fixture_files
 from murphy.llm import create_llm
 from murphy.models import ReportSummary, TestPlan, TestResult, WebsiteAnalysis
 
+logger = logging.getLogger(__name__)
+
+
+def _url_host(url: str) -> str:
+	"""Return a non-sensitive URL label for diagnostics."""
+	try:
+		parsed = urlsplit(url)
+		return parsed.netloc or parsed.path or '<empty>'
+	except Exception:
+		return '<invalid-url>'
+
 
 async def run_analyze(
 	url: str,
@@ -42,17 +56,42 @@ async def run_analyze(
 	browser_pid: int | None = None
 	if own_session:
 		browser_session = BrowserSession(browser_profile=BrowserProfile(headless=True, keep_alive=False))
-		await browser_session.start()
-		browser_pid = get_browser_pid_from_session(browser_session)
-		if browser_pid:
-			record_browser_pid(browser_pid)
 	try:
+		if own_session:
+			started_at = time.monotonic()
+			logger.info(
+				'Browser session start begin: stage=analyze host=%s provider=%s model=%s',
+				_url_host(url),
+				provider,
+				model,
+			)
+			await browser_session.start()
+			browser_pid = get_browser_pid_from_session(browser_session)
+			if browser_pid:
+				record_browser_pid(browser_pid)
+			logger.info(
+				'Browser session start complete: stage=analyze host=%s pid=%s elapsed=%.2fs',
+				_url_host(url),
+				browser_pid,
+				time.monotonic() - started_at,
+			)
+		assert browser_session is not None
 		return await analyze_website(url, llm, browser_session=browser_session, goal=goal)
 	finally:
-		if own_session:
-			await browser_session.kill()
-			if browser_pid:
-				clear_browser_pid(browser_pid)
+		if own_session and browser_session is not None:
+			cleanup_started_at = time.monotonic()
+			logger.info('Browser session cleanup begin: stage=analyze host=%s pid=%s', _url_host(url), browser_pid)
+			try:
+				await browser_session.kill()
+			finally:
+				if browser_pid:
+					clear_browser_pid(browser_pid)
+				logger.info(
+					'Browser session cleanup complete: stage=analyze host=%s pid=%s elapsed=%.2fs',
+					_url_host(url),
+					browser_pid,
+					time.monotonic() - cleanup_started_at,
+				)
 
 
 async def run_generate_plan(
@@ -97,11 +136,28 @@ async def run_execute(
 	browser_pid: int | None = None
 	if own_session:
 		browser_session = BrowserSession(browser_profile=BrowserProfile(headless=True, keep_alive=False))
-		await browser_session.start()
-		browser_pid = get_browser_pid_from_session(browser_session)
-		if browser_pid:
-			record_browser_pid(browser_pid)
 	try:
+		if own_session:
+			started_at = time.monotonic()
+			logger.info(
+				'Browser session start begin: stage=execute host=%s provider=%s model=%s scenarios=%d max_concurrent=%d',
+				_url_host(url),
+				provider,
+				model,
+				len(test_plan.scenarios),
+				max_concurrent,
+			)
+			await browser_session.start()
+			browser_pid = get_browser_pid_from_session(browser_session)
+			if browser_pid:
+				record_browser_pid(browser_pid)
+			logger.info(
+				'Browser session start complete: stage=execute host=%s pid=%s elapsed=%.2fs',
+				_url_host(url),
+				browser_pid,
+				time.monotonic() - started_at,
+			)
+		assert browser_session is not None
 		results = await execute_tests_with_session(
 			url,
 			test_plan,
@@ -117,10 +173,20 @@ async def run_execute(
 		summary = build_summary(results)
 		return results, summary
 	finally:
-		if own_session:
-			await browser_session.kill()
-			if browser_pid:
-				clear_browser_pid(browser_pid)
+		if own_session and browser_session is not None:
+			cleanup_started_at = time.monotonic()
+			logger.info('Browser session cleanup begin: stage=execute host=%s pid=%s', _url_host(url), browser_pid)
+			try:
+				await browser_session.kill()
+			finally:
+				if browser_pid:
+					clear_browser_pid(browser_pid)
+				logger.info(
+					'Browser session cleanup complete: stage=execute host=%s pid=%s elapsed=%.2fs',
+					_url_host(url),
+					browser_pid,
+					time.monotonic() - cleanup_started_at,
+				)
 
 
 async def run_evaluate(
@@ -139,11 +205,27 @@ async def run_evaluate(
 	browser_pid: int | None = None
 	if own_session:
 		browser_session = BrowserSession(browser_profile=BrowserProfile(headless=True, keep_alive=False))
-		await browser_session.start()
-		browser_pid = get_browser_pid_from_session(browser_session)
-		if browser_pid:
-			record_browser_pid(browser_pid)
 	try:
+		if own_session:
+			started_at = time.monotonic()
+			logger.info(
+				'Browser session start begin: stage=evaluate host=%s provider=%s model=%s max_tests=%s',
+				_url_host(url),
+				provider,
+				model,
+				max_tests,
+			)
+			await browser_session.start()
+			browser_pid = get_browser_pid_from_session(browser_session)
+			if browser_pid:
+				record_browser_pid(browser_pid)
+			logger.info(
+				'Browser session start complete: stage=evaluate host=%s pid=%s elapsed=%.2fs',
+				_url_host(url),
+				browser_pid,
+				time.monotonic() - started_at,
+			)
+		assert browser_session is not None
 		return await explore_and_generate_plan(
 			task=task,
 			url=url,
@@ -152,7 +234,17 @@ async def run_evaluate(
 			max_scenarios=max_tests,
 		)
 	finally:
-		if own_session:
-			await browser_session.kill()
-			if browser_pid:
-				clear_browser_pid(browser_pid)
+		if own_session and browser_session is not None:
+			cleanup_started_at = time.monotonic()
+			logger.info('Browser session cleanup begin: stage=evaluate host=%s pid=%s', _url_host(url), browser_pid)
+			try:
+				await browser_session.kill()
+			finally:
+				if browser_pid:
+					clear_browser_pid(browser_pid)
+				logger.info(
+					'Browser session cleanup complete: stage=evaluate host=%s pid=%s elapsed=%.2fs',
+					_url_host(url),
+					browser_pid,
+					time.monotonic() - cleanup_started_at,
+				)

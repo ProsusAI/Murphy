@@ -4,6 +4,7 @@ import asyncio
 import json
 import os
 import tempfile
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
 from urllib.parse import urlparse
@@ -140,21 +141,49 @@ class DownloadsWatchdog(BaseWatchdog):
 	async def on_BrowserStateRequestEvent(self, event: BrowserStateRequestEvent) -> None:
 		"""Handle browser state request events."""
 		# Use public API - automatically validates and waits for recovery if needed
+		started_at = time.monotonic()
+		self.logger.info(
+			'[DownloadsWatchdog] BrowserStateRequest start: event_id=%s timeout=%s focus_target=%s',
+			event.event_id[-4:],
+			event.event_timeout,
+			self.browser_session.agent_focus_target_id[-4:] if self.browser_session.agent_focus_target_id else None,
+		)
 		self.logger.debug(f'[DownloadsWatchdog] on_BrowserStateRequestEvent started, event_id={event.event_id[-4:]}')
 		try:
 			cdp_session = await self.browser_session.get_or_create_cdp_session()
 		except ValueError:
-			self.logger.warning(f'[DownloadsWatchdog] No valid focus, skipping BrowserStateRequestEvent {event.event_id[-4:]}')
+			self.logger.warning(
+				'[DownloadsWatchdog] No valid focus, skipping BrowserStateRequestEvent %s after %.2fs',
+				event.event_id[-4:],
+				time.monotonic() - started_at,
+			)
 			return  # No valid focus, skip
 
+		self.logger.info(
+			'[DownloadsWatchdog] CDP session ready: event_id=%s target_id=%s elapsed=%.2fs',
+			event.event_id[-4:],
+			cdp_session.target_id[-4:] if cdp_session.target_id else None,
+			time.monotonic() - started_at,
+		)
 		self.logger.debug(
 			f'[DownloadsWatchdog] About to call get_current_page_url(), target_id={cdp_session.target_id[-4:] if cdp_session.target_id else "None"}'
 		)
 		url = await self.browser_session.get_current_page_url()
+		parsed = urlparse(url) if url else None
+		self.logger.info(
+			'[DownloadsWatchdog] Current URL resolved: event_id=%s url=%s elapsed=%.2fs',
+			event.event_id[-4:],
+			f'{parsed.scheme}://{parsed.netloc}' if parsed and parsed.netloc else '<none>',
+			time.monotonic() - started_at,
+		)
 		self.logger.debug(f'[DownloadsWatchdog] Got URL: {url[:80] if url else "None"}')
 
 		if not url:
-			self.logger.warning(f'[DownloadsWatchdog] No URL found for BrowserStateRequestEvent {event.event_id[-4:]}')
+			self.logger.warning(
+				'[DownloadsWatchdog] No URL found for BrowserStateRequestEvent %s after %.2fs',
+				event.event_id[-4:],
+				time.monotonic() - started_at,
+			)
 			return
 
 		target_id = cdp_session.target_id
@@ -166,6 +195,12 @@ class DownloadsWatchdog(BaseWatchdog):
 				target_id=target_id,
 				event_parent_id=event.event_id,
 			)
+		)
+		self.logger.info(
+			'[DownloadsWatchdog] BrowserStateRequest complete: event_id=%s target_id=%s elapsed=%.2fs',
+			event.event_id[-4:],
+			target_id[-4:] if target_id else None,
+			time.monotonic() - started_at,
 		)
 		self.logger.debug('[DownloadsWatchdog] Successfully completed BrowserStateRequestEvent')
 

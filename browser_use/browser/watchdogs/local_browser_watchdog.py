@@ -4,6 +4,7 @@ import asyncio
 import os
 import shutil
 import tempfile
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
 
@@ -65,7 +66,11 @@ class LocalBrowserWatchdog(BaseWatchdog):
 		"""Launch a local browser process."""
 
 		try:
-			self.logger.debug('[LocalBrowserWatchdog] Received BrowserLaunchEvent, launching local browser...')
+			self.logger.info(
+				'[LocalBrowserWatchdog] BrowserLaunchEvent received: event_id=%s timeout=%s',
+				event.event_id[-4:],
+				event.event_timeout,
+			)
 
 			# self.logger.debug('[LocalBrowserWatchdog] Calling _launch_browser...')
 			process, cdp_url = await self._launch_browser()
@@ -79,7 +84,11 @@ class LocalBrowserWatchdog(BaseWatchdog):
 
 	async def on_BrowserKillEvent(self, event: BrowserKillEvent) -> None:
 		"""Kill the local browser subprocess."""
-		self.logger.debug('[LocalBrowserWatchdog] Killing local browser process')
+		self.logger.info(
+			'[LocalBrowserWatchdog] BrowserKillEvent received: event_id=%s browser_pid=%s',
+			event.event_id[-4:],
+			self._subprocess.pid if self._subprocess else None,
+		)
 
 		if self._subprocess:
 			await self._cleanup_process(self._subprocess)
@@ -95,7 +104,7 @@ class LocalBrowserWatchdog(BaseWatchdog):
 			self.browser_session.browser_profile.user_data_dir = self._original_user_data_dir
 			self._original_user_data_dir = None
 
-		self.logger.debug('[LocalBrowserWatchdog] Browser cleanup completed')
+		self.logger.info('[LocalBrowserWatchdog] Browser cleanup completed for event_id=%s', event.event_id[-4:])
 
 	async def on_BrowserStopEvent(self, event: BrowserStopEvent) -> None:
 		"""Listen for BrowserStopEvent and dispatch BrowserKillEvent without awaiting it."""
@@ -119,6 +128,7 @@ class LocalBrowserWatchdog(BaseWatchdog):
 		self._temp_dirs_to_cleanup = []
 
 		for attempt in range(max_retries):
+			attempt_start = time.monotonic()
 			try:
 				# Get launch args from profile
 				launch_args = profile.get_args()
@@ -154,9 +164,19 @@ class LocalBrowserWatchdog(BaseWatchdog):
 					raise RuntimeError('No local Chrome/Chromium install found, and failed to install with playwright')
 
 				# Launch browser subprocess directly
-				self.logger.debug(f'[LocalBrowserWatchdog] 🚀 Launching browser subprocess with {len(launch_args)} args...')
-				self.logger.debug(
-					f'[LocalBrowserWatchdog] 📂 user_data_dir={profile.user_data_dir}, profile_directory={profile.profile_directory}'
+				cdp_timeout = cdp_ready_timeout()
+				self.logger.info(
+					'[LocalBrowserWatchdog] Launch attempt %d/%d: browser=%s headless=%s user_data_dir=%s '
+					'profile_directory=%s cdp_port=%s cdp_timeout=%.1fs args=%d',
+					attempt + 1,
+					max_retries,
+					browser_path,
+					profile.headless,
+					profile.user_data_dir,
+					profile.profile_directory,
+					debug_port,
+					cdp_timeout,
+					len(launch_args),
 				)
 				subprocess = await asyncio.create_subprocess_exec(
 					browser_path,
@@ -167,12 +187,24 @@ class LocalBrowserWatchdog(BaseWatchdog):
 				self.logger.debug(
 					f'[LocalBrowserWatchdog] 🎭 Browser running with browser_pid= {subprocess.pid} 🔗 listening on CDP port :{debug_port}'
 				)
+				self.logger.info(
+					'[LocalBrowserWatchdog] Browser process spawned: pid=%s cdp_port=%s elapsed=%.2fs',
+					subprocess.pid,
+					debug_port,
+					time.monotonic() - attempt_start,
+				)
 
 				# Convert to psutil.Process
 				process = psutil.Process(subprocess.pid)
 
 				# Wait for CDP to be ready and get the URL
-				cdp_url = await self._wait_for_cdp_url(debug_port, timeout=cdp_ready_timeout())
+				cdp_url = await self._wait_for_cdp_url(debug_port, timeout=cdp_timeout)
+				self.logger.info(
+					'[LocalBrowserWatchdog] Browser launch completed: pid=%s cdp_port=%s elapsed=%.2fs',
+					process.pid,
+					debug_port,
+					time.monotonic() - attempt_start,
+				)
 
 				# Success! Clean up only the temp dirs we created but didn't use
 				currently_used_dir = str(profile.user_data_dir)
@@ -194,6 +226,14 @@ class LocalBrowserWatchdog(BaseWatchdog):
 
 			except Exception as e:
 				error_str = str(e).lower()
+				self.logger.warning(
+					'[LocalBrowserWatchdog] Launch attempt %d/%d failed after %.2fs: %s: %s',
+					attempt + 1,
+					max_retries,
+					time.monotonic() - attempt_start,
+					type(e).__name__,
+					e,
+				)
 
 				# Check if this is a user_data_dir related error
 				if any(err in error_str for err in ['singletonlock', 'user data directory', 'cannot create', 'already in use']):
@@ -385,27 +425,75 @@ class LocalBrowserWatchdog(BaseWatchdog):
 			port = s.getsockname()[1]
 		return port
 
-	@staticmethod
-	async def _wait_for_cdp_url(port: int, timeout: float = 30) -> str:
+	async def _wait_for_cdp_url(self, port: int, timeout: float = 30) -> str:
 		"""Wait for the browser to start and return the CDP URL."""
 		import aiohttp
 
 		start_time = asyncio.get_event_loop().time()
+		attempts = 0
+		last_status: int | None = None
+		last_error: str | None = None
+		next_progress_log = 5.0
 
-		while asyncio.get_event_loop().time() - start_time < timeout:
-			try:
-				async with aiohttp.ClientSession() as session:
-					async with session.get(f'http://127.0.0.1:{port}/json/version') as resp:
-						if resp.status == 200:
-							# Chrome is ready
-							return f'http://127.0.0.1:{port}/'
-						else:
-							# Chrome is starting up and returning 502/500 errors
-							await asyncio.sleep(0.1)
-			except Exception:
-				# Connection error - Chrome might not be ready yet
-				await asyncio.sleep(0.1)
+		try:
+			while asyncio.get_event_loop().time() - start_time < timeout:
+				attempts += 1
+				elapsed = asyncio.get_event_loop().time() - start_time
+				if elapsed >= next_progress_log:
+					self.logger.info(
+						'[LocalBrowserWatchdog] Waiting for CDP: port=%s elapsed=%.1fs timeout=%.1fs attempts=%d '
+						'last_status=%s last_error=%s',
+						port,
+						elapsed,
+						timeout,
+						attempts,
+						last_status,
+						last_error,
+					)
+					next_progress_log += 5.0
+				try:
+					async with aiohttp.ClientSession() as session:
+						async with session.get(f'http://127.0.0.1:{port}/json/version') as resp:
+							last_status = resp.status
+							if resp.status == 200:
+								self.logger.info(
+									'[LocalBrowserWatchdog] CDP ready: port=%s elapsed=%.2fs attempts=%d',
+									port,
+									elapsed,
+									attempts,
+								)
+								# Chrome is ready
+								return f'http://127.0.0.1:{port}/'
+							else:
+								# Chrome is starting up and returning 502/500 errors
+								await asyncio.sleep(0.1)
+				except Exception as exc:
+					last_error = f'{type(exc).__name__}: {exc}'
+					# Connection error - Chrome might not be ready yet
+					await asyncio.sleep(0.1)
+		except asyncio.CancelledError:
+			self.logger.warning(
+				'[LocalBrowserWatchdog] CDP wait cancelled: port=%s elapsed=%.2fs timeout=%.1fs attempts=%d '
+				'last_status=%s last_error=%s',
+				port,
+				asyncio.get_event_loop().time() - start_time,
+				timeout,
+				attempts,
+				last_status,
+				last_error,
+			)
+			raise
 
+		self.logger.warning(
+			'[LocalBrowserWatchdog] CDP wait timed out: port=%s elapsed=%.2fs timeout=%.1fs attempts=%d '
+			'last_status=%s last_error=%s',
+			port,
+			asyncio.get_event_loop().time() - start_time,
+			timeout,
+			attempts,
+			last_status,
+			last_error,
+		)
 		raise TimeoutError(f'Browser did not start within {timeout} seconds')
 
 	@staticmethod

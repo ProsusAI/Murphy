@@ -3,6 +3,7 @@
 import asyncio
 import time
 from typing import TYPE_CHECKING
+from urllib.parse import urlparse
 
 from browser_use.browser.events import (
 	BrowserErrorEvent,
@@ -21,6 +22,19 @@ from browser_use.utils import create_task_with_error_handling, time_execution_as
 
 if TYPE_CHECKING:
 	from browser_use.browser.views import BrowserStateSummary, NetworkRequest, PageInfo, PaginationButton
+
+
+def _url_label(url: str | None) -> str:
+	"""Return a URL label that avoids query strings and fragments."""
+	if not url:
+		return '<none>'
+	try:
+		parsed = urlparse(url)
+		if parsed.netloc:
+			return f'{parsed.scheme}://{parsed.netloc}'
+		return parsed.scheme or '<relative>'
+	except Exception:
+		return '<invalid-url>'
 
 
 class DOMWatchdog(BaseWatchdog):
@@ -361,12 +375,30 @@ class DOMWatchdog(BaseWatchdog):
 		"""
 		from browser_use.browser.views import BrowserStateSummary, PageInfo
 
+		state_started_at = time.monotonic()
+		dom_started_at: float | None = None
+		screenshot_started_at: float | None = None
+		self.logger.info(
+			'[DOMWatchdog] BrowserStateRequest start: event_id=%s timeout=%s include_dom=%s include_screenshot=%s focus_target=%s',
+			event.event_id[-4:],
+			event.event_timeout,
+			event.include_dom,
+			event.include_screenshot,
+			self.browser_session.agent_focus_target_id[-4:] if self.browser_session.agent_focus_target_id else None,
+		)
 		self.logger.debug('🔍 DOMWatchdog.on_BrowserStateRequestEvent: STARTING browser state request')
 
 		# Ensure toast observer is injected (idempotent)
 		await self._inject_toast_observer()
+		self.logger.info('[DOMWatchdog] Toast observer ready: event_id=%s elapsed=%.2fs', event.event_id[-4:], time.monotonic() - state_started_at)
 
 		page_url = await self.browser_session.get_current_page_url()
+		self.logger.info(
+			'[DOMWatchdog] Current page resolved: event_id=%s url=%s elapsed=%.2fs',
+			event.event_id[-4:],
+			_url_label(page_url),
+			time.monotonic() - state_started_at,
+		)
 		self.logger.debug(f'🔍 DOMWatchdog.on_BrowserStateRequestEvent: Got page URL: {page_url}')
 
 		# Get focused session for logging (validation already done by get_current_page_url)
@@ -383,6 +415,12 @@ class DOMWatchdog(BaseWatchdog):
 				pending_requests_before_wait = await self._get_pending_network_requests()
 				if pending_requests_before_wait:
 					self.logger.debug(f'🔍 Found {len(pending_requests_before_wait)} pending requests before stability wait')
+				self.logger.info(
+					'[DOMWatchdog] Pending network requests sampled: event_id=%s count=%d elapsed=%.2fs',
+					event.event_id[-4:],
+					len(pending_requests_before_wait),
+					time.monotonic() - state_started_at,
+				)
 			except Exception as e:
 				self.logger.debug(f'Failed to get pending requests before wait: {e}')
 		pending_requests = pending_requests_before_wait
@@ -402,6 +440,12 @@ class DOMWatchdog(BaseWatchdog):
 		# Get tabs info once at the beginning for all paths
 		self.logger.debug('🔍 DOMWatchdog.on_BrowserStateRequestEvent: Getting tabs info...')
 		tabs_info = await self.browser_session.get_tabs()
+		self.logger.info(
+			'[DOMWatchdog] Tabs resolved: event_id=%s count=%d elapsed=%.2fs',
+			event.event_id[-4:],
+			len(tabs_info),
+			time.monotonic() - state_started_at,
+		)
 		self.logger.debug(f'🔍 DOMWatchdog.on_BrowserStateRequestEvent: Got {len(tabs_info)} tabs')
 		self.logger.debug(f'🔍 DOMWatchdog.on_BrowserStateRequestEvent: Tabs info: {tabs_info}')
 
@@ -418,6 +462,12 @@ class DOMWatchdog(BaseWatchdog):
 			if not_a_meaningful_website:
 				self.logger.debug(f'⚡ Skipping BuildDOMTree for empty target: {page_url}')
 				self.logger.debug(f'📸 Not taking screenshot for empty page: {page_url} (non-http/https URL)')
+				self.logger.info(
+					'[DOMWatchdog] BrowserStateRequest empty-page fast path: event_id=%s url=%s elapsed=%.2fs',
+					event.event_id[-4:],
+					_url_label(page_url),
+					time.monotonic() - state_started_at,
+				)
 
 				# Create minimal DOM state
 				content = SerializedDOMState(_root=None, selector_map={})
@@ -469,6 +519,7 @@ class DOMWatchdog(BaseWatchdog):
 			# Start DOM building task if requested
 			if event.include_dom:
 				self.logger.debug('🔍 DOMWatchdog.on_BrowserStateRequestEvent: 🌳 Starting DOM tree build task...')
+				dom_started_at = time.monotonic()
 
 				previous_state = (
 					self.browser_session._cached_browser_state_summary.dom_state
@@ -486,6 +537,7 @@ class DOMWatchdog(BaseWatchdog):
 			# Start clean screenshot task if requested (without JS highlights)
 			if event.include_screenshot:
 				self.logger.debug('🔍 DOMWatchdog.on_BrowserStateRequestEvent: 📸 Starting clean screenshot task...')
+				screenshot_started_at = time.monotonic()
 				screenshot_task = create_task_with_error_handling(
 					self._capture_clean_screenshot(),
 					name='capture_screenshot',
@@ -500,8 +552,23 @@ class DOMWatchdog(BaseWatchdog):
 			if dom_task:
 				try:
 					content = await dom_task
+					self.logger.info(
+						'[DOMWatchdog] DOM build completed: event_id=%s elements=%d elapsed=%.2fs total_elapsed=%.2fs',
+						event.event_id[-4:],
+						len(content.selector_map) if content and content.selector_map else 0,
+						time.monotonic() - dom_started_at if dom_started_at else 0.0,
+						time.monotonic() - state_started_at,
+					)
 					self.logger.debug('🔍 DOMWatchdog.on_BrowserStateRequestEvent: ✅ DOM tree build completed')
 				except Exception as e:
+					self.logger.warning(
+						'[DOMWatchdog] DOM build failed: event_id=%s elapsed=%.2fs total_elapsed=%.2fs error=%s: %s',
+						event.event_id[-4:],
+						time.monotonic() - dom_started_at if dom_started_at else 0.0,
+						time.monotonic() - state_started_at,
+						type(e).__name__,
+						e,
+					)
 					self.logger.warning(f'🔍 DOMWatchdog.on_BrowserStateRequestEvent: DOM build failed: {e}, using minimal state')
 					content = SerializedDOMState(_root=None, selector_map={})
 			else:
@@ -510,16 +577,39 @@ class DOMWatchdog(BaseWatchdog):
 			if screenshot_task:
 				try:
 					screenshot_b64 = await screenshot_task
+					self.logger.info(
+						'[DOMWatchdog] Screenshot completed: event_id=%s bytes=%d elapsed=%.2fs total_elapsed=%.2fs',
+						event.event_id[-4:],
+						len(screenshot_b64) if screenshot_b64 else 0,
+						time.monotonic() - screenshot_started_at if screenshot_started_at else 0.0,
+						time.monotonic() - state_started_at,
+					)
 					self.logger.debug('🔍 DOMWatchdog.on_BrowserStateRequestEvent: ✅ Clean screenshot captured')
 				except Exception as e:
+					self.logger.warning(
+						'[DOMWatchdog] Screenshot failed: event_id=%s elapsed=%.2fs total_elapsed=%.2fs error=%s: %s',
+						event.event_id[-4:],
+						time.monotonic() - screenshot_started_at if screenshot_started_at else 0.0,
+						time.monotonic() - state_started_at,
+						type(e).__name__,
+						e,
+					)
 					self.logger.warning(f'🔍 DOMWatchdog.on_BrowserStateRequestEvent: Clean screenshot failed: {e}')
 					screenshot_b64 = None
 
 			# Add browser-side highlights for user visibility
 			if content and content.selector_map and self.browser_session.browser_profile.dom_highlight_elements:
 				try:
+					highlight_started_at = time.monotonic()
 					self.logger.debug('🔍 DOMWatchdog.on_BrowserStateRequestEvent: 🎨 Adding browser-side highlights...')
 					await self.browser_session.add_highlights(content.selector_map)
+					self.logger.info(
+						'[DOMWatchdog] Highlights added: event_id=%s elements=%d elapsed=%.2fs total_elapsed=%.2fs',
+						event.event_id[-4:],
+						len(content.selector_map),
+						time.monotonic() - highlight_started_at,
+						time.monotonic() - state_started_at,
+					)
 					self.logger.debug(
 						f'🔍 DOMWatchdog.on_BrowserStateRequestEvent: ✅ Added browser highlights for {len(content.selector_map)} elements'
 					)
@@ -615,10 +705,28 @@ class DOMWatchdog(BaseWatchdog):
 			if page_info:
 				self.browser_session._original_viewport_size = (page_info.viewport_width, page_info.viewport_height)
 
+			self.logger.info(
+				'[DOMWatchdog] BrowserStateRequest complete: event_id=%s url=%s tabs=%d elements=%d screenshot=%s '
+				'pending_requests=%d total_elapsed=%.2fs',
+				event.event_id[-4:],
+				_url_label(page_url),
+				len(tabs_info),
+				len(content.selector_map) if content and content.selector_map else 0,
+				bool(screenshot_b64),
+				len(pending_requests),
+				time.monotonic() - state_started_at,
+			)
 			self.logger.debug('🔍 DOMWatchdog.on_BrowserStateRequestEvent: ✅ COMPLETED - Returning browser state')
 			return browser_state
 
 		except Exception as e:
+			self.logger.error(
+				'[DOMWatchdog] BrowserStateRequest failed: event_id=%s elapsed=%.2fs error=%s: %s',
+				event.event_id[-4:],
+				time.monotonic() - state_started_at,
+				type(e).__name__,
+				e,
+			)
 			self.logger.error(f'Failed to get browser state: {e}')
 
 			# Return minimal recovery state

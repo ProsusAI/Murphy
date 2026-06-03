@@ -36,6 +36,31 @@ def browser_lifecycle(monkeypatch):
 	return events
 
 
+@pytest.fixture
+def failing_browser_start(monkeypatch):
+	events: list[object] = []
+
+	class FailingBrowserSession:
+		def __init__(self, browser_profile=None):
+			self.browser_profile = browser_profile
+			self._local_browser_watchdog = SimpleNamespace(browser_pid=123)
+
+		async def start(self):
+			events.append('start')
+			raise TimeoutError('browser did not start')
+
+		async def kill(self):
+			events.append('kill')
+
+	monkeypatch.setattr(pipeline, 'BrowserSession', FailingBrowserSession)
+	monkeypatch.setattr(pipeline, 'BrowserProfile', lambda **kwargs: SimpleNamespace(kwargs=kwargs))
+	monkeypatch.setattr(pipeline, 'apply_patches', lambda: events.append('patches'))
+	monkeypatch.setattr(pipeline, 'record_browser_pid', lambda pid: events.append(('record', pid)))
+	monkeypatch.setattr(pipeline, 'clear_browser_pid', lambda pid: events.append(('clear', pid)))
+	monkeypatch.setattr(pipeline, 'create_llm', lambda *args, **kwargs: object())
+	return events
+
+
 async def test_run_analyze_leaves_stale_cleanup_to_job_dispatch_and_clears_own_pid(monkeypatch, browser_lifecycle):
 	async def fake_analyze_website(*args, **kwargs):
 		return 'analysis'
@@ -83,3 +108,26 @@ async def test_run_evaluate_leaves_stale_cleanup_to_job_dispatch_and_clears_own_
 	assert 'kill_stale_browser' not in browser_lifecycle
 	assert ('record', 123) in browser_lifecycle
 	assert ('clear', 123) in browser_lifecycle
+
+
+async def test_run_analyze_kills_owned_session_when_start_fails(failing_browser_start):
+	with pytest.raises(TimeoutError, match='browser did not start'):
+		await pipeline.run_analyze('https://example.com', 'gpt-test')
+
+	assert failing_browser_start == ['patches', 'start', 'kill']
+
+
+async def test_run_execute_kills_owned_session_when_start_fails(monkeypatch, failing_browser_start):
+	monkeypatch.setattr(pipeline, 'ensure_dummy_fixture_files', lambda: [])
+
+	with pytest.raises(TimeoutError, match='browser did not start'):
+		await pipeline.run_execute('https://example.com', MurphyTestPlan(scenarios=[]), 'gpt-test')
+
+	assert failing_browser_start == ['patches', 'start', 'kill']
+
+
+async def test_run_evaluate_kills_owned_session_when_start_fails(failing_browser_start):
+	with pytest.raises(TimeoutError, match='browser did not start'):
+		await pipeline.run_evaluate('https://example.com', 'gpt-test')
+
+	assert failing_browser_start == ['patches', 'start', 'kill']

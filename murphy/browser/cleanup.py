@@ -20,6 +20,7 @@ PID_DIR = Path('/tmp/murphy_browsers')
 PROJECT_BROWSER_PROFILE_DIR = Path(__file__).resolve().parent.parent / 'browser_profile'
 DOCKER_BROWSER_PROFILE_DIR = Path('/tmp/murphy_browser_profile')
 TEMP_PROFILE_MARKER = 'browseruse-tmp-'
+BROWSER_USE_TEMP_PROFILE_MARKER = 'browser-use-user-data-dir-'
 
 _atexit_registered = False
 
@@ -34,9 +35,12 @@ def kill_stale_browser() -> None:
 	killed_pids: set[int] = set()
 
 	try:
-		for pid in _iter_tracked_pids():
+		tracked_pids = _iter_tracked_pids()
+		logger.info('Stale browser cleanup started: tracked_pids=%s', tracked_pids)
+		for pid in tracked_pids:
 			killed_pids.update(_terminate_process_tree(pid))
 		orphan_pids = [pid for pid in _find_stale_browser_pids() if pid not in killed_pids]
+		logger.info('Stale browser cleanup scan complete: orphan_pids=%s already_killed=%s', orphan_pids, sorted(killed_pids))
 		for pid in orphan_pids:
 			killed_pids.update(_terminate_process_tree(pid))
 
@@ -164,8 +168,14 @@ def _terminate_process_tree(pid: int) -> set[int]:
 def _find_stale_browser_pids() -> list[int]:
 	"""Find Murphy-owned browser processes even when the root PID is gone."""
 	pids: set[int] = set()
-	profile_markers = (str(PROJECT_BROWSER_PROFILE_DIR), str(DOCKER_BROWSER_PROFILE_DIR), TEMP_PROFILE_MARKER)
-	browser_markers = ('Chrome', 'Chromium')
+	profile_markers = (
+		str(PROJECT_BROWSER_PROFILE_DIR),
+		str(DOCKER_BROWSER_PROFILE_DIR),
+		TEMP_PROFILE_MARKER,
+		BROWSER_USE_TEMP_PROFILE_MARKER,
+	)
+	profile_markers = tuple(marker.lower() for marker in profile_markers)
+	browser_markers = ('chrome', 'chromium')
 
 	for proc in psutil.process_iter(['pid', 'cmdline']):
 		try:
@@ -174,7 +184,8 @@ def _find_stale_browser_pids() -> list[int]:
 			continue
 		if not cmdline:
 			continue
-		if any(marker in cmdline for marker in profile_markers) and any(marker in cmdline for marker in browser_markers):
+		cmdline_lower = cmdline.lower()
+		if any(marker in cmdline_lower for marker in profile_markers) and any(marker in cmdline_lower for marker in browser_markers):
 			pids.add(proc.pid)
 
 	return sorted(pids)

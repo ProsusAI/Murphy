@@ -45,6 +45,35 @@ def test_kill_stale_browser_detects_orphaned_murphy_processes(monkeypatch, tmp_p
 	assert 'Killed stale Murphy browser processes: 111' in caplog.text
 
 
+def test_kill_stale_browser_detects_browser_use_temp_profiles(monkeypatch, tmp_path):
+	"""Startup cleanup should catch browser-use default temp profiles from failed launches."""
+	terminated: list[int] = []
+
+	def fake_process_iter(_attrs):
+		return [
+			SimpleNamespace(
+				pid=333,
+				info={
+					'pid': 333,
+					'cmdline': [
+						'/usr/bin/chromium',
+						'--user-data-dir=/tmp/browser-use-user-data-dir-a1b2c3',
+						'--remote-debugging-port=65494',
+					],
+				},
+			),
+			SimpleNamespace(pid=444, info={'pid': 444, 'cmdline': ['/usr/bin/chromium']}),
+		]
+
+	_patch_pid_paths(monkeypatch, tmp_path)
+	monkeypatch.setattr(cleanup.psutil, 'process_iter', fake_process_iter)
+	monkeypatch.setattr(cleanup, '_terminate_process_tree', lambda pid: terminated.append(pid) or {pid})
+
+	cleanup.kill_stale_browser()
+
+	assert terminated == [333]
+
+
 def test_record_and_clear_browser_pid_isolates_concurrent_sessions(monkeypatch, tmp_path):
 	"""Clearing one tracked session must not remove another session's PID marker."""
 	pid_dir, _legacy_pid_file = _patch_pid_paths(monkeypatch, tmp_path)
