@@ -36,7 +36,9 @@ class ScreenshotWatchdog(BaseWatchdog):
 			Dict with 'screenshot' key containing base64-encoded screenshot or None
 		"""
 		started_at = time.monotonic()
-		self.logger.debug('[ScreenshotWatchdog] Handler START - on_ScreenshotEvent called')
+		phase = 'start'
+		target_id = None
+		session_id = None
 		self.logger.info(
 			'[ScreenshotWatchdog] ScreenshotEvent start: event_id=%s timeout=%s full_page=%s clip=%s focus_target=%s',
 			event.event_id[-4:],
@@ -48,6 +50,7 @@ class ScreenshotWatchdog(BaseWatchdog):
 		try:
 			# Validate focused target is a top-level page (not iframe/worker)
 			# CDP Page.captureScreenshot only works on page/tab targets
+			phase = 'resolve_target'
 			focused_target = self.browser_session.get_focused_target()
 			self.logger.info(
 				'[ScreenshotWatchdog] Focused target resolved: event_id=%s target_id=%s target_type=%s elapsed=%.2fs',
@@ -74,8 +77,10 @@ class ScreenshotWatchdog(BaseWatchdog):
 					raise BrowserError('[ScreenshotWatchdog] No page targets available for screenshot')
 				target_id = page_targets[-1].target_id
 
+			phase = 'await_cdp_session'
 			cdp_started_at = time.monotonic()
 			cdp_session = await self.browser_session.get_or_create_cdp_session(target_id, focus=True)
+			session_id = cdp_session.session_id
 			self.logger.info(
 				'[ScreenshotWatchdog] CDP session ready: event_id=%s target_id=%s session_id=%s elapsed=%.2fs total_elapsed=%.2fs',
 				event.event_id[-4:],
@@ -89,7 +94,7 @@ class ScreenshotWatchdog(BaseWatchdog):
 			params = CaptureScreenshotParameters(format='png', captureBeyondViewport=False)
 
 			# Take screenshot using CDP
-			self.logger.debug(f'[ScreenshotWatchdog] Taking screenshot with params: {params}')
+			phase = 'capture_screenshot'
 			capture_started_at = time.monotonic()
 			self.logger.info(
 				'[ScreenshotWatchdog] Page.captureScreenshot begin: event_id=%s target_id=%s session_id=%s total_elapsed=%.2fs',
@@ -108,6 +113,7 @@ class ScreenshotWatchdog(BaseWatchdog):
 			)
 
 			# Return base64-encoded screenshot data
+			phase = 'return_result'
 			if result and 'data' in result:
 				self.logger.info(
 					'[ScreenshotWatchdog] ScreenshotEvent complete: event_id=%s bytes=%d total_elapsed=%.2fs',
@@ -115,31 +121,39 @@ class ScreenshotWatchdog(BaseWatchdog):
 					len(result['data']),
 					time.monotonic() - started_at,
 				)
-				self.logger.debug('[ScreenshotWatchdog] Screenshot captured successfully')
 				return result['data']
 
 			raise BrowserError('[ScreenshotWatchdog] Screenshot result missing data')
 		except asyncio.CancelledError:
 			self.logger.warning(
-				'[ScreenshotWatchdog] ScreenshotEvent cancelled: event_id=%s elapsed=%.2fs',
+				'[ScreenshotWatchdog] ScreenshotEvent cancelled: event_id=%s phase=%s target_id=%s session_id=%s elapsed=%.2fs',
 				event.event_id[-4:],
+				phase,
+				target_id[-4:] if target_id else None,
+				session_id[-4:] if session_id else None,
 				time.monotonic() - started_at,
 			)
 			raise
 		except Exception as e:
 			self.logger.error(
-				'[ScreenshotWatchdog] ScreenshotEvent failed: event_id=%s elapsed=%.2fs error=%s: %s',
+				'[ScreenshotWatchdog] ScreenshotEvent failed: event_id=%s phase=%s elapsed=%.2fs error=%s: %s',
 				event.event_id[-4:],
+				phase,
 				time.monotonic() - started_at,
 				type(e).__name__,
 				e,
 			)
-			self.logger.error(f'[ScreenshotWatchdog] Screenshot failed: {e}')
 			raise
 		finally:
 			# Try to remove highlights even on failure
+			phase = 'cleanup_highlights'
 			cleanup_started_at = time.monotonic()
 			try:
+				self.logger.info(
+					'[ScreenshotWatchdog] Highlight cleanup begin: event_id=%s total_elapsed=%.2fs',
+					event.event_id[-4:],
+					time.monotonic() - started_at,
+				)
 				await self.browser_session.remove_highlights()
 				self.logger.info(
 					'[ScreenshotWatchdog] Highlight cleanup complete: event_id=%s elapsed=%.2fs total_elapsed=%.2fs',
@@ -147,6 +161,14 @@ class ScreenshotWatchdog(BaseWatchdog):
 					time.monotonic() - cleanup_started_at,
 					time.monotonic() - started_at,
 				)
+			except asyncio.CancelledError:
+				self.logger.warning(
+					'[ScreenshotWatchdog] Highlight cleanup cancelled: event_id=%s elapsed=%.2fs total_elapsed=%.2fs',
+					event.event_id[-4:],
+					time.monotonic() - cleanup_started_at,
+					time.monotonic() - started_at,
+				)
+				raise
 			except Exception as exc:
 				self.logger.debug(
 					'[ScreenshotWatchdog] Highlight cleanup failed: event_id=%s elapsed=%.2fs error=%s: %s',
