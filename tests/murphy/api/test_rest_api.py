@@ -182,7 +182,8 @@ async def test_execute_with_evaluate_job_id_reads_shared_result(monkeypatch):
 
 	monkeypatch.setattr('murphy.core.pipeline.run_execute', fake_run_execute)
 
-	result = await _core_execute(ExecuteRequest(url='https://example.com', evaluate_job_id='evaluate-job'))
+	req = ExecuteRequest.model_validate({'url': 'https://example.com', 'evaluate_job_id': 'evaluate-job'})
+	result = await _core_execute(req)
 
 	assert seen['url'] == 'https://example.com'
 	assert seen['plan'].model_dump() == test_plan

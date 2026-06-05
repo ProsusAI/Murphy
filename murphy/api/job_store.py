@@ -31,7 +31,7 @@ class JobRecord(BaseModel):
 	ttl: int | None = None
 
 	@classmethod
-	def create(cls, kind: str, webhook_url: str | None = None, ttl_seconds: int | None = None) -> 'JobRecord':
+	def create(cls, kind: str, webhook_url: str | None = None, ttl_seconds: int | None = None) -> JobRecord:
 		now = time.time()
 		return cls(
 			kind=kind,
@@ -136,9 +136,9 @@ class AwsJobStore:
 
 		self.table_name = table_name
 		self.bucket_name = bucket_name
-		self._dynamodb = boto3.resource('dynamodb', region_name=region_name)
+		self._dynamodb: Any = boto3.resource('dynamodb', region_name=region_name)
 		self._table = self._dynamodb.Table(table_name)
-		self._s3 = boto3.client('s3', region_name=region_name)
+		self._s3: Any = boto3.client('s3', region_name=region_name)
 
 	async def create_job(self, job: JobRecord, payload: dict[str, Any]) -> JobRecord:
 		job.payload_s3_key = f'jobs/{job.id}/payload.json'

@@ -265,7 +265,7 @@ async def test_dispatch_async_creates_shared_job_and_launches_worker(monkeypatch
 	resp = await jobs.dispatch('evaluate', core_fn, Req(), timeout=30)
 
 	assert resp.status_code == 202
-	data = resp.body.decode()
+	data = bytes(resp.body).decode('utf-8')
 	assert 'job_id' in data
 	assert launched
 	record = await store.get_job(launched[0])
