@@ -24,7 +24,8 @@ import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 
-from murphy.api.jobs import dispatch, get_job
+from murphy.api.job_store import JobRecord, get_job_store
+from murphy.api.jobs import dispatch
 from murphy.api.request_models import (
 	AnalyzeRequest,
 	EvaluateRequest,
@@ -83,12 +84,14 @@ async def _core_execute(req: ExecuteRequest) -> dict[str, Any]:
 	# Resolve test_plan: either from request body or from a completed evaluate job
 	test_plan = req.test_plan
 	if test_plan is None and req.evaluate_job_id:
-		job = get_job(req.evaluate_job_id.strip())
+		store = get_job_store()
+		job = await store.get_job(req.evaluate_job_id.strip())
 		if not job:
 			raise ValueError(f'Evaluate job {req.evaluate_job_id} not found')
 		if job.status != 'completed':
 			raise ValueError(f'Evaluate job {req.evaluate_job_id} is not completed (status: {job.status})')
-		test_plan = TestPlan.model_validate(job.result)
+		result = await store.get_result(job.id)
+		test_plan = TestPlan.model_validate(result)
 	if test_plan is None:
 		raise ValueError('Either test_plan or evaluate_job_id must be provided')
 
@@ -142,22 +145,22 @@ async def health() -> dict[str, str]:
 
 @app.post('/analyze', dependencies=[Depends(_verify_api_key)])
 async def analyze(req: AnalyzeRequest) -> JSONResponse:
-	return await dispatch(_core_analyze, req, JOB_TIMEOUT_ANALYZE)
+	return await dispatch('analyze', _core_analyze, req, JOB_TIMEOUT_ANALYZE)
 
 
 @app.post('/generate-plan', dependencies=[Depends(_verify_api_key)])
 async def generate_plan(req: GeneratePlanRequest) -> JSONResponse:
-	return await dispatch(_core_generate_plan, req, JOB_TIMEOUT_GENERATE_PLAN)
+	return await dispatch('generate-plan', _core_generate_plan, req, JOB_TIMEOUT_GENERATE_PLAN)
 
 
 @app.post('/execute', dependencies=[Depends(_verify_api_key)])
 async def execute(req: ExecuteRequest) -> JSONResponse:
-	return await dispatch(_core_execute, req, JOB_TIMEOUT_EXECUTE)
+	return await dispatch('execute', _core_execute, req, JOB_TIMEOUT_EXECUTE)
 
 
 @app.post('/evaluate', dependencies=[Depends(_verify_api_key)])
 async def evaluate(req: EvaluateRequest) -> JSONResponse:
-	return await dispatch(_core_evaluate, req, JOB_TIMEOUT_EVALUATE)
+	return await dispatch('evaluate', _core_evaluate, req, JOB_TIMEOUT_EVALUATE)
 
 
 @app.get('/jobs/{job_id}', dependencies=[Depends(_verify_api_key)])
@@ -170,18 +173,35 @@ async def get_job_status(
 	] = None,
 ) -> dict[str, Any]:
 	"""Get job status. If poll>0, long-poll: block up to `poll` seconds waiting for completion."""
-	job = get_job(job_id.strip())
+	store = get_job_store()
+	job = await store.get_job(job_id.strip())
 	if not job:
 		raise HTTPException(status_code=404, detail='Job not found')
 
-	if poll > 0 and job.status == 'running':
+	if poll > 0 and job.status in {'pending', 'running'}:
 		wait = min(poll, 150)  # cap at 2.5 minutes
 		elapsed = 0
-		while elapsed < wait and job.status == 'running':
+		while elapsed < wait and job.status in {'pending', 'running'}:
 			await asyncio.sleep(5)
 			elapsed += 5
+			latest = await store.get_job(job.id)
+			if latest is None:
+				raise HTTPException(status_code=404, detail='Job not found')
+			job = latest
 
-	return job.model_dump()
+	return await _job_response(job, store)
+
+
+async def _job_response(job: JobRecord, store: Any) -> dict[str, Any]:
+	public_status = 'running' if job.status == 'pending' else job.status
+	result = await store.get_result(job.id) if job.status == 'completed' else None
+	return {
+		'id': job.id,
+		'status': public_status,
+		'result': result,
+		'error': job.error,
+		'finished_at': job.finished_at,
+	}
 
 
 # ─── Entrypoint ───────────────────────────────────────────────────────────────

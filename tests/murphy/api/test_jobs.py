@@ -6,6 +6,7 @@ import time
 import pytest
 
 import murphy.api.jobs as jobs
+from murphy.api.job_store import InMemoryJobStore, set_job_store_for_tests
 from murphy.api.jobs import (
 	JOB_TTL_SECONDS,
 	Job,
@@ -21,12 +22,14 @@ from murphy.api.jobs import (
 @pytest.fixture(autouse=True)
 def _clean_job_store(monkeypatch):
 	"""Clear global job state before/after each test."""
+	set_job_store_for_tests(InMemoryJobStore())
 	_jobs.clear()
 	monkeypatch.setattr(jobs, '_active_job_count', 0, raising=False)
 	monkeypatch.setattr(jobs, '_cleanup_lock', asyncio.Lock(), raising=False)
 	monkeypatch.setattr('murphy.browser.cleanup.kill_stale_browser', lambda: None)
 	yield
 	_jobs.clear()
+	set_job_store_for_tests(None)
 	monkeypatch.setattr(jobs, '_active_job_count', 0, raising=False)
 
 
@@ -236,3 +239,37 @@ async def test_run_sync_failure(monkeypatch):
 
 	resp = await _run_sync(failing_fn, {}, timeout=30)
 	assert resp.status_code == 500
+
+
+@pytest.mark.asyncio
+async def test_dispatch_async_creates_shared_job_and_launches_worker(monkeypatch):
+	store = InMemoryJobStore()
+	set_job_store_for_tests(store)
+	launched: list[str] = []
+
+	class Req:
+		webhook_url = None
+		async_mode = True
+
+		def model_dump(self, **_kwargs):
+			return {'url': 'https://example.com', 'async': True}
+
+	async def core_fn(_req):
+		raise AssertionError('async dispatch should not run core function in the API task')
+
+	async def fake_launch(job_id: str):
+		launched.append(job_id)
+
+	monkeypatch.setattr(jobs, 'launch_worker_task', fake_launch)
+
+	resp = await jobs.dispatch('evaluate', core_fn, Req(), timeout=30)
+
+	assert resp.status_code == 202
+	data = resp.body.decode()
+	assert 'job_id' in data
+	assert launched
+	record = await store.get_job(launched[0])
+	assert record is not None
+	assert record.status == 'pending'
+	assert record.kind == 'evaluate'
+	assert await store.get_payload(launched[0]) == {'url': 'https://example.com', 'async': True}

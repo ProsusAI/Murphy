@@ -1,17 +1,19 @@
 """Tests for REST API endpoints using FastAPI TestClient — no real LLM/browser calls."""
 
+import asyncio
+
 import pytest
 from fastapi.testclient import TestClient
 
-from murphy.api.jobs import Job, _jobs
-from murphy.api.rest import app
+from murphy.api.job_store import InMemoryJobStore, JobRecord, set_job_store_for_tests
+from murphy.api.rest import _core_execute, app
 
 
 @pytest.fixture(autouse=True)
 def _clean_job_store():
-	_jobs.clear()
+	set_job_store_for_tests(InMemoryJobStore())
 	yield
-	_jobs.clear()
+	set_job_store_for_tests(None)
 
 
 @pytest.fixture
@@ -84,8 +86,11 @@ def test_get_job_not_found(client, monkeypatch):
 
 def test_get_job_found(client, monkeypatch):
 	monkeypatch.setattr('murphy.api.rest.MURPHY_API_KEY', '')
-	job = Job(id='test-job-1', status='completed', result={'data': 42})
-	_jobs['test-job-1'] = job
+	store = InMemoryJobStore()
+	set_job_store_for_tests(store)
+	job = JobRecord(id='test-job-1', kind='evaluate')
+	asyncio.run(store.create_job(job, payload={}))
+	asyncio.run(store.mark_completed('test-job-1', result={'data': 42}))
 
 	resp = client.get('/jobs/test-job-1')
 	assert resp.status_code == 200
@@ -97,8 +102,11 @@ def test_get_job_found(client, monkeypatch):
 
 def test_get_job_running(client, monkeypatch):
 	monkeypatch.setattr('murphy.api.rest.MURPHY_API_KEY', '')
-	job = Job(id='running-job', status='running')
-	_jobs['running-job'] = job
+	store = InMemoryJobStore()
+	set_job_store_for_tests(store)
+	job = JobRecord(id='running-job', kind='evaluate')
+	asyncio.run(store.create_job(job, payload={}))
+	asyncio.run(store.mark_running('running-job'))
 
 	resp = client.get('/jobs/running-job')
 	assert resp.status_code == 200
@@ -107,18 +115,20 @@ def test_get_job_running(client, monkeypatch):
 
 def test_get_job_accepts_poll_attempt_nonce(client, monkeypatch):
 	monkeypatch.setattr('murphy.api.rest.MURPHY_API_KEY', '')
-	job = Job(id='nonce-job', status='completed', result={'data': 42})
-	_jobs['nonce-job'] = job
+	store = InMemoryJobStore()
+	set_job_store_for_tests(store)
+	job = JobRecord(id='nonce-job', kind='evaluate')
+	asyncio.run(store.create_job(job, payload={}))
+	asyncio.run(store.mark_completed('nonce-job', result={'data': 42}))
 
 	resp = client.get('/jobs/nonce-job?poll_attempt=1')
 	assert resp.status_code == 200
-	assert resp.json() == {
-		'id': 'nonce-job',
-		'status': 'completed',
-		'result': {'data': 42},
-		'error': None,
-		'finished_at': None,
-	}
+	data = resp.json()
+	assert data['id'] == 'nonce-job'
+	assert data['status'] == 'completed'
+	assert data['result'] == {'data': 42}
+	assert data['error'] is None
+	assert data['finished_at'] is not None
 
 
 def test_get_job_openapi_exposes_poll_attempt(client):
@@ -130,8 +140,50 @@ def test_get_job_openapi_exposes_poll_attempt(client):
 
 def test_get_job_strips_whitespace(client, monkeypatch):
 	monkeypatch.setattr('murphy.api.rest.MURPHY_API_KEY', '')
-	job = Job(id='my-job', status='completed', result={})
-	_jobs['my-job'] = job
+	store = InMemoryJobStore()
+	set_job_store_for_tests(store)
+	job = JobRecord(id='my-job', kind='evaluate')
+	asyncio.run(store.create_job(job, payload={}))
+	asyncio.run(store.mark_completed('my-job', result={}))
 
 	resp = client.get('/jobs/ my-job ')
 	assert resp.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_execute_with_evaluate_job_id_reads_shared_result(monkeypatch):
+	from murphy.api.request_models import ExecuteRequest
+
+	store = InMemoryJobStore()
+	set_job_store_for_tests(store)
+	evaluate_job = JobRecord(id='evaluate-job', kind='evaluate')
+	test_plan = {
+		'scenarios': [
+			{
+				'name': 'happy path',
+				'description': 'View the menu',
+				'priority': 'critical',
+				'feature_category': 'navigation',
+				'target_feature': 'menu',
+				'test_persona': 'happy_path',
+				'steps_description': 'Open the menu',
+				'success_criteria': 'Menu is visible',
+			}
+		]
+	}
+	await store.create_job(evaluate_job, payload={})
+	await store.mark_completed('evaluate-job', result=test_plan)
+	seen = {}
+
+	async def fake_run_execute(url, plan, model, **_kwargs):
+		seen['url'] = url
+		seen['plan'] = plan
+		return [], {'total': 0, 'passed': 0, 'failed': 0, 'pass_rate': 0, 'by_priority': {}}
+
+	monkeypatch.setattr('murphy.core.pipeline.run_execute', fake_run_execute)
+
+	result = await _core_execute(ExecuteRequest(url='https://example.com', evaluate_job_id='evaluate-job'))
+
+	assert seen['url'] == 'https://example.com'
+	assert seen['plan'].model_dump() == test_plan
+	assert result['summary']['total'] == 0

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 import traceback
 from typing import Any, Literal
@@ -13,6 +14,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from uuid_extensions import uuid7str
 
+from murphy.api.job_store import JobRecord, get_job_store
 from murphy.api.request_models import JobResponse
 from murphy.config import (
 	MURPHY_JOB_TIMEOUT_OVERRIDE,
@@ -231,24 +233,90 @@ async def _run_sync(core_fn: Any, req: Any, timeout: int) -> JSONResponse:
 # ─── Dispatch helper ─────────────────────────────────────────────────────────
 
 
-async def dispatch(core_fn: Any, req: Any, timeout: int) -> JSONResponse:
+def _request_payload(req: Any) -> dict[str, Any]:
+	"""Return a JSON-safe request payload for worker execution."""
+	try:
+		return req.model_dump(mode='json', by_alias=True)
+	except TypeError:
+		return req.model_dump(by_alias=True)
+	except AttributeError:
+		return dict(req)
+
+
+async def launch_worker_task(job_id: str) -> None:
+	"""Launch a one-job worker task, falling back to local execution in dev/test."""
+	cluster = os.environ.get('MURPHY_ECS_CLUSTER')
+	task_definition = os.environ.get('MURPHY_WORKER_TASK_DEFINITION')
+	container_name = os.environ.get('MURPHY_WORKER_CONTAINER_NAME')
+	subnets = [s for s in os.environ.get('MURPHY_PRIVATE_SUBNETS', '').split(',') if s]
+	security_groups = [s for s in os.environ.get('MURPHY_ECS_SECURITY_GROUPS', '').split(',') if s]
+
+	if not (cluster and task_definition and container_name and subnets and security_groups):
+		from murphy.api.worker import run_job
+
+		asyncio.create_task(run_job(job_id))
+		return
+
+	import boto3
+
+	client = boto3.client('ecs', region_name=os.environ.get('AWS_REGION') or os.environ.get('AWS_DEFAULT_REGION'))
+	resp = client.run_task(
+		cluster=cluster,
+		taskDefinition=task_definition,
+		launchType='FARGATE',
+		networkConfiguration={
+			'awsvpcConfiguration': {
+				'subnets': subnets,
+				'securityGroups': security_groups,
+				'assignPublicIp': 'DISABLED',
+			}
+		},
+		overrides={
+			'containerOverrides': [
+				{
+					'name': container_name,
+					'environment': [{'name': 'MURPHY_JOB_ID', 'value': job_id}],
+				}
+			]
+		},
+	)
+	failures = resp.get('failures') or []
+	if failures:
+		raise RuntimeError(f'ECS RunTask failed: {failures}')
+
+
+async def dispatch(kind: str, core_fn: Any, req: Any, timeout: int) -> JSONResponse:
 	"""Route request to sync, async+webhook, or async+poll mode."""
 	_evict_expired_jobs()
 
 	if req.webhook_url:
-		job = Job()
-		_jobs[job.id] = job
-		asyncio.create_task(_run_job_async(job, core_fn, req, req.webhook_url, timeout))
+		store = get_job_store()
+		job = await store.create_job(
+			JobRecord.create(kind=kind, webhook_url=req.webhook_url, ttl_seconds=JOB_TTL_SECONDS),
+			payload=_request_payload(req),
+		)
+		try:
+			await launch_worker_task(job.id)
+		except Exception as exc:
+			await store.mark_failed(job.id, f'{type(exc).__name__}: {exc}')
+			return JSONResponse(content={'status': 'failed', 'error': str(exc)}, status_code=500)
 		return JSONResponse(
-			content=JobResponse(job_id=job.id, status=job.status).model_dump(),
+			content=JobResponse(job_id=job.id, status='running').model_dump(),
 			status_code=202,
 		)
 	elif req.async_mode:
-		job = Job()
-		_jobs[job.id] = job
-		asyncio.create_task(_run_job_no_webhook(job, core_fn, req, timeout))
+		store = get_job_store()
+		job = await store.create_job(
+			JobRecord.create(kind=kind, ttl_seconds=JOB_TTL_SECONDS),
+			payload=_request_payload(req),
+		)
+		try:
+			await launch_worker_task(job.id)
+		except Exception as exc:
+			await store.mark_failed(job.id, f'{type(exc).__name__}: {exc}')
+			return JSONResponse(content={'status': 'failed', 'error': str(exc)}, status_code=500)
 		return JSONResponse(
-			content=JobResponse(job_id=job.id, status=job.status).model_dump(),
+			content=JobResponse(job_id=job.id, status='running').model_dump(),
 			status_code=202,
 		)
 	else:
