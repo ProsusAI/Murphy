@@ -389,7 +389,11 @@ class DOMWatchdog(BaseWatchdog):
 
 		# Ensure toast observer is injected (idempotent)
 		await self._inject_toast_observer()
-		self.logger.info('[DOMWatchdog] Toast observer ready: event_id=%s elapsed=%.2fs', event.event_id[-4:], time.monotonic() - state_started_at)
+		self.logger.info(
+			'[DOMWatchdog] Toast observer ready: event_id=%s elapsed=%.2fs',
+			event.event_id[-4:],
+			time.monotonic() - state_started_at,
+		)
 
 		page_url = await self.browser_session.get_current_page_url()
 		self.logger.info(

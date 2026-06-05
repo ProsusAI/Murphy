@@ -30,9 +30,11 @@ def test_kill_stale_browser_detects_orphaned_murphy_processes(monkeypatch, tmp_p
 						f'--user-data-dir={cleanup.PROJECT_BROWSER_PROFILE_DIR}',
 						'--remote-debugging-port=65494',
 					],
-				}
+				},
 			),
-			SimpleNamespace(pid=222, info={'pid': 222, 'cmdline': ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome']}),
+			SimpleNamespace(
+				pid=222, info={'pid': 222, 'cmdline': ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome']}
+			),
 		]
 
 	_patch_pid_paths(monkeypatch, tmp_path)

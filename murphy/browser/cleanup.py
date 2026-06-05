@@ -185,7 +185,9 @@ def _find_stale_browser_pids() -> list[int]:
 		if not cmdline:
 			continue
 		cmdline_lower = cmdline.lower()
-		if any(marker in cmdline_lower for marker in profile_markers) and any(marker in cmdline_lower for marker in browser_markers):
+		if any(marker in cmdline_lower for marker in profile_markers) and any(
+			marker in cmdline_lower for marker in browser_markers
+		):
 			pids.add(proc.pid)
 
 	return sorted(pids)
