@@ -1,6 +1,6 @@
 """Evaluate how closely Murphy mimics the behavior of discovered user personas.
 
-For each Murphy test that used a discovered persona, this script:
+For each Murphy test that used a discovered persona, this CLI:
   1. Loads the agent_history trace from the output directory.
   2. Converts it to a behavioral timeline (same format as real PostHog sessions).
   3. Scores it with score_session() against the trait schema.
@@ -11,12 +11,12 @@ The persona centroid is the mean trait score of all real PostHog sessions in tha
 cluster, so comparing Murphy against it is comparing against real users (in aggregate).
 
 Usage (single run):
-    uv run python scripts/eval_persona_similarity.py \\
+    uv run python -m murphy.eval.cli \\
         --output-dir murphy/output \\
         --personas-file output/personas.json
 
 Usage (batch runs in run_1/, run_2/, ...):
-    uv run python scripts/eval_persona_similarity.py \\
+    uv run python -m murphy.eval.cli \\
         --output-dir murphy/output \\
         --personas-file output/personas.json
 """
@@ -31,10 +31,6 @@ import re
 import sys
 from datetime import datetime
 from pathlib import Path
-
-_REPO_ROOT = Path(__file__).resolve().parent.parent
-if str(_REPO_ROOT) not in sys.path:
-	sys.path.insert(0, str(_REPO_ROOT))
 
 from dotenv import load_dotenv
 

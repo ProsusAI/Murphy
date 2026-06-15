@@ -1,7 +1,7 @@
 """Orchestrate the persona similarity eval for a single Murphy output directory.
 
 Used by both the CLI (--eval-similarity flag) and the standalone
-scripts/eval_persona_similarity.py runner.
+murphy.eval.cli runner.
 """
 
 from __future__ import annotations

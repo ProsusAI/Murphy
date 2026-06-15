@@ -72,6 +72,7 @@ Repository = "https://github.com/ProsusAI/Murphy"
 [project.scripts]
 murphy = "murphy.api.cli:main"  # AI-driven website evaluation (primary)
 murphy-api = "murphy.api.rest:main"  # Murphy REST API server
+murphy-eval-similarity = "murphy.eval.cli:main"  # Persona similarity eval over Murphy output
 
 [build-system]
 requires = ["hatchling"]
