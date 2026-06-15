@@ -66,7 +66,7 @@ echo "=========================================="
 echo " Running persona similarity eval"
 echo "=========================================="
 
-uv run python scripts/eval_persona_similarity.py \
+uv run python -m murphy.eval.cli \
   --output-dir "$EXPERIMENTS_DIR" \
   --personas-file "$PERSONAS"
 

@@ -1,18 +1,29 @@
 #!/usr/bin/env bash
-# run_experiments_medium_goal_v3.sh
+# run_experiments_medium_goal_lite.sh
 #
-# Runs the medium goal 5 times using personas_v3.json (all LLM fields regenerated).
+# Runs the medium goal 5 times in --lite mode using the default personas.
 # Goal:    "test the creation of a RAG agent, using startup_handbook.pdf"
-# Outputs: output/eval_with_embeddings/medium_goal_v3/run_1 … run_5
+# Outputs: output/eval_with_embeddings/medium_goal_lite_ceiling/run_1 … run_5
+#
+# Run 1 generates the test plan and waits for manual login (--auth).
+# Runs 2–5 reuse the plan from run_1 and the saved browser profile.
 
 set -euo pipefail
 
 URL="https://work.toqan.ai/"
-PERSONAS="./output/similarity_run/personas_v3.json"
-EXPERIMENTS_DIR="./output/eval_with_embeddings/medium_goal_v3"
+# personas with ceiling scores
+PERSONAS="./output/eval_with_embeddings/5_runs_cluster_delta/personas.json"
+EXPERIMENTS_DIR="./output/eval_with_embeddings/medium_goal_lite_ceiling"
 GOAL="test the creation of a RAG agent, using startup_handbook.pdf"
+BROWSER_PROFILE="./murphy/browser_profile"
+
+# ── Clean slate: delete the locally saved browser profile ─────────────────────
+echo "Deleting browser profile at ${BROWSER_PROFILE}"
+rm -rf "$BROWSER_PROFILE"
 
 mkdir -p "$EXPERIMENTS_DIR"
+
+PLAN_PATH=""
 
 for i in $(seq 1 5); do
   echo ""
@@ -24,8 +35,9 @@ for i in $(seq 1 5); do
     uv run murphy \
       --url "$URL" \
       --goal "$GOAL" \
+      --lite \
       --personas "$PERSONAS" \
-      --no-auth \
+      --auth \
       --output-dir "${EXPERIMENTS_DIR}/run_${i}"
 
     PLAN_PATH="${EXPERIMENTS_DIR}/run_1/test_plan.yaml"
@@ -38,9 +50,9 @@ for i in $(seq 1 5); do
     uv run murphy \
       --url "$URL" \
       --goal "$GOAL" \
+      --lite \
       --plan "$PLAN_PATH" \
       --personas "$PERSONAS" \
-      --no-auth \
       --output-dir "${EXPERIMENTS_DIR}/run_${i}"
   fi
 done
