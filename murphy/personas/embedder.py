@@ -57,6 +57,7 @@ async def embed_texts(texts: list[str]) -> np.ndarray:
 async def embed_sessions(
 	sessions: list[AnalyticsSession],
 	person_contexts: dict[str, Any],
+	session_contexts: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, np.ndarray]:
 	"""Compress each session into a timeline and embed it.
 
@@ -66,7 +67,14 @@ async def embed_sessions(
 	if not sessions:
 		return {}
 
-	timelines = [compress_session(s, person_contexts.get(s.user_id)) for s in sessions]
+	timelines = [
+		compress_session(
+			s,
+			person_contexts.get(s.user_id),
+			session_context=(session_contexts or {}).get(s.session_id),
+		)
+		for s in sessions
+	]
 	logger.info('Embedding %d session timelines', len(timelines))
 	matrix = await embed_texts(timelines)
 	return {s.session_id: matrix[i] for i, s in enumerate(sessions)}

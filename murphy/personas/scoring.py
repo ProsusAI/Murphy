@@ -91,6 +91,7 @@ async def run_scoring(
 	sessions: list[AnalyticsSession],
 	person_contexts: dict[str, dict[str, Any]],
 	max_concurrent: int = 15,
+	session_contexts: dict[str, dict[str, Any]] | None = None,
 ) -> list[SessionScore]:
 	"""Run the full Phase 2 scoring pipeline.
 
@@ -100,7 +101,11 @@ async def run_scoring(
 	sem = asyncio.Semaphore(max_concurrent)
 
 	async def _score_one(session: AnalyticsSession) -> SessionScore | None:
-		timeline = compress_session(session, person_contexts.get(session.user_id))
+		timeline = compress_session(
+			session,
+			person_contexts.get(session.user_id),
+			session_context=(session_contexts or {}).get(session.session_id),
+		)
 		async with sem:
 			try:
 				logger.info('Scoring session %s (user=%s)', session.session_id, session.user_id)
