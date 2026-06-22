@@ -1,0 +1,47 @@
+bundle:
+  name: toqan-personas
+
+include:
+  - resources/*.yml
+
+variables:
+  source_catalog:
+    description: Unity Catalog with restaurant PII source tables
+    default: toqan_analytics_internal
+  source_schema:
+    description: Schema containing PostHog + interactions source tables
+    default: toqan_restaurants_pii
+  output_catalog:
+    description: Unity Catalog for Murphy eval output
+    default: toqan_analytics_internal
+  output_schema:
+    description: Schema for joined Murphy eval data (needs CREATE TABLE)
+    default: toqan_restaurants_evals
+  output_table:
+    description: Single joined output table name
+    default: murphy_evals_data
+  warehouse_id:
+    description: Serverless SQL warehouse for all sql_task jobs
+    lookup:
+      warehouse: Serverless Starter Warehouse
+
+targets:
+  dev:
+    default: true
+    mode: development
+    workspace:
+      # Replace with your Databricks CLI profile name
+      profile: dbc-2a96ab10-ac2b
+    variables:
+      output_catalog: toqan_analytics_internal
+      output_schema: toqan_restaurants_evals
+      output_table: murphy_evals_data
+
+  prod:
+    mode: production
+    workspace:
+      profile: dbc-2a96ab10-ac2b
+    variables:
+      output_catalog: toqan_analytics_internal
+      output_schema: toqan_restaurants_evals
+      output_table: murphy_evals_data

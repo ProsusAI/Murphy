@@ -1,0 +1,35 @@
+resources:
+  jobs:
+    murphy_evals_data:
+      name: 'Build murphy_evals_data'
+      description: >-
+        Builds toqan_analytics_internal.toqan_restaurants_evals.murphy_evals_data
+        by joining PostHog FE events with Toqan interactions. All compute and
+        storage stay in Unity Catalog — no local exports.
+      parameters:
+        - name: event_date_from
+          default: '2026-05-01'
+      tasks:
+        - task_key: validate_sources
+          sql_task:
+            warehouse_id: ${var.warehouse_id}
+            file:
+              path: ../src/sql/01_validate_sources.sql
+            parameters:
+              source_catalog: ${var.source_catalog}
+              source_schema: ${var.source_schema}
+
+        - task_key: build_murphy_evals_data
+          depends_on:
+            - task_key: validate_sources
+          sql_task:
+            warehouse_id: ${var.warehouse_id}
+            file:
+              path: ../src/sql/02_build_murphy_evals_data.sql
+            parameters:
+              source_catalog: ${var.source_catalog}
+              source_schema: ${var.source_schema}
+              output_catalog: ${var.output_catalog}
+              output_schema: ${var.output_schema}
+              output_table: ${var.output_table}
+              event_date_from: '{{job.parameters.event_date_from}}'
