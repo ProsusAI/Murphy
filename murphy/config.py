@@ -65,3 +65,15 @@ PERSONA_MONTHS_BACK = int(os.environ.get('PERSONA_MONTHS_BACK', '2'))
 PERSONA_MAX_CLUSTERS = int(os.environ.get('PERSONA_MAX_CLUSTERS', '10'))
 # Fixed K for K-Means in the persona pipeline; ``0`` = auto-select via silhouette
 PERSONA_NUM_CLUSTERS = int(os.environ.get('PERSONA_NUM_CLUSTERS', '8'))
+
+# ─── Databricks persona pipeline ───────────────────────────────────────────────
+
+DATABRICKS_HOST = os.environ.get('DATABRICKS_HOST', '')
+DATABRICKS_TOKEN = os.environ.get('DATABRICKS_TOKEN', '')
+DATABRICKS_CONFIG_PROFILE = os.environ.get('DATABRICKS_CONFIG_PROFILE', '')
+DATABRICKS_WAREHOUSE_ID = os.environ.get('DATABRICKS_WAREHOUSE_ID', '')
+DATABRICKS_EVALS_TABLE = os.environ.get(
+	'DATABRICKS_EVALS_TABLE',
+	'toqan_analytics_internal.toqan_restaurants_evals.murphy_evals_data',
+)
+DATABRICKS_EVENT_DATE_FROM = os.environ.get('DATABRICKS_EVENT_DATE_FROM', '2026-05-01')
