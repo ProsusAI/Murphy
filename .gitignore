@@ -71,9 +71,11 @@ browser_profile/
 # Batch runs (also matched by murphy/output/*)
 murphy/output/run_*/
 
-# Thesis results — local-only, keep the folder via .gitkeep
-outputs_thesis/*
-!outputs_thesis/.gitkeep
+# Thesis work — local-only (notebooks, experiment outputs, personas.json, reports)
+outputs_thesis/
+
+# Local thesis experiment runners
+scripts/
 
 # Local analysis / visualisation scripts
 visualize_personas.py
