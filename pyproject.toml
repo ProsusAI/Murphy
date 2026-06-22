@@ -64,6 +64,10 @@ eval = [
     "psutil>=7.0.0",
     "datamodel-code-generator>=0.26.0",
 ]
+databricks = [
+    "databricks-sql-connector>=3.0.0",
+    "databricks-sdk>=0.18.0",
+]
 
 
 [project.urls]
