@@ -70,7 +70,7 @@ _GENERIC_PROP_KEY_BLOCKLIST = frozenset(
 # Ordered keys to try per event name; first present values win (up to per-row cap).
 _EVENT_EXTRA_PROP_KEYS: dict[str, tuple[str, ...]] = {
 	'$pageview': ('$title', 'tab', 'utm_source', 'utm_medium', 'utm_campaign', '$search'),
-	'$autocapture': ('$event_type', '$el_tag_name', '$el_href', '$target_text'),
+	'$autocapture': ('$event_type', '$el_tag_name', '$el_href', '$target_text', 'surface', 'tab'),
 	'conversation_started': (
 		'conversation_id',
 		'conversationId',
@@ -269,6 +269,24 @@ def _timestamp_label(ts: datetime) -> str:
 	return ts.strftime('%H:%M:%S')
 
 
+def _autocapture_location_fallback(props: dict[str, Any]) -> str | None:
+	"""Build a coarse click label from Databricks flat fields when elements_chain is absent."""
+	surface = _scalar_to_timeline_value(props.get('surface'), 40)
+	tab = _scalar_to_timeline_value(props.get('tab'), 40)
+	pathname = props.get('$pathname') or props.get('$current_url', '')
+	path = _extract_pathname(str(pathname)) if pathname else ''
+	parts: list[str] = []
+	if tab:
+		parts.append(f'{tab} tab')
+	elif surface:
+		parts.append(str(surface))
+	if path and path != '/':
+		parts.append(f'on {path[:60]}')
+	if not parts:
+		return None
+	return ' '.join(parts)
+
+
 def _compress_event_label(event: AnalyticsEvent) -> str:
 	"""Return a human-readable one-line label for an event.
 
@@ -311,7 +329,8 @@ def _compress_event_label(event: AnalyticsEvent) -> str:
 			elif tag:
 				base = f'Clicked {tag}'
 			else:
-				base = 'Clicked element'
+				location = _autocapture_location_fallback(props)
+				base = f'Clicked {location}' if location else 'Clicked element'
 		return base + _extras(name, props)
 
 	if name == 'conversation_started':
@@ -406,9 +425,21 @@ def _compress_event_label(event: AnalyticsEvent) -> str:
 def _build_metadata_header(
 	session: AnalyticsSession,
 	person_context: dict[str, Any] | None,
+	session_context: dict[str, Any] | None = None,
 ) -> str:
 	lines = ['=== Session Metadata ===']
 	lines.append(f'User: {session.user_id}')
+
+	if session_context:
+		title = session_context.get('origin_title')
+		if title:
+			lines.append(f'Conversation: {_scalar_to_timeline_value(title, 80)}')
+		space_id = session_context.get('space_id')
+		if space_id:
+			lines.append(f'Space: {space_id}')
+		msg_count = session_context.get('message_count')
+		if msg_count is not None:
+			lines.append(f'Messages in session: {msg_count}')
 
 	if person_context:
 		created_at = person_context.get('created_at')
@@ -464,6 +495,72 @@ def _build_metadata_header(
 		lines.append(f'Page load (LCP): {lcp:.1f}s')
 
 	return '\n'.join(lines)
+
+
+def _tool_call_count(full_tool_calls: Any) -> int:
+	if full_tool_calls is None:
+		return 0
+	if isinstance(full_tool_calls, list):
+		return len(full_tool_calls)
+	if isinstance(full_tool_calls, str):
+		return 1 if full_tool_calls.strip() else 0
+	return 0
+
+
+def _attachment_flag(files: Any) -> bool:
+	if not files:
+		return False
+	if isinstance(files, list):
+		return len(files) > 0
+	return bool(files)
+
+
+def _summarize_message_text(text: Any, max_len: int = 60) -> str:
+	val = _scalar_to_timeline_value(text, max_len)
+	return val if val else 'empty'
+
+
+def _build_conversation_summary(session_context: dict[str, Any] | None) -> str | None:
+	"""Summarize Toqan interaction turns for Databricks-enriched sessions."""
+	if not session_context:
+		return None
+	interactions = session_context.get('interactions') or []
+	if not interactions:
+		return None
+
+	lines = ['=== Conversation Turns ===']
+	for idx, turn in enumerate(interactions, 1):
+		if not isinstance(turn, dict):
+			continue
+		ts_raw = turn.get('message_created_at')
+		ts_label = _timestamp_label(_parse_turn_timestamp(ts_raw)) if ts_raw else '??:??:??'
+		user_msg = turn.get('message_text_content')
+		response_msg = turn.get('response_text_content')
+		user_len = len(str(user_msg or ''))
+		resp_len = len(str(response_msg or ''))
+		tools = _tool_call_count(turn.get('full_tool_calls'))
+		model = _scalar_to_timeline_value(turn.get('model_name'), 40) or '?'
+		role = _scalar_to_timeline_value(turn.get('author_role'), 24) or 'user'
+		has_attach = _attachment_flag(turn.get('message_provided_files'))
+		has_resp_files = _attachment_flag(turn.get('response_files'))
+		attach_note = ''
+		if has_attach or has_resp_files:
+			attach_note = ', attachments=yes'
+		lines.append(
+			f'[{ts_label}] Turn {idx} ({role}, model={model}): '
+			f'user ({user_len} chars): "{_summarize_message_text(user_msg)}"; '
+			f'reply ({resp_len} chars, {tools} tool calls{attach_note})'
+		)
+	return '\n'.join(lines)
+
+
+def _parse_turn_timestamp(value: Any) -> datetime:
+	if isinstance(value, datetime):
+		return value
+	try:
+		return datetime.fromisoformat(str(value).replace('Z', '+00:00'))
+	except ValueError:
+		return datetime.now(tz=timezone.utc)
 
 
 def _extract_lcp(events: list[AnalyticsEvent]) -> float | None:
@@ -687,20 +784,25 @@ def _sanitize(text: str) -> str:
 def compress_session(
 	session: AnalyticsSession,
 	person_context: dict[str, Any] | None = None,
+	session_context: dict[str, Any] | None = None,
 ) -> str:
 	"""Convert an AnalyticsSession into a compact text timeline for LLM consumption.
 
 	Returns a string with sections: metadata header, cognitive signals summary
-	(when present), navigation summary, and compressed event timeline.
+	(when present), conversation summary (Databricks sessions), navigation
+	summary, and compressed event timeline.
 	"""
-	header = _build_metadata_header(session, person_context)
+	header = _build_metadata_header(session, person_context, session_context=session_context)
 	cognitive = _build_cognitive_signals(session.events)
+	conversation = _build_conversation_summary(session_context)
 	nav = _build_navigation_summary(session.events)
 	timeline = _build_event_timeline(session.events)
 
 	sections = [header]
 	if cognitive:
 		sections.append(cognitive)
+	if conversation:
+		sections.append(conversation)
 	sections.append(nav)
 	sections.append(timeline)
 	return _sanitize('\n\n'.join(sections))
