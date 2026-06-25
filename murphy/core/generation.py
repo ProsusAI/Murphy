@@ -22,13 +22,16 @@ async def generate_tests(
 	max_tests: int,
 	goal: str | None = None,
 	discovered_personas: tuple[PersonaResult, TraitSchema] | None = None,
+	persona_slug: str | None = None,
 ) -> TestPlan:
 	"""Feature-discovery test generation: analysis → test plan with quality checks."""
 	logger.info('\n%s', '=' * 60)
 	logger.info('Generating test scenarios')
 	logger.info('%s\n', '=' * 60)
 
-	prompt = build_test_generation_prompt(url, analysis, max_tests, goal, discovered_personas=discovered_personas)
+	prompt = build_test_generation_prompt(
+		url, analysis, max_tests, goal, discovered_personas=discovered_personas, persona_slug=persona_slug
+	)
 	system_msg = SystemMessage(content=build_test_generation_system_message())
 
 	# Build valid persona names set for quality checks
@@ -92,6 +95,7 @@ async def explore_and_generate_plan(
 	max_scenarios: int = 8,
 	max_steps: int = 30,
 	discovered_personas: tuple[PersonaResult, TraitSchema] | None = None,
+	persona_slug: str | None = None,
 ) -> TestPlan:
 	"""Exploration-first plan generation: explore → summarize → synthesize with quality checks."""
 	from murphy.browser.actions import register_domain_access_action, register_refresh_dom_action
@@ -133,7 +137,12 @@ async def explore_and_generate_plan(
 	# Step 4: Generate plan with quality checks
 	logger.info('Synthesizing test plan...')
 	synthesis_prompt = build_plan_synthesis_prompt(
-		task, url, exploration_context, max_scenarios, discovered_personas=discovered_personas
+		task,
+		url,
+		exploration_context,
+		max_scenarios,
+		discovered_personas=discovered_personas,
+		persona_slug=persona_slug,
 	)
 
 	# Build valid persona names set for quality checks

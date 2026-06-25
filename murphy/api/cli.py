@@ -96,6 +96,11 @@ def main() -> int:
 		help='Use discovered personas (default: {output_dir}/personas.json, or specify a path)',
 	)
 	parser.add_argument(
+		'--persona',
+		metavar='SLUG',
+		help='Run as a single discovered persona slug only (requires --personas). All generated scenarios use this persona.',
+	)
+	parser.add_argument(
 		'--eval-similarity',
 		action='store_true',
 		help='After tests complete, score Murphy behavior against discovered persona centroids and write persona_similarity_report.{json,md}',
@@ -181,6 +186,17 @@ async def _async_main(args: argparse.Namespace) -> None:
 		schema, persona_result = load_personas(personas_path)
 		discovered_personas = (persona_result, schema)
 
+	if args.persona:
+		if discovered_personas is None:
+			raise ValueError('--persona requires --personas or --discover-personas')
+		from murphy.personas.bridge import lookup_persona_by_slug
+
+		if lookup_persona_by_slug(args.persona, discovered_personas[0]) is None:
+			from murphy.personas.bridge import get_discovered_persona_names
+
+			valid = ', '.join(get_discovered_persona_names(discovered_personas[0]))
+			raise ValueError(f'Unknown persona slug "{args.persona}". Valid: {valid}')
+
 	browser_session: BrowserSession | None = None
 	analysis: WebsiteAnalysis | None = None
 
@@ -243,6 +259,7 @@ async def _async_main(args: argparse.Namespace) -> None:
 				max_scenarios=args.max_tests,
 				max_steps=args.max_steps,
 				discovered_personas=discovered_personas,
+				persona_slug=args.persona,
 			)
 
 			# Save test plan to YAML
@@ -283,7 +300,13 @@ async def _async_main(args: argparse.Namespace) -> None:
 
 			# ── Generate tests ──
 			test_plan = await generate_tests(
-				args.url, analysis, llm, args.max_tests, goal=args.goal, discovered_personas=discovered_personas
+				args.url,
+				analysis,
+				llm,
+				args.max_tests,
+				goal=args.goal,
+				discovered_personas=discovered_personas,
+				persona_slug=args.persona,
 			)
 
 			# Save test plan to YAML
@@ -298,6 +321,16 @@ async def _async_main(args: argparse.Namespace) -> None:
 			# Re-read in case user edited
 			_, test_plan = load_test_plan(plan_path)
 			logger.info('  Using %d test scenarios.\n', len(test_plan.scenarios))
+
+		if args.persona:
+			for scenario in test_plan.scenarios:
+				scenario.test_persona = args.persona
+			test_plan.scenarios = test_plan.scenarios[: args.max_tests]
+			logger.info(
+				'Single-persona mode: %s (%d scenario(s))',
+				args.persona,
+				len(test_plan.scenarios),
+			)
 
 		# Ensure analysis exists for report writing (--goal and --plan paths skip feature discovery)
 		if analysis is None:

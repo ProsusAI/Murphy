@@ -141,6 +141,7 @@ def build_test_generation_prompt(
 	max_tests: int,
 	goal: str | None = None,
 	discovered_personas: tuple[PersonaResult, TraitSchema] | None = None,
+	persona_slug: str | None = None,
 ) -> str:
 	"""Return the full test generation prompt for generating test scenarios from analysis."""
 	features_by_testability: dict[str, list] = {'testable': [], 'partial': [], 'untestable': []}
@@ -184,7 +185,24 @@ def build_test_generation_prompt(
 		persona_distribution_text = build_discovered_persona_distribution_text(persona_result, trait_schema)
 		success_criteria_text = build_discovered_success_criteria_block(persona_result)
 		persona_names_list = ', '.join(get_discovered_persona_names(persona_result))
-		persona_names_instruction = f'- test_persona (one of: {persona_names_list})'
+		if persona_slug:
+			persona_distribution_text = next(
+				(
+					line
+					for line in build_discovered_persona_distribution_text(persona_result, trait_schema).splitlines()
+					if line.lstrip().startswith(f'- {persona_slug} ')
+				),
+				f'- {persona_slug}: (see personas.json)',
+			)
+			success_lines = [
+				line
+				for line in build_discovered_success_criteria_block(persona_result).splitlines()
+				if line.lstrip().startswith(f'- {persona_slug} ')
+			]
+			success_criteria_text = success_lines[0] if success_lines else build_discovered_success_criteria_block(persona_result)
+			persona_names_instruction = f'- test_persona: {persona_slug} (REQUIRED on every scenario)'
+		else:
+			persona_names_instruction = f'- test_persona (one of: {persona_names_list})'
 	else:
 		persona_distribution_text = _build_persona_distribution_text()
 		success_criteria_text = (
@@ -224,7 +242,7 @@ TESTABLE FEATURES AVAILABLE:
 - Untestable (SKIP): {', '.join(f.name for f in features_by_testability['untestable']) or 'none'}
 
 MANDATORY PERSONA DISTRIBUTION (for {max_tests} tests):
-Each test MUST have a test_persona field. Distribute across these personas.
+Each test MUST have a test_persona field.{' ALL scenarios MUST use test_persona="' + persona_slug + '".' if persona_slug else ' Distribute across these personas.'}
 Each persona has a trait vector that explains WHY it tests different things:
 
 {persona_distribution_text}
@@ -322,6 +340,7 @@ def build_plan_synthesis_prompt(
 	exploration_context: str,
 	max_scenarios: int,
 	discovered_personas: tuple[PersonaResult, TraitSchema] | None = None,
+	persona_slug: str | None = None,
 ) -> str:
 	"""Synthesis prompt with persona requirements for generating a plan from exploration data."""
 	if discovered_personas:
@@ -333,15 +352,35 @@ def build_plan_synthesis_prompt(
 
 		persona_result, trait_schema = discovered_personas
 		names = get_discovered_persona_names(persona_result)
-		persona_req = f'- Must include a diverse mix of these personas: {", ".join(names)}.\n'
-		names[0] if names else 'happy_path'
+		if persona_slug:
+			persona_req = f'- ALL {max_scenarios} scenario(s) MUST use test_persona="{persona_slug}" exclusively.\n'
+			distribution_block = next(
+				(
+					f'PERSONA (single):\n{line}\n'
+					for line in build_discovered_persona_distribution_text(persona_result, trait_schema).splitlines()
+					if line.lstrip().startswith(f'- {persona_slug} ')
+				),
+				f'PERSONA (single): {persona_slug}\n',
+			)
+			success_lines = [
+				line
+				for line in build_discovered_success_criteria_block(persona_result).splitlines()
+				if line.lstrip().startswith(f'- {persona_slug} ')
+			]
+			distribution_block += (
+				f'\nPERSONA-SPECIFIC SUCCESS CRITERIA GUIDANCE:\n{success_lines[0]}\n'
+				if success_lines
+				else f'\n{build_discovered_success_criteria_block(persona_result)}\n'
+			)
+		else:
+			persona_req = f'- Must include a diverse mix of these personas: {", ".join(names)}.\n'
+			distribution_block = (
+				f'PERSONA DISTRIBUTION:\n'
+				f'{build_discovered_persona_distribution_text(persona_result, trait_schema)}\n\n'
+				f'PERSONA-SPECIFIC SUCCESS CRITERIA GUIDANCE:\n'
+				f'{build_discovered_success_criteria_block(persona_result)}\n'
+			)
 		critical_req = '- At least one scenario must have priority=critical.\n'
-		distribution_block = (
-			f'PERSONA DISTRIBUTION:\n'
-			f'{build_discovered_persona_distribution_text(persona_result, trait_schema)}\n\n'
-			f'PERSONA-SPECIFIC SUCCESS CRITERIA GUIDANCE:\n'
-			f'{build_discovered_success_criteria_block(persona_result)}\n'
-		)
 	else:
 		persona_req = '- Must include these personas: happy_path, confused_novice, adversarial, edge_case, explorer, classic_ui, modern_ui, layout_auditor_ui.\n'
 		critical_req = '- At least one scenario must be happy_path with priority=critical.\n'
@@ -359,12 +398,18 @@ def build_plan_synthesis_prompt(
 			'- layout_auditor_ui (~8%): Evaluate spacing discipline — consistent margins, padding, gutters, vertical rhythm, grid alignment. Misaligned or cramped layouts are FAILS.\n'
 		)
 
+	scenario_count_req = (
+		f'- Generate exactly {max_scenarios} scenario(s).\n'
+		if persona_slug or max_scenarios <= 1
+		else f'- Generate exactly {max_scenarios} scenarios (minimum 5 if max allows).\n'
+	)
+
 	return (
 		f'Based on the following exploration of {url}, generate {max_scenarios} test scenarios.\n\n'
 		f'TASK: {task}\n\n'
 		f'EXPLORATION CONTEXT (observed UI evidence):\n{exploration_context}\n\n'
 		f'REQUIREMENTS:\n'
-		f'- Generate exactly {max_scenarios} scenarios (minimum 5 if max allows).\n'
+		f'{scenario_count_req}'
 		f'{persona_req}'
 		f'{critical_req}'
 		f'- The first happy-path/primary scenario must describe the chosen route AND mention alternatives considered.\n'
