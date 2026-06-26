@@ -180,7 +180,7 @@ actions — adding an item to cart silently fails with no error message.
 3. Improve loading indicators on slow network requests
 ```
 
-The full JSON report (`evaluation_report.json`) contains structured results, action traces, screenshots, trait evaluations, and feedback quality scores.
+The full JSON report (`evaluation_report.json`) contains structured results, action traces, screenshots, trait evaluations, and feedback quality scores. For failed tests, `primary_screenshot_path` points to the best failure frame as a path **relative to `--output-dir`**; `screenshot_paths` remain absolute — resolve the primary with `output_dir / primary_screenshot_path` (not string equality with list entries).
 
 ## All CLI Options
 

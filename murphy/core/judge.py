@@ -202,29 +202,7 @@ Also assess feedback quality (response_present, response_timely, response_clear,
 """
 
 
-# Actions that produce meaningful visual state changes worth showing the judge
-_HIGH_SIGNAL_ACTIONS = frozenset(
-	{
-		'navigate',
-		'input_text',
-		'done',
-		'select_dropdown_option',
-		'upload_file',
-		'evaluate',  # JS execution often mutates state
-	}
-)
-
-# Actions that rarely change what the judge needs to see
-_LOW_SIGNAL_ACTIONS = frozenset(
-	{
-		'scroll',
-		'refresh_dom_state',
-		'search_page',
-		'find_elements',
-		'switch_tab',
-		'wait',
-	}
-)
+from murphy.io.primary_screenshot import score_step
 
 
 def _select_key_screenshots(history: AgentHistoryList, max_screenshots: int = 3) -> list[str]:
@@ -246,25 +224,7 @@ def _select_key_screenshots(history: AgentHistoryList, max_screenshots: int = 3)
 		if not screenshot_b64:
 			continue
 
-		score = 0
-
-		# Always weight the last step highest
-		if i == len(steps) - 1:
-			score += 10
-
-		# Check action types in this step
-		if step.model_output:
-			for action in step.model_output.action:
-				action_type = next((k for k in action.model_fields_set if k != 'interacted_element'), None)
-				if action_type in _HIGH_SIGNAL_ACTIONS:
-					score += 3
-				elif action_type not in _LOW_SIGNAL_ACTIONS:
-					score += 1  # clicks and other mid-signal actions
-
-		# Error steps are always informative
-		for result in step.result:
-			if getattr(result, 'error', None):
-				score += 4
+		score = score_step(step, i, len(steps))
 
 		if score > 0:
 			scored.append((score, i, screenshot_b64))

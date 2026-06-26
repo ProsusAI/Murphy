@@ -58,3 +58,8 @@ output/
 murphy/output/
 murphy/browser_profile/
 browser_profile/
+
+# Thesis / local experiment outputs (personas, runs, screenshots)
+outputs_thesis/
+scripts/
+databricks/toqan_personas/test_goal/

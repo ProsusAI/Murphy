@@ -15,6 +15,7 @@ from browser_use.browser.session import BrowserSession
 from browser_use.llm import BaseChatModel
 from murphy.core.judge import murphy_judge
 from murphy.core.summary import classify_failure
+from murphy.io.primary_screenshot import select_primary_screenshot_path
 from murphy.io.report_helpers import _slugify
 from murphy.models import (
 	LiteResult,
@@ -227,6 +228,11 @@ def _save_agent_history(
 		logger.warning('  Failed to save agent history: %s', e)
 
 
+def _attach_primary_screenshot(test_result: TestResult, history: AgentHistoryList) -> None:
+	if test_result.success is False:
+		test_result.primary_screenshot_path = select_primary_screenshot_path(history)
+
+
 def _disable_unused_murphy_actions(agent: Agent) -> None:
 	"""Remove browser-use tools that Murphy does not consume."""
 	agent.tools.exclude_action('write_file')
@@ -334,6 +340,7 @@ async def _execute_single_test(
 				lite_result=lite_result,
 			)
 			test_result.failure_category = classify_failure(test_result)
+			_attach_primary_screenshot(test_result, history)
 			return test_result
 
 		task_prompt = build_execution_prompt(
@@ -436,6 +443,7 @@ async def _execute_single_test(
 			feature_suggestions=feature_suggestions,
 		)
 		test_result.failure_category = classify_failure(test_result)
+		_attach_primary_screenshot(test_result, history)
 	except Exception as exc:
 		tb = traceback.format_exc()
 		exc_str = f'{type(exc).__name__}: {exc}'

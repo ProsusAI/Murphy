@@ -506,6 +506,14 @@ class TestResult(BaseModel):
 	failure_category: Literal['website_issue', 'test_limitation'] | None = None
 	pages_visited: list[str] = Field(default_factory=list)
 	screenshot_paths: list[str | None] = Field(default_factory=list)
+	primary_screenshot_path: str | None = Field(
+		default=None,
+		description=(
+			'Best failure frame for this test, relative to the run output directory. '
+			'Set only when success is False. Not string-equal to screenshot_paths entries '
+			'(those are absolute after copy); resolve via output_dir / primary_screenshot_path.'
+		),
+	)
 	form_fills: list[dict] = Field(default_factory=list)
 	process_evaluation: str = ''
 	logical_evaluation: str = ''

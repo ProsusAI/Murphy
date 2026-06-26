@@ -488,3 +488,33 @@ def test_copy_screenshots_skips_none_paths():
 		output_dir = Path(tmpdir) / 'output'
 		output_dir.mkdir()
 		copy_screenshots_to_output(report, output_dir)
+
+
+def test_primary_screenshot_copy_rewrite():
+	with tempfile.TemporaryDirectory() as tmpdir:
+		tmpdir = Path(tmpdir)
+		src1 = tmpdir / 'step_1.png'
+		src3 = tmpdir / 'step_3.png'
+		src1.write_bytes(b'png1')
+		src3.write_bytes(b'png3')
+
+		result = _make_result(
+			success=False,
+			screenshot_paths=[str(src1), str(src3)],
+			primary_screenshot_path=str(src3),
+		)
+		report = _make_report(results=[result])
+		output_dir = tmpdir / 'output'
+		output_dir.mkdir()
+
+		copy_screenshots_to_output(report, output_dir)
+		write_json_report(report, output_dir)
+
+		primary = result.primary_screenshot_path
+		assert primary is not None
+		assert not Path(primary).is_absolute()
+		resolved = (output_dir / primary).resolve()
+		assert resolved.exists()
+		copied = [Path(p).resolve() for p in result.screenshot_paths if p]
+		assert resolved in copied
+		assert primary not in result.screenshot_paths

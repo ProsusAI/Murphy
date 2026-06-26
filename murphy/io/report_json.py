@@ -6,7 +6,7 @@ import shutil
 from pathlib import Path
 
 from murphy.io.report_helpers import _slugify
-from murphy.models import EvaluationReport
+from murphy.models import EvaluationReport, TestResult
 
 
 def copy_screenshots_to_output(report: EvaluationReport, output_dir: Path, *, clear_previous: bool = True) -> None:
@@ -35,6 +35,7 @@ def copy_screenshots_to_output(report: EvaluationReport, output_dir: Path, *, cl
 		# Already copied on a previous incremental call — skip only if files still exist
 		if all(str(Path(p).resolve()).startswith(str(screenshots_dir_resolved)) for p in valid_paths):
 			if all(Path(p).exists() for p in valid_paths):
+				_rewrite_primary_screenshot_path(result, valid_paths, output_dir)
 				continue
 
 		test_dir = screenshots_dir / f'test_{i:02d}_{_slugify(result.scenario.name)}'
@@ -48,6 +49,28 @@ def copy_screenshots_to_output(report: EvaluationReport, output_dir: Path, *, cl
 				copied_paths.append(str(dst))
 		# Update paths to point to copied location
 		result.screenshot_paths = copied_paths  # type: ignore[assignment]
+		_rewrite_primary_screenshot_path(result, copied_paths, output_dir)
+
+
+def _rewrite_primary_screenshot_path(
+	result: TestResult,
+	copied_paths: list[str],
+	output_dir: Path,
+) -> None:
+	primary = result.primary_screenshot_path
+	if not primary:
+		return
+
+	if not hasattr(result, '_original_primary_screenshot_path'):
+		result._original_primary_screenshot_path = primary  # type: ignore[attr-defined]
+	original_primary: str = getattr(result, '_original_primary_screenshot_path', primary)
+	primary_basename = Path(original_primary).name
+
+	matched = next((p for p in copied_paths if Path(p).name == primary_basename), None)
+	if matched and Path(matched).exists():
+		result.primary_screenshot_path = str(Path(matched).relative_to(output_dir.resolve()))
+	else:
+		result.primary_screenshot_path = None
 
 
 def write_json_report(report: EvaluationReport, output_dir: Path) -> Path:
