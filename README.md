@@ -1,5 +1,7 @@
 # Murphy — AI-Driven Website Evaluation
 
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+
 Murphy automatically evaluates websites by generating and executing test scenarios in a real browser with an AI judge. It supports two planning strategies — **broad feature discovery** (default) and **goal-directed exploration** (`--goal`) — followed by test execution. It produces structured evaluation reports with pass/fail results, failure categorization, and actionable summaries.
 
 Built on top of [browser-use](https://github.com/browser-use/browser-use) (AI browser automation library).
@@ -337,3 +339,13 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for details on the codebase str
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development workflow, testing, code style, and contribution guidelines.
+
+---
+
+## License
+
+Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for details.
+
+This project bundles a vendored copy of [browser-use](https://github.com/browser-use/browser-use) (MIT). See [NOTICE](NOTICE).
+
+Copyright © 2026 MIH AI B.V.
