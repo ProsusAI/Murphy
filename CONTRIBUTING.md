@@ -62,6 +62,10 @@ CI requires an `OPENAI_API_KEY` secret, which is not available to pull requests 
 - Update relevant documentation if needed
 - Run `uv run pre-commit run --all-files` before submitting
 
+## Contributor License Agreement (CLA)
+
+By contributing, you agree to assign copyright of your contribution to MIH AI B.V. Your contributions are licensed under the Apache License, Version 2.0. You confirm that you have the right to submit the contribution and that it does not knowingly violate any third-party intellectual property rights.
+
 ## Vendored browser-use
 
 The `browser_use/` directory contains a vendored and modified copy of [browser-use](https://github.com/browser-use/browser-use). See `docs/BROWSER_USE_MODIFICATIONS.md` for details on local modifications. If your change touches `browser_use/`, please document the modification in `docs/BROWSER_USE_MODIFICATIONS.md`.
