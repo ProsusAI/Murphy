@@ -153,6 +153,8 @@ def _find_stale_browser_pids() -> list[int]:
 		if not cmdline:
 			continue
 		if any(marker in cmdline for marker in profile_markers) and any(marker in cmdline for marker in browser_markers):
-			pids.add(proc.pid)
+			pid = proc.info.get('pid')
+			if isinstance(pid, int):
+				pids.add(pid)
 
 	return sorted(pids)

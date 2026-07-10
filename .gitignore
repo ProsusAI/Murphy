@@ -16,6 +16,7 @@ venv/
 # IDEs
 .vscode/
 .idea/
+.claude/
 
 # Build files
 dist/

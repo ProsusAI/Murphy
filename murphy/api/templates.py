@@ -58,6 +58,7 @@ h2 { font-family: Georgia, 'Times New Roman', serif; font-size: 1.3rem; font-wei
 .badge-medium { background: var(--text); color: #fff; }
 .badge-low { background: var(--gray); color: #fff; }
 .badge-pass { background: var(--green); color: #fff; }
+.badge-fail { background: var(--red); color: #fff; }
 .badge-fail-website { background: var(--red); color: #fff; }
 .badge-fail-test { background: var(--orange); color: #fff; }
 .test-name { font-weight: 600; flex: 1; font-size: .95rem; }
@@ -394,6 +395,7 @@ def render_results_html(
 
 	sections = [
 		('Passed', [r for r in results if r.success]),
+		('Failed', [r for r in results if r.success is not True and r.failure_category is None]),
 		('Failed — Website Issue', [r for r in results if r.failure_category == 'website_issue']),
 		('Failed — Test Limitation', [r for r in results if r.failure_category == 'test_limitation']),
 	]
@@ -408,6 +410,9 @@ def render_results_html(
 			if r.success:
 				badge_cls = 'badge-pass'
 				badge_text = 'PASS'
+			elif r.failure_category is None:
+				badge_cls = 'badge-fail'
+				badge_text = 'FAILED'
 			elif r.failure_category == 'website_issue':
 				badge_cls = 'badge-fail-website'
 				badge_text = 'WEBSITE ISSUE'

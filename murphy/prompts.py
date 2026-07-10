@@ -551,6 +551,59 @@ def _build_suggestion_instruction(
 	)
 
 
+def build_lite_prompt(
+	scenario: TestScenario,
+	start_url: str,
+	analysis: WebsiteAnalysis | None = None,
+	discovered_personas: tuple[PersonaResult, TraitSchema] | None = None,
+) -> str:
+	"""Build the lean execution prompt for Murphy lite mode."""
+	if discovered_personas and scenario.test_persona not in PERSONA_REGISTRY:
+		from murphy.personas.bridge import render_discovered_persona_for_execution
+
+		persona_result, trait_schema = discovered_personas
+		persona_block = render_discovered_persona_for_execution(scenario.test_persona, persona_result, trait_schema)
+	else:
+		persona_block = _render_persona_for_execution(scenario.test_persona)
+
+	if analysis:
+		core_features = [feature.name for feature in analysis.features if feature.importance == 'core']
+		site_context = (
+			'SITE CONTEXT:\n'
+			f'- Site: {analysis.site_name}\n'
+			f'- Category: {analysis.category}\n'
+			f'- Description: {analysis.description}\n'
+			f'- Core features: {", ".join(core_features) if core_features else "not identified"}\n'
+			f'- User flows: {", ".join(analysis.identified_user_flows) if analysis.identified_user_flows else "not identified"}\n\n'
+		)
+	else:
+		site_context = ''
+
+	return (
+		f'You are running Murphy lite mode: a fast objective-driven website test.\n\n'
+		f'{persona_block}\n\n'
+		f'{site_context}'
+		f'Task: {scenario.description}\n\n'
+		f'Steps:\n{scenario.steps_description}\n\n'
+		f'Start URL: {start_url}\n\n'
+		f'Rules:\n'
+		f'- Stay on the same domain as {start_url}.\n'
+		f'- You must attempt the stated objective before returning the LiteResult.\n'
+		f'- Do not stop at first-impression UX feedback if there is any plausible in-app path to continue.\n'
+		f'- If a control is ambiguous but plausibly relevant to the objective, use it and report the ambiguity afterward.\n'
+		f'- Terminal states: objective completed and verified, objective attempted but blocked, or no plausible route found after trying at least two in-app paths.\n'
+		f'- You may submit ordinary app forms needed for the objective using harmless test data.\n'
+		f'- Do not submit support/contact/feedback forms, payment actions, destructive confirmations, or external-domain flows.\n'
+		f'- If the app blocks you with login, captcha, or missing permissions, report that as a flaw and stop.\n\n'
+		f'Return exactly one LiteResult object with these fields:\n'
+		f'- grade: integer from 1 to 10 for the overall experience.\n'
+		f'- flaws: concrete problems, friction, broken behavior, or blockers you observed.\n'
+		f'- improvements: product or UX improvements that would make the flow better.\n'
+		f'- fixes: concrete implementation fixes that address the flaws.\n'
+		f'- other_feedback: useful observations that do not fit the other fields.\n'
+	)
+
+
 def build_execution_prompt(
 	global_task: str,
 	scenario: TestScenario,

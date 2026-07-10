@@ -26,6 +26,33 @@ from murphy.io.report_helpers import (
 from murphy.models import EvaluationReport, TestResult
 
 
+def _append_bullets(title: str, items: list[str], lines: list[str]) -> None:
+	if not items:
+		return
+	lines.append(f'**{title}:**')
+	for item in items:
+		lines.append(f'- {item}')
+	lines.append('')
+
+
+def _render_lite_result(r: TestResult, lines: list[str]) -> None:
+	"""Append Murphy lite structured evaluation details for one result."""
+	if not r.lite_result:
+		return
+
+	lite = r.lite_result
+	lines += [
+		'**Lite Evaluation:**',
+		'',
+		f'**Grade:** {lite.grade}/10',
+		'',
+	]
+	_append_bullets('Flaws', lite.flaws, lines)
+	_append_bullets('Improvements', lite.improvements, lines)
+	_append_bullets('Fixes', lite.fixes, lines)
+	_append_bullets('Other feedback', lite.other_feedback, lines)
+
+
 def _render_test_detail(r: TestResult, index: int, lines: list[str]) -> None:
 	"""Append detailed info for a single test result (pass or fail)."""
 	m = _compute_metrics(r)
@@ -33,6 +60,7 @@ def _render_test_detail(r: TestResult, index: int, lines: list[str]) -> None:
 
 	lines.append(f'**Result:** {"Passed" if passed else "Failed"} in {r.duration:.0f}s')
 	lines.append('')
+	_render_lite_result(r, lines)
 	lines.append(f'**Metrics:** {_format_metrics_line(m)}')
 	lines.append('')
 	# lines.append(f'{format_path(r)}')
@@ -146,6 +174,7 @@ def write_markdown_report(report: EvaluationReport, output_dir: Path) -> Path:
 	# Partition results
 	website_issues = [r for r in report.results if r.failure_category == 'website_issue']
 	test_limitations = [r for r in report.results if r.failure_category == 'test_limitation']
+	failed_tests = [r for r in report.results if r.success is not True and r.failure_category is None]
 	passed_tests = [r for r in report.results if r.success]
 
 	# Scorecard
@@ -155,24 +184,47 @@ def write_markdown_report(report: EvaluationReport, output_dir: Path) -> Path:
 		f'- Website Issues: {s.website_issues}',
 		f'- Test Limitations: {s.test_limitations}',
 		'',
-		'| Test | Persona | Result | Category | Duration |',
-		'|------|---------|--------|----------|----------|',
 	]
-	for r in report.results:
-		persona_label = r.scenario.test_persona.replace('_', ' ').title()
-		if r.success:
-			emoji = '\u2705'
-			result_str = 'Passed'
-			category_str = ''
-		elif r.failure_category == 'website_issue':
-			emoji = '\U0001f534'
-			result_str = 'Failed'
-			category_str = 'Website Issue'
-		else:
-			emoji = '\u26a0\ufe0f'
-			result_str = 'Failed'
-			category_str = 'Test Limitation'
-		lines.append(f'| {emoji} {r.scenario.name} | {persona_label} | {result_str} | {category_str} | {r.duration:.0f}s |')
+
+	has_lite_results = any(r.lite_result for r in report.results)
+	if has_lite_results:
+		lines += [
+			'| Test | Persona | Grade | Flaws | Improvements | Fixes | Duration |',
+			'|------|---------|-------|-------|--------------|-------|----------|',
+		]
+		for r in report.results:
+			persona_label = r.scenario.test_persona.replace('_', ' ').title()
+			lite = r.lite_result
+			if lite:
+				grade = f'{lite.grade}/10'
+				flaws = str(len(lite.flaws))
+				improvements = str(len(lite.improvements))
+				fixes = str(len(lite.fixes))
+			else:
+				grade = flaws = improvements = fixes = 'n/a'
+			lines.append(
+				f'| {r.scenario.name} | {persona_label} | {grade} | {flaws} | {improvements} | {fixes} | {r.duration:.0f}s |'
+			)
+	else:
+		lines += [
+			'| Test | Persona | Result | Category | Duration |',
+			'|------|---------|--------|----------|----------|',
+		]
+		for r in report.results:
+			persona_label = r.scenario.test_persona.replace('_', ' ').title()
+			if r.success:
+				emoji = '\u2705'
+				result_str = 'Passed'
+				category_str = ''
+			elif r.failure_category == 'website_issue':
+				emoji = '\U0001f534'
+				result_str = 'Failed'
+				category_str = 'Website Issue'
+			else:
+				emoji = '\u26a0\ufe0f'
+				result_str = 'Failed'
+				category_str = 'Test Limitation'
+			lines.append(f'| {emoji} {r.scenario.name} | {persona_label} | {result_str} | {category_str} | {r.duration:.0f}s |')
 
 	# ── Feedback Quality Index ────────────────────────────────────────────────
 	fq_results = [r for r in report.results if r.feedback_quality]
@@ -271,6 +323,21 @@ def write_markdown_report(report: EvaluationReport, output_dir: Path) -> Path:
 		for i, r in enumerate(test_limitations, 1):
 			persona_label = r.scenario.test_persona.replace('_', ' ').title()
 			summary_text = f'\u26a0\ufe0f {i}. {r.scenario.name} — {persona_label}'
+			detail_lines = [
+				f'**Persona:** {persona_label}',
+				'',
+				f'**What was tested:** {r.scenario.description}',
+				'',
+			]
+			_render_test_detail(r, i, detail_lines)
+			lines += ['<details>', f'<summary>{summary_text}</summary>', ''] + detail_lines + ['</details>', '']
+
+	# ── Generic failed tests section ──────────────────────────────────────────
+	if failed_tests:
+		lines += ['## Failed Tests', '']
+		for i, r in enumerate(failed_tests, 1):
+			persona_label = r.scenario.test_persona.replace('_', ' ').title()
+			summary_text = f'\u274c {i}. {r.scenario.name} — {persona_label}'
 			detail_lines = [
 				f'**Persona:** {persona_label}',
 				'',

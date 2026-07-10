@@ -49,6 +49,7 @@ class GeneratePlanRequest(BaseModel):
 	analysis: Annotated[WebsiteAnalysis, BeforeValidator(_parse_json_string)]
 	max_tests: int = 8
 	goal: str | None = None
+	lite: bool = False
 	provider: str = 'openai'
 	model: str = 'gpt-5-mini'
 	webhook_url: str | None = None
@@ -68,6 +69,7 @@ class ExecuteRequest(BaseModel):
 	judge_model: str | None = None
 	max_steps: int = 15
 	max_concurrent: int = 3
+	lite: bool = False
 	webhook_url: str | None = None
 	async_mode: bool = Field(False, alias='async')
 
@@ -78,6 +80,7 @@ class EvaluateRequest(BaseModel):
 	url: str
 	goal: str | None = None
 	max_tests: int = 8
+	lite: bool = False
 	provider: str = 'openai'
 	model: str = 'gpt-5-mini'
 	judge_provider: str | None = None

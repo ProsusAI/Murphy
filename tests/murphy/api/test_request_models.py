@@ -90,6 +90,12 @@ def test_evaluate_request_defaults():
 	r = EvaluateRequest(url='https://example.com')  # type: ignore[call-arg]
 	assert r.max_tests == 8
 	assert r.async_mode is False
+	assert r.lite is False
+
+
+def test_evaluate_request_accepts_lite():
+	r = EvaluateRequest(url='https://example.com', lite=True)  # type: ignore[call-arg]
+	assert r.lite is True
 
 
 # ─── ExecuteRequest ──────────────────────────────────────────────────────────
@@ -101,6 +107,12 @@ def test_execute_request_defaults():
 	assert r.evaluate_job_id is None
 	assert r.max_steps == 15
 	assert r.max_concurrent == 3
+	assert r.lite is False
+
+
+def test_execute_request_accepts_lite():
+	r = ExecuteRequest(url='https://example.com', lite=True)  # type: ignore[call-arg]
+	assert r.lite is True
 
 
 def test_execute_request_with_json_string_test_plan():
@@ -165,6 +177,11 @@ def test_generate_plan_request_with_dict_analysis():
 def test_generate_plan_request_with_json_string_analysis():
 	r = GeneratePlanRequest(url='https://example.com', analysis=json.dumps(_make_analysis_dict()))  # type: ignore[arg-type]
 	assert r.analysis.site_name == 'Example'
+
+
+def test_generate_plan_request_accepts_lite():
+	r = GeneratePlanRequest(url='https://example.com', analysis=_make_analysis_dict(), lite=True)  # type: ignore[arg-type]
+	assert r.lite is True
 
 
 # ─── JobResponse ──────────────────────────────────────────────────────────────

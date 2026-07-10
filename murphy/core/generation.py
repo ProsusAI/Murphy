@@ -23,7 +23,7 @@ from murphy.browser.actions import register_domain_access_action, register_refre
 from murphy.browser.session_utils import prepare_session_for_task
 from murphy.config import EXPLORE_MAX_STEPS, QUALITY_MAX_RETRIES
 from murphy.core.quality import plan_quality_issues
-from murphy.models import PERSONA_REGISTRY, TestPlan
+from murphy.models import PERSONA_REGISTRY, TestPlan, TestScenario, WebsiteAnalysis
 from murphy.personas.bridge import get_discovered_persona_names
 from murphy.personas.pipeline_models import PersonaResult, TraitSchema
 from murphy.prompts import (
@@ -34,6 +34,196 @@ from murphy.prompts import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+_INTERACTIVE_GOAL_KEYWORDS = (
+	'add',
+	'book',
+	'buy',
+	'change',
+	'checkout',
+	'complete',
+	'configure',
+	'create',
+	'delete',
+	'disable',
+	'download',
+	'edit',
+	'enable',
+	'filter',
+	'login',
+	'order',
+	'purchase',
+	'save',
+	'search',
+	'select',
+	'send',
+	'set up',
+	'setup',
+	'sign in',
+	'sign up',
+	'submit',
+	'switch',
+	'test',
+	'toggle',
+	'try',
+	'update',
+	'upload',
+	'use',
+)
+
+_STATE_CHANGE_GOAL_KEYWORDS = (
+	'change',
+	'disable',
+	'enable',
+	'mode',
+	'preference',
+	'setting',
+	'switch',
+	'toggle',
+	'turn off',
+	'turn on',
+)
+
+_CREATION_OR_SUBMISSION_GOAL_KEYWORDS = (
+	'add',
+	'book',
+	'buy',
+	'checkout',
+	'complete',
+	'configure',
+	'create',
+	'creation',
+	'new',
+	'order',
+	'purchase',
+	'save',
+	'send',
+	'set up',
+	'setup',
+	'sign up',
+	'submit',
+	'upload',
+)
+
+
+def _matches_any_keyword(text: str, keywords: tuple[str, ...]) -> bool:
+	"""Return True if any objective keyword appears in text."""
+	normalized = text.lower()
+	return any(keyword in normalized for keyword in keywords)
+
+
+def _lite_goal_requires_interaction(task: str) -> bool:
+	"""Whether a lite objective should require at least one in-app interaction."""
+	return _matches_any_keyword(task, _INTERACTIVE_GOAL_KEYWORDS)
+
+
+def _lite_goal_is_state_change(task: str) -> bool:
+	"""Whether a lite objective is primarily about changing UI or app state."""
+	return _matches_any_keyword(task, _STATE_CHANGE_GOAL_KEYWORDS)
+
+
+def _lite_goal_is_creation_or_submission(task: str) -> bool:
+	"""Whether a lite objective likely needs safe test input and advancement."""
+	return _matches_any_keyword(task, _CREATION_OR_SUBMISSION_GOAL_KEYWORDS)
+
+
+def _build_lite_objective_steps(url: str, task: str) -> str:
+	"""Build generalized objective-driven steps for lite mode."""
+	steps = [
+		f'Complete this objective on {url}: {task}.',
+		'Minimum required path:',
+		'1. Locate the most plausible in-app route for the objective. If a control is ambiguous but plausibly relevant, try it and report the ambiguity afterward.',
+	]
+
+	if _lite_goal_is_creation_or_submission(task):
+		steps.extend(
+			[
+				'2. Attempt the objective by initiating the route, providing harmless test input only for fields required to continue, and advancing one step at a time.',
+				'3. Advance or submit only when safe; stop before destructive, payment, external-domain, or support/contact/feedback actions unless the objective explicitly requires reporting that blocker.',
+			]
+		)
+	elif _lite_goal_is_state_change(task):
+		steps.extend(
+			[
+				'2. Change the requested state using the most plausible in-app control or setting.',
+				'3. Check whether the requested state is reflected in the visible UI or remains in effect after a simple in-app navigation or refresh when safe.',
+			]
+		)
+	elif _lite_goal_requires_interaction(task):
+		steps.extend(
+			[
+				'2. Attempt the objective through the most plausible in-app interaction rather than stopping at observation.',
+				'3. Continue until the objective is completed, blocked, or objectively unavailable.',
+			]
+		)
+	else:
+		steps.extend(
+			[
+				'2. Inspect the experience through the persona lens and interact with any clearly relevant in-app controls if they are needed to evaluate the objective.',
+				'3. Stop when you have concrete observed evidence for the objective.',
+			]
+		)
+
+	steps.extend(
+		[
+			'4. Verify the resulting UI state using visible evidence such as confirmation, validation, changed state, blocked state, persisted state, or clear absence of a plausible route.',
+			'5. Return concise lite output with flaws, improvements, fixes, and other observations grounded in what you attempted and observed.',
+		]
+	)
+	return '\n'.join(steps)
+
+
+def make_lite_plan(
+	url: str,
+	goal: str | None = None,
+	analysis: WebsiteAnalysis | None = None,
+	max_tests: int | None = None,
+	discovered_personas: tuple[PersonaResult, TraitSchema] | None = None,
+) -> TestPlan:
+	"""Create a compact lite-mode plan without an LLM generation call."""
+	if discovered_personas:
+		personas = get_discovered_persona_names(discovered_personas[0])
+	else:
+		personas = list(PERSONA_REGISTRY.keys())
+	if max_tests is not None:
+		personas = personas[:max_tests]
+
+	core_features = [f for f in (analysis.features if analysis else []) if f.importance == 'core']
+	testable_features = [f for f in (analysis.features if analysis else []) if f.testability in ('testable', 'partial')]
+	primary_feature = (core_features or testable_features)[0] if (core_features or testable_features) else None
+	target_feature = primary_feature.name if primary_feature else (goal or 'overall site experience')
+	feature_category = primary_feature.category if primary_feature else 'other'
+	site_name = analysis.site_name if analysis else url
+	task = goal or f'Evaluate {site_name}'
+
+	steps_parts = [_build_lite_objective_steps(url, task)]
+	if analysis and analysis.identified_user_flows:
+		steps_parts.append('Relevant user flows:\n' + '\n'.join(f'- {flow}' for flow in analysis.identified_user_flows))
+	if core_features:
+		steps_parts.append('Core features:\n' + '\n'.join(f'- {feature.name}' for feature in core_features))
+	steps_description = '\n\n'.join(steps_parts)
+
+	scenarios: list[TestScenario] = []
+	for index, persona in enumerate(personas):
+		priority = 'critical' if index == 0 else 'high'
+		scenarios.append(
+			TestScenario(
+				name=f'Lite {persona.replace("_", " ")} review'[:100],
+				description=f'{task} as {persona} on {site_name}.',
+				priority=priority,  # type: ignore[arg-type]
+				feature_category=feature_category,
+				target_feature=target_feature,
+				test_persona=persona,
+				steps_description=steps_description,
+				success_criteria='Return structured flaws, improvements, fixes, and other observations for this goal.',
+			)
+		)
+
+	logger.info('\n%s', '=' * 60)
+	logger.info('Built %d lite scenarios without LLM test generation', len(scenarios))
+	logger.info('%s\n', '=' * 60)
+	return TestPlan(scenarios=scenarios)
 
 
 async def generate_tests(

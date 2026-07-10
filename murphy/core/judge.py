@@ -248,8 +248,9 @@ def _select_key_screenshots(history: AgentHistoryList, max_screenshots: int = 3)
 	Returns at most max_screenshots base64 strings.
 	"""
 	steps = history.history
-	if not steps:
-		return []
+	if not isinstance(steps, list) or not steps:
+		screenshots = history.screenshots()
+		return [s for s in screenshots if s][-max_screenshots:]
 
 	# Score each step
 	scored: list[tuple[int, int, str]] = []  # (score, index, screenshot_b64)

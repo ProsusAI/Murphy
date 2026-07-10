@@ -11,6 +11,7 @@ from murphy.api.templates import (
 from murphy.models import (
 	Feature,
 	JudgeVerdict,
+	LiteResult,
 	PageInfo,
 	TestPlan,
 	TestResult,
@@ -188,6 +189,30 @@ def test_render_results_html_with_failure():
 	html = render_results_html('https://example.com', analysis, results, None)
 	assert 'WEBSITE ISSUE' in html
 	assert 'Website Issue' in html
+
+
+def test_render_results_html_failed_lite_result_uses_plain_failed_badge():
+	analysis = _make_analysis()
+	lite_result = LiteResult(
+		grade=4,
+		flaws=['The create flow is hard to find'],
+		improvements=['Expose a clearer create action'],
+		fixes=['Add a primary Create Agent button'],
+		other_feedback=[],
+	)
+	results = [
+		_make_result(
+			success=False,
+			judgement=None,
+			lite_result=lite_result,
+			failure_category=None,
+			reason='Lite mode grade: 4',
+		)
+	]
+	html = render_results_html('https://example.com', analysis, results, None)
+	assert 'Failed (1)' in html
+	assert 'FAILED' in html
+	assert 'TEST LIMITATION' not in html
 
 
 def test_render_results_html_escapes_xss():

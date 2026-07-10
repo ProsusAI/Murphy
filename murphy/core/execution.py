@@ -30,13 +30,15 @@ from murphy.core.judge import murphy_judge
 from murphy.core.summary import classify_failure
 from murphy.io.report_helpers import _slugify
 from murphy.models import (
+	LiteResult,
 	ScenarioExecutionVerdict,
 	TestPlan,
 	TestResult,
 	TestScenario,
+	WebsiteAnalysis,
 )
 from murphy.personas.pipeline_models import PersonaResult, TraitSchema
-from murphy.prompts import build_execution_prompt
+from murphy.prompts import build_execution_prompt, build_lite_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -45,9 +47,7 @@ from murphy.config import MAX_PARALLEL_SESSIONS
 # ─── Structured output parsing ────────────────────────────────────────────────
 
 
-def _parse_structured_output(
-	history: AgentHistoryList, model_cls: type[ScenarioExecutionVerdict]
-) -> ScenarioExecutionVerdict | None:
+def _parse_structured_output(history: AgentHistoryList, model_cls: type[Any]) -> Any | None:
 	"""Safely parse structured output from agent history."""
 	result = history.final_result()
 	if not result:
@@ -102,6 +102,92 @@ def _extract_urls_from_texts(texts: list[str]) -> list[str]:
 	return urls
 
 
+_INTERACTIVE_SCENARIO_KEYWORDS = (
+	'add',
+	'book',
+	'buy',
+	'change',
+	'checkout',
+	'complete',
+	'configure',
+	'create',
+	'delete',
+	'disable',
+	'download',
+	'edit',
+	'enable',
+	'filter',
+	'login',
+	'order',
+	'purchase',
+	'save',
+	'search',
+	'select',
+	'send',
+	'set up',
+	'setup',
+	'sign in',
+	'sign up',
+	'submit',
+	'switch',
+	'test',
+	'toggle',
+	'try',
+	'update',
+	'upload',
+	'use',
+)
+
+_MEANINGFUL_LITE_ACTIONS = {
+	'click',
+	'click_element',
+	'drag_drop',
+	'input',
+	'input_text',
+	'press_key',
+	'select_dropdown_option',
+	'send_keys',
+	'upload_file',
+}
+
+
+def _lite_scenario_requires_interaction(scenario: TestScenario) -> bool:
+	"""Return True when a lite scenario describes an interactive objective."""
+	scenario_text = ' '.join(
+		[
+			scenario.name,
+			scenario.description,
+			scenario.target_feature,
+			scenario.steps_description,
+			scenario.success_criteria,
+		]
+	).lower()
+	return any(keyword in scenario_text for keyword in _INTERACTIVE_SCENARIO_KEYWORDS)
+
+
+def _has_meaningful_lite_interaction(actions: list[dict[str, Any]]) -> bool:
+	"""Return True when actions include an in-app interaction beyond navigation/inspection."""
+	for action in actions:
+		for key in action:
+			if key == 'interacted_element':
+				continue
+			if key in _MEANINGFUL_LITE_ACTIONS:
+				return True
+	return False
+
+
+def _build_lite_retry_prompt(task_prompt: str) -> str:
+	"""Append a one-shot continuation instruction for premature lite completions."""
+	return (
+		task_prompt
+		+ '\n\nRETRY REQUIRED:\n'
+		+ 'Your previous lite attempt stopped before meaningful in-app interaction. '
+		+ 'Continue the objective now. You must use the most plausible in-app controls before returning LiteResult, '
+		+ 'unless blocked by login, captcha, missing permissions, destructive/payment action, '
+		+ 'support/contact/feedback form, external-domain route, or no plausible route after two in-app paths.'
+	)
+
+
 async def _collect_session_urls(browser_session: BrowserSession) -> list[str]:
 	"""Collect current + historical tab URLs from browser session."""
 	urls: list[str] = []
@@ -114,6 +200,31 @@ async def _collect_session_urls(browser_session: BrowserSession) -> list[str]:
 	except Exception:
 		pass
 	return urls
+
+
+def _save_agent_history(
+	history: AgentHistoryList,
+	scenario: TestScenario,
+	index: int,
+	output_dir: Path | None,
+) -> None:
+	"""Persist full browser-use history for UI trace and graph views."""
+	if output_dir is None:
+		return
+
+	slug = _slugify(scenario.name)
+	history_path = output_dir / 'agent_history' / f'test_{index:02d}_{slug}.json'
+	try:
+		history_path.parent.mkdir(parents=True, exist_ok=True)
+		history.save_to_file(history_path)
+		logger.debug('  Agent history saved: %s', history_path)
+	except Exception as e:
+		logger.warning('  Failed to save agent history: %s', e)
+
+
+def _disable_unused_murphy_actions(agent: Agent) -> None:
+	"""Remove browser-use tools that Murphy does not consume."""
+	agent.tools.exclude_action('write_file')
 
 
 # ─── Single-test execution helper ──────────────────────────────────────────────
@@ -132,6 +243,8 @@ async def _execute_single_test(
 	judge_llm: BaseChatModel | None = None,
 	discovered_personas: tuple['PersonaResult', 'TraitSchema'] | None = None,
 	output_dir: Path | None = None,
+	use_lite: bool = False,
+	analysis: WebsiteAnalysis | None = None,
 ) -> TestResult:
 	"""Execute one test scenario and return its TestResult.
 
@@ -147,6 +260,77 @@ async def _execute_single_test(
 		await prepare_session_for_task(browser_session, url, force_navigate=True)
 
 		file_paths_str = [str(p) for p in fixture_paths] if fixture_paths else []
+
+		if use_lite:
+			task_prompt = build_lite_prompt(
+				scenario,
+				url,
+				analysis=analysis,
+				discovered_personas=discovered_personas,
+			)
+
+			async def _run_lite_agent(prompt: str) -> AgentHistoryList:
+				agent_kwargs: dict[str, Any] = {
+					'task': prompt,
+					'llm': llm,
+					'browser_session': browser_session,
+					'use_judge': False,
+					'max_actions_per_step': 3,
+					'output_model_schema': LiteResult,
+				}
+				agent = Agent(**agent_kwargs)
+				_disable_unused_murphy_actions(agent)
+				register_domain_access_action(agent.tools, browser_session)
+				register_refresh_dom_action(agent.tools, browser_session)
+				return await agent.run(max_steps=max_steps)
+
+			history = await _run_lite_agent(task_prompt)
+			all_actions = history.model_actions()
+			if _lite_scenario_requires_interaction(scenario) and not _has_meaningful_lite_interaction(all_actions):
+				logger.info('  Lite run stopped before meaningful interaction; retrying once with stricter objective guidance.')
+				history = await _run_lite_agent(_build_lite_retry_prompt(task_prompt))
+
+			_save_agent_history(history, scenario, index, output_dir)
+			lite_result = _parse_structured_output(history, LiteResult)
+			if lite_result is None:
+				lite_result = LiteResult(
+					grade=5,
+					flaws=['The agent did not return structured lite output.'],
+					improvements=['Retry the lite run or use normal Murphy for a judged report.'],
+					fixes=[],
+					other_feedback=[],
+				)
+
+			all_actions = history.model_actions()
+			errors = history.errors()
+			history_urls = [u for u in history.urls() if u]
+			session_urls = await _collect_session_urls(browser_session)
+			error_urls = _extract_urls_from_texts([e for e in errors if e])
+			seen_urls: set[str] = set()
+			unique_pages: list[str] = []
+			for page_url in history_urls + session_urls + error_urls:
+				if page_url not in seen_urls:
+					seen_urls.add(page_url)
+					unique_pages.append(page_url)
+
+			success = lite_result.grade >= 5
+			logger.info('  Lite result: grade=%d (%.1fs)', lite_result.grade, history.total_duration_seconds())
+			test_result = TestResult(
+				scenario=scenario,
+				success=success,
+				judgement=None,
+				actions=all_actions,
+				errors=errors,
+				duration=history.total_duration_seconds(),
+				pages_visited=unique_pages,
+				screenshot_paths=[p for p in history.screenshot_paths() if p],
+				form_fills=_extract_form_fills(all_actions),
+				reason=f'Lite mode grade: {lite_result.grade}',
+				lite_result=lite_result,
+			)
+			test_result.failure_category = classify_failure(test_result)
+			return test_result
+
 		task_prompt = build_execution_prompt(
 			goal or f'Evaluate {url}',
 			scenario,
@@ -169,6 +353,7 @@ async def _execute_single_test(
 		agent_kwargs['output_model_schema'] = ScenarioExecutionVerdict
 
 		agent = Agent(**agent_kwargs)
+		_disable_unused_murphy_actions(agent)
 		# Register custom actions
 		register_domain_access_action(agent.tools, browser_session)
 		register_refresh_dom_action(agent.tools, browser_session)
@@ -223,15 +408,7 @@ async def _execute_single_test(
 				seen_urls.add(p)
 				unique_pages.append(p)
 
-		# Save full browser-use history to output/agent_history/ when output_dir is set
-		if output_dir is not None:
-			slug = _slugify(scenario.name)
-			history_path = output_dir / 'agent_history' / f'test_{index:02d}_{slug}.json'
-			try:
-				history.save_to_file(history_path)
-				logger.debug('  Agent history saved: %s', history_path)
-			except Exception as e:
-				logger.warning('  Failed to save agent history: %s', e)
+		_save_agent_history(history, scenario, index, output_dir)
 
 		test_result = TestResult(
 			scenario=scenario,
@@ -392,6 +569,8 @@ async def execute_tests(
 	judge_llm: BaseChatModel | None = None,
 	output_dir: Path | None = None,
 	discovered_personas: tuple['PersonaResult', 'TraitSchema'] | None = None,
+	use_lite: bool = False,
+	analysis: WebsiteAnalysis | None = None,
 ) -> list[TestResult]:
 	"""Execute tests without a pre-existing session (creates its own)."""
 	from browser_use.browser.profile import BrowserProfile
@@ -411,6 +590,8 @@ async def execute_tests(
 			judge_llm=judge_llm,
 			output_dir=output_dir,
 			discovered_personas=discovered_personas,
+			use_lite=use_lite,
+			analysis=analysis,
 		)
 	finally:
 		await browser_session.kill()
@@ -430,6 +611,8 @@ async def execute_tests_with_session(
 	judge_llm: BaseChatModel | None = None,
 	output_dir: Path | None = None,
 	discovered_personas: tuple['PersonaResult', 'TraitSchema'] | None = None,
+	use_lite: bool = False,
+	analysis: WebsiteAnalysis | None = None,
 ) -> list[TestResult]:
 	"""Phase 3 execution reusing an existing browser session.
 
@@ -471,6 +654,8 @@ async def execute_tests_with_session(
 				judge_llm=judge_llm,
 				output_dir=output_dir,
 				discovered_personas=discovered_personas,
+				use_lite=use_lite,
+				analysis=analysis,
 			)
 			results.append(test_result)
 
@@ -520,6 +705,8 @@ async def execute_tests_with_session(
 					judge_llm=judge_llm,
 					output_dir=output_dir,
 					discovered_personas=discovered_personas,
+					use_lite=use_lite,
+					analysis=analysis,
 				)
 				results_slots[index_0] = result
 
