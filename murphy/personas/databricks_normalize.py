@@ -152,6 +152,24 @@ def databricks_event_to_analytics_event(
 	if row.get('email_source'):
 		props['email_source'] = row['email_source']
 
+	# Merge the full PostHog `properties` map when present (enriched murphy_evals_data_props
+	# table). It arrives as a JSON string (VARIANT serialized via to_json in SQL). Keys are
+	# PostHog-native, so they already match what the compressor consumes. Curated scalars above
+	# win on key conflicts (they derive from the same source columns, so values agree). Absent
+	# on the baseline table -> no-op, keeping behavior unchanged.
+	raw_props = row.get('properties')
+	if isinstance(raw_props, str):
+		try:
+			raw_props = json.loads(raw_props)
+		except json.JSONDecodeError:
+			raw_props = None
+	if isinstance(raw_props, dict):
+		props = {**raw_props, **props}
+
+	elements_chain = row.get('elements_chain') or ''
+	if not elements_chain and isinstance(raw_props, dict):
+		elements_chain = raw_props.get('elements_chain') or raw_props.get('$elements_chain') or ''
+
 	event_id = row.get('event_id') or row.get('event_name', 'unknown')
 	return AnalyticsEvent(
 		event_id=str(event_id),
@@ -160,7 +178,7 @@ def databricks_event_to_analytics_event(
 		session_id=composite_session_id,
 		timestamp=_parse_timestamp(row['event_timestamp']),
 		properties=props,
-		elements_chain='',
+		elements_chain=str(elements_chain),
 		source=SOURCE,
 		raw=row,
 	)
