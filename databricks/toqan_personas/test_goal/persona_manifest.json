@@ -1,0 +1,20 @@
+{
+  "personas_file": "outputs_thesis/personas_databricks_data/personas.json",
+  "experiment_persona_id": 3,
+  "persona_name": "Relentless Troubleshooter",
+  "persona_slug": "relentless_troubleshooter",
+  "cluster_size": 110,
+  "baseline": {
+    "run_dir": "outputs_thesis/personas_databricks_data/simple_goal/run_1",
+    "scenario_index": 4,
+    "control_goal": "test the agent creation functionality",
+    "embedding_similarity": 0.522
+  },
+  "sample_sessions": [
+    "ee1c75f1-2ad6-4de0-b352-32d0253e1fdc:019e8331-20cd-7a30-a51c-594840630b1d",
+    "530f98f6-253d-4147-a40b-ec2f7d15be7e:019eca1a-2caa-7e5f-b804-e1275242eb49",
+    "e62fd6bd-459a-456f-9cbb-fecf21114b5b:019e6ea8-68e2-7bf7-be4d-daffecbe846f",
+    "efd20722-5eb2-4303-b824-aa6297ad851c:019eabff-5e32-736a-a640-84736fea7c36",
+    "e86730e2-4318-4c76-ac15-bd4f9e5291bd:019e6405-18cd-7cda-a7e8-0375d87f7236"
+  ]
+}

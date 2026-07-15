@@ -1,0 +1,33 @@
+# Single-scenario plan for goal-context embed sim experiment.
+# Persona: Relentless Troubleshooter (from personas_databricks_data/personas.json)
+# Copied from simple_goal/run_1 scenario 4.
+
+url: https://work.toqan.ai/
+generated_at: '2026-06-22T00:00:00+00:00'
+scenarios:
+- name: 'Troubleshooting: Handling invalid or unexpected inputs during creation'
+  description: Probe how the system handles malformed or unexpected input during agent
+    creation, and whether it surfaces actionable errors and recovery options for a
+    technical troubleshooter.
+  priority: medium
+  feature_category: forms
+  target_feature: agent creation
+  test_persona: relentless_troubleshooter
+  steps_description: 1) From the homepage, find and open the create workflow (use
+    any visible create control, open menus, or try keyboard navigation to reveal hidden
+    controls). 2) Enter invalid or edge-case values into the creation inputs (use
+    extremely long strings, SQL-like text, script tags, or unexpected value types)
+    aiming to trigger validation or sanitization (type, paste, or attempt file import).
+    3) Attempt to submit the malformed creation to complete the flow (use submit control,
+    Enter key, or confirm). 4) Observe system behavior and attempt immediate recovery
+    actions if an error occurs (retry submission, modify inputs, or refresh the page
+    to continue). 5) If creation successfully completes, inspect the stored agent
+    to ensure no corruption or unexpected execution occurred.
+  success_criteria: The user either completes agent creation end-to-end with inputs
+    safely stored (agent visible in list or detail and content sanitized or preserved
+    as intended) OR the application rejects invalid inputs while remaining stable
+    and offering actionable, recoverable feedback (validation hints, ability to edit
+    and retry, or preserved unsaved state) OR creation attempts that fail do not cause
+    crashes, data loss, or security exposure. The primary goal is that an agent creation
+    attempt is completed or safely rejected while the site provides immediate, actionable
+    recovery paths.

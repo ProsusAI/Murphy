@@ -1,0 +1,31 @@
+# Single-scenario plan — session trace option 1.
+# Session: 019e3af6-cf12-7817-a44a-a5830d4a2192 → persona_id 3 (Relentless Troubleshooter)
+# Goal: configure restaurant operations knowledge base (from full conversation)
+
+url: https://work.toqan.ai/
+generated_at: '2026-06-22T00:00:00+00:00'
+scenarios:
+- name: 'Configure restaurant operations knowledge-base assistant'
+  description: Set up an assistant that acts as a restaurant operations knowledge base
+    for store staff — covering ordering schedules, supplier credentials, recipes, door
+    codes, coffee instructions, and troubleshooting guides.
+  priority: critical
+  feature_category: other
+  target_feature: agent creation
+  test_persona: relentless_troubleshooter
+  steps_description: 1) From the homepage, start creating a new assistant (use any
+    visible create/new control, agents link, or menu path). 2) Configure the assistant
+    for restaurant operations knowledge — add instructions or knowledge covering ordering
+    schedules, supplier credentials, recipes, door codes, coffee instructions, and
+    staff troubleshooting guides (type into fields, paste content, or upload files
+    if available). 3) Save or publish the assistant and verify it appears in the
+    agents list or detail view with the configured knowledge preserved. 4) If blocked
+    or errors occur, retry with alternative navigation paths and document recovery
+    behavior.
+  success_criteria: The assistant is created or updated end-to-end and visible as a
+    saved entity (list row, detail page, or persistent success state) OR the platform
+    rejects incomplete setup with clear, recoverable feedback without data loss OR
+    the user documents missing controls and completes the closest achievable configuration
+    path. The configured content should reflect restaurant operations knowledge-base
+    intent (schedules, credentials, recipes, access codes, coffee instructions, or
+    troubleshooting guidance).
