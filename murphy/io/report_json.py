@@ -40,14 +40,20 @@ def copy_screenshots_to_output(report: EvaluationReport, output_dir: Path, *, cl
 		test_dir = screenshots_dir / f'test_{i:02d}_{_slugify(result.scenario.name)}'
 		test_dir.mkdir(parents=True, exist_ok=True)
 		copied_paths: list[str] = []
+		copied_by_source: dict[str, str] = {}
 		for src_path_str in source_paths:
 			src = Path(src_path_str).resolve()
 			dst = (test_dir / Path(src_path_str).name).resolve()
 			if src.exists() and src != dst:
 				shutil.copy2(src, dst)
 				copied_paths.append(str(dst))
+				copied_by_source[str(src)] = str(dst)
 		# Update paths to point to copied location
 		result.screenshot_paths = copied_paths  # type: ignore[assignment]
+		result.lite_evidence_paths = {
+			evidence_id: copied_by_source.get(str(Path(path).resolve()), path)
+			for evidence_id, path in result.lite_evidence_paths.items()
+		}
 
 
 def write_json_report(report: EvaluationReport, output_dir: Path) -> Path:

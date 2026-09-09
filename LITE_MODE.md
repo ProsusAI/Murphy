@@ -7,7 +7,7 @@ Lite mode is a faster, simpler Murphy run for quick product feedback. It is enab
 - LLM test generation
 - Interactive feature and test-plan review pauses
 - Murphy judge calls
-- Full JSON and Markdown report generation
+- Judge-generated executive summary
 
 ## What It Returns
 
@@ -15,9 +15,12 @@ Each scenario returns a structured `LiteResult`:
 
 - `grade`: 1-10 overall experience score
 - `flaws`: concrete problems or blockers
+- `flaw_evidence`: captured evidence IDs and explanations linking flaws to relevant screenshots
 - `improvements`: product or UX improvements
 - `fixes`: implementation-level fixes
 - `other_feedback`: additional useful observations
+
+Murphy writes the structured results to JSON and Markdown reports.
 
 ## CLI
 

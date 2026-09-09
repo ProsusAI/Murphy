@@ -78,11 +78,14 @@ uv run murphy --url https://example.com
 # Goal-directed: explores with focus, skips feature discovery, generates plan directly
 uv run murphy --url https://example.com --goal "test the checkout flow"
 
-# Lite mode: faster, simpler run that skips test generation, judge, and reports
+# Lite mode: faster run that skips test generation and judge calls
 uv run murphy --url https://example.com --goal "test the checkout flow" --lite
 
 # Site requires login — opens browser for manual auth first (local only, not Docker)
 uv run murphy --url https://example.com --auth
+
+# Continue automatically after Murphy detects a completed login
+MURPHY_AUTO_AUTH=true BROWSER_USE_HEADLESS=false uv run murphy --url https://example.com --auth
 
 # Public site, skip auth detection entirely
 uv run murphy --url https://example.com --no-auth
@@ -118,7 +121,7 @@ An AI agent explores the site with the given goal in mind, then synthesizes a te
 
 **Execution (both strategies):** An AI agent runs each test scenario in a real browser, and a separate judge LLM evaluates pass/fail. Saves `evaluation_report.json` and `evaluation_report.md`.
 
-**Lite mode (`--lite`):** Murphy builds a compact persona plan directly from the goal or available analysis, then runs a lighter browser-agent prompt that returns structured `flaws`, `improvements`, `fixes`, and `other_feedback`. It skips LLM test generation, the judge, report generation, and interactive review pauses.
+**Lite mode (`--lite`):** Murphy builds a compact persona plan directly from the goal or available analysis, then runs a lighter browser-agent prompt that returns structured `flaws`, `improvements`, `fixes`, and `other_feedback`. It skips LLM test generation, judge calls, the judge-generated executive summary, and interactive review pauses. It writes JSON and Markdown reports.
 
 You can resume from any point by passing `--features` or `--plan` with a previously generated (and optionally edited) file.
 

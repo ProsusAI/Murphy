@@ -11,6 +11,7 @@ from murphy.models import (
 	FeedbackQualityScore,
 	InteractiveElement,
 	JudgeVerdict,
+	LiteFlawEvidence,
 	LiteResult,
 	PageInfo,
 	ReportSummary,
@@ -186,6 +187,29 @@ def test_lite_result_requires_grade_between_one_and_ten():
 
 	with pytest.raises(ValidationError):
 		LiteResult(grade=11, flaws=[], improvements=[], fixes=[], other_feedback=[])
+
+
+def test_lite_result_supports_optional_screenshot_evidence():
+	without_evidence = LiteResult(grade=8)
+	assert without_evidence.flaw_evidence == []
+
+	with_evidence = LiteResult(
+		grade=6,
+		flaws=['The basket did not update.'],
+		flaw_evidence=[
+			LiteFlawEvidence(
+				flaw_index=1,
+				evidence_ids=['evidence_01'],
+				screenshot_step_numbers=[4, 5],
+				explanation='The basket total remains unchanged.',
+			)
+		],
+	)
+
+	assert with_evidence.flaw_evidence[0].screenshot_step_numbers == [4, 5]
+	assert with_evidence.flaw_evidence[0].evidence_ids == ['evidence_01']
+	with pytest.raises(ValidationError):
+		LiteFlawEvidence(flaw_index=0)
 
 
 # ─── TestScenario ─────────────────────────────────────────────────────────────

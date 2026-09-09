@@ -186,6 +186,14 @@ def test_lite_prompt_requests_structured_lite_fields():
 
 	assert 'LiteResult' in prompt
 	assert 'flaws' in prompt
+	assert 'flaw_evidence' in prompt
+	assert 'evidence_ids' in prompt
+	assert 'call capture_flaw_evidence immediately' in prompt
+	assert 'capture each distinct UI state once' in prompt
+	assert 'capture one screenshot' in prompt
+	assert 'Do not reveal, copy, or report diagnostic identifiers or personal data' in prompt
+	assert 'leave screenshot_step_numbers empty' in prompt
+	assert 'Omit evidence for non-visual problems' in prompt
 	assert 'improvements' in prompt
 	assert 'fixes' in prompt
 	assert 'other_feedback' in prompt

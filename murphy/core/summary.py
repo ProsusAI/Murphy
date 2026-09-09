@@ -17,6 +17,14 @@ from murphy.models import (
 
 logger = logging.getLogger(__name__)
 
+_BROWSER_INFRASTRUCTURE_ERROR_MARKERS = (
+	'browser session is corrupted',
+	'target_id=none',
+	'no current target',
+	'cdp websocket',
+	'browser has crashed',
+)
+
 
 def classify_failure(result: TestResult) -> Literal['website_issue', 'test_limitation'] | None:
 	"""Classify a failed test as a website issue or a test limitation.
@@ -30,6 +38,9 @@ def classify_failure(result: TestResult) -> Literal['website_issue', 'test_limit
 	if result.success is True:
 		return None
 	if result.lite_result is not None:
+		errors = ' '.join(error.lower() for error in result.errors if error)
+		if any(marker in errors for marker in _BROWSER_INFRASTRUCTURE_ERROR_MARKERS):
+			return 'test_limitation'
 		return None
 	# Crashed tests: success=None with no judgement → test infrastructure failure
 	if result.success is None:

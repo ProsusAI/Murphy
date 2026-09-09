@@ -9,8 +9,9 @@ from murphy.core.execution import (
 	_execute_single_test,
 	_extract_form_fills,
 	_extract_urls_from_texts,
+	_parse_lite_result,
 )
-from murphy.models import JudgeVerdict, LiteResult, ScenarioExecutionVerdict, TestScenario
+from murphy.models import JudgeVerdict, LiteFlawEvidence, LiteResult, ScenarioExecutionVerdict, TestScenario
 
 # ─── _extract_form_fills ─────────────────────────────────────────────────────
 
@@ -129,6 +130,34 @@ def test_extract_urls_from_texts_skips_none():
 
 
 # ─── Lite execution ──────────────────────────────────────────────────────────
+
+
+def test_parse_lite_result_prefers_candidate_with_valid_screenshot_evidence():
+	with_evidence = LiteResult(
+		grade=8,
+		flaws=['The basket total is unclear.'],
+		flaw_evidence=[
+			LiteFlawEvidence(
+				flaw_index=1,
+				evidence_ids=['evidence_01', 'missing'],
+				explanation='Step 4 shows the basket.',
+			)
+		],
+	)
+	final_without_evidence = LiteResult(grade=8, flaws=['The basket total is unclear.'])
+	history = MagicMock()
+	history.screenshot_paths.return_value = ['/tmp/screenshots/step_4.png']
+	history.model_actions.return_value = [
+		{'done': {'success': True, 'data': with_evidence.model_dump()}},
+		{'done': {'success': True, 'data': final_without_evidence.model_dump()}},
+	]
+	history.final_result.return_value = json.dumps(final_without_evidence.model_dump())
+
+	result = _parse_lite_result(history, {'evidence_01': '/tmp/evidence_01.png'})
+
+	assert result is not None
+	assert len(result.flaw_evidence) == 1
+	assert result.flaw_evidence[0].evidence_ids == ['evidence_01']
 
 
 @pytest.mark.asyncio

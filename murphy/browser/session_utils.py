@@ -65,20 +65,24 @@ async def wait_until_ui_ready(session: BrowserSession, url: str) -> bool:
 
 async def enforce_single_tab(session: BrowserSession, url: str) -> None:
 	"""Close extra tabs to prevent agent drift across duplicate tabs."""
-	pages = await session.get_pages()
-	if not pages:
+	targets = session.get_page_targets()
+	if not targets:
 		await session.navigate_to(url, new_tab=True)
 		return
 
-	# Keep the last page as the target — simplest heuristic
-	target_page = pages[-1]
-	for page in pages:
-		if page is target_page:
+	focused_target = session.get_focused_target()
+	target = next(
+		(candidate for candidate in targets if focused_target and candidate.target_id == focused_target.target_id),
+		targets[-1],
+	)
+	for candidate in targets:
+		if candidate.target_id == target.target_id:
 			continue
 		try:
-			await session.close_page(page)
+			await session.close_page(candidate.target_id)
 		except Exception:
 			pass
+	await session.get_or_create_cdp_session(target_id=target.target_id, focus=True)
 
 
 async def prepare_session_for_task(

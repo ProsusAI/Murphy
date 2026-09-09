@@ -1,0 +1,23 @@
+url: https://www.just-eat.co.uk
+scenarios:
+- name: No local restaurant recovery
+  description: Evaluate the recovery path when a postcode has no delivery supply.
+  priority: critical
+  feature_category: search
+  target_feature: Empty results and recovery
+  test_persona: impatient_direct_shopper
+  steps_description: 'Stay on just-eat.co.uk.
+
+    Enter postcode HS9 5XD.
+
+    Attempt to find and add one meal to the basket.
+
+    If no restaurants deliver, inspect the guidance and available recovery actions.
+
+    Try one relevant recovery action, such as collection or location change.
+
+    Stop before checkout or payment.
+
+    '
+  success_criteria: The site explains the empty result and provides a useful recovery
+    action.

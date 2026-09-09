@@ -435,11 +435,28 @@ class ScenarioExecutionVerdict(BaseModel):
 # ─── Lite mode feedback ───────────────────────────────────────────────────────
 
 
+class LiteFlawEvidence(BaseModel):
+	flaw_index: int = Field(ge=1, description='One-based index of the flaw supported by this evidence.')
+	evidence_ids: list[str] = Field(
+		default_factory=list,
+		description='IDs returned by capture_flaw_evidence when the flaw was visibly observed.',
+	)
+	screenshot_step_numbers: list[int] = Field(
+		default_factory=list,
+		description='Legacy browser step numbers whose screenshots visually support the flaw.',
+	)
+	explanation: str = Field(default='', description='Short explanation of what the referenced screenshots show.')
+
+
 class LiteResult(BaseModel):
 	"""Fast, structured output returned by Murphy lite mode."""
 
 	grade: int = Field(ge=1, le=10, description='Overall experience score from 1 (poor) to 10 (excellent).')
 	flaws: list[str] = Field(default_factory=list, description='Observed problems, friction, or broken behavior.')
+	flaw_evidence: list[LiteFlawEvidence] = Field(
+		default_factory=list,
+		description='Optional screenshot evidence mapped to flaws by one-based index.',
+	)
 	improvements: list[str] = Field(default_factory=list, description='Product or UX improvements that would help users.')
 	fixes: list[str] = Field(default_factory=list, description='Concrete fixes that address the observed flaws.')
 	other_feedback: list[str] = Field(
@@ -506,6 +523,7 @@ class TestResult(BaseModel):
 	failure_category: Literal['website_issue', 'test_limitation'] | None = None
 	pages_visited: list[str] = Field(default_factory=list)
 	screenshot_paths: list[str | None] = Field(default_factory=list)
+	lite_evidence_paths: dict[str, str] = Field(default_factory=dict)
 	form_fills: list[dict] = Field(default_factory=list)
 	process_evaluation: str = ''
 	logical_evaluation: str = ''

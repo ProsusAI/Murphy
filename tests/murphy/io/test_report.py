@@ -20,6 +20,7 @@ from murphy.models import (
 	Feature,
 	FeedbackQualityScore,
 	JudgeVerdict,
+	LiteFlawEvidence,
 	LiteResult,
 	PageInfo,
 	ReportSummary,
@@ -356,6 +357,46 @@ def test_write_markdown_report_includes_lite_result_details():
 		assert f'- {item}' in content
 
 
+def test_write_markdown_report_links_lite_flaws_to_screenshot_evidence(tmp_path):
+	screenshot_dir = tmp_path / 'screenshots' / 'test_01_lite_review'
+	screenshot_dir.mkdir(parents=True)
+	step_2 = screenshot_dir / 'step_2.png'
+	step_4 = screenshot_dir / 'step_4.png'
+	captured = screenshot_dir / 'evidence_01.png'
+	step_2.write_bytes(b'first')
+	step_4.write_bytes(b'second')
+	captured.write_bytes(b'captured')
+	lite_result = LiteResult(
+		grade=5,
+		flaws=['The basket did not update.', 'The fee label is unclear.'],
+		flaw_evidence=[
+			LiteFlawEvidence(
+				flaw_index=1,
+				evidence_ids=['evidence_01'],
+				screenshot_step_numbers=[2, 4],
+				explanation='Both screenshots show the unchanged basket total.',
+			),
+			LiteFlawEvidence(flaw_index=2, screenshot_step_numbers=[99]),
+		],
+	)
+	result = _make_result(
+		judgement=None,
+		lite_result=lite_result,
+		screenshot_paths=[str(step_2), str(step_4), str(captured)],
+		lite_evidence_paths={'evidence_01': str(captured)},
+	)
+	report = _make_report(results=[result])
+
+	content = write_markdown_report(report, tmp_path).read_text()
+
+	assert '[Captured evidence](screenshots/test_01_lite_review/evidence_01.png)' in content
+	assert 'Step 2 screenshot' not in content
+	assert 'Step 4 screenshot' not in content
+	assert 'Both screenshots show the unchanged basket total.' in content
+	assert 'Step 99' not in content
+	assert 'Evidence: No captured visual evidence.' in content
+
+
 def test_write_markdown_report_includes_passed_section():
 	report = _make_report()
 	with tempfile.TemporaryDirectory() as tmpdir:
@@ -469,7 +510,7 @@ def test_copy_screenshots_creates_dir():
 		src = tmpdir / 'src_screenshot.png'
 		src.write_bytes(b'fake png data')
 
-		result = _make_result(screenshot_paths=[str(src)])
+		result = _make_result(screenshot_paths=[str(src)], lite_evidence_paths={'evidence_01': str(src)})
 		report = _make_report(results=[result])
 
 		output_dir = tmpdir / 'output'
@@ -478,6 +519,8 @@ def test_copy_screenshots_creates_dir():
 
 		screenshots_dir = output_dir / 'screenshots'
 		assert screenshots_dir.exists()
+		assert Path(result.lite_evidence_paths['evidence_01']).resolve().is_relative_to(screenshots_dir.resolve())
+		assert Path(result.lite_evidence_paths['evidence_01']).exists()
 
 
 def test_copy_screenshots_skips_none_paths():

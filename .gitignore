@@ -16,6 +16,7 @@ venv/
 # IDEs
 .vscode/
 .idea/
+.cursor/
 .claude/
 
 # Build files
@@ -58,3 +59,5 @@ output/
 murphy/output/
 murphy/browser_profile/
 browser_profile/
+workshop/validation-output/
+workshop/run*/

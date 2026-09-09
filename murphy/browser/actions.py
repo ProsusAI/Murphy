@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from pathlib import Path
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
@@ -14,6 +15,8 @@ from browser_use.agent.views import ActionResult
 if TYPE_CHECKING:
 	from browser_use.browser.session import BrowserSession
 	from browser_use.tools.service import Tools
+
+MAX_LITE_EVIDENCE_CAPTURES = 5
 
 
 def _domain_from_url(url: str) -> str:
@@ -110,3 +113,44 @@ def register_refresh_dom_action(tools: Tools, session: BrowserSession) -> None: 
 				extracted_content='DOM refresh failed.',
 				error=f'{type(exc).__name__}: {exc}',
 			)
+
+
+def register_lite_evidence_action(
+	tools: Tools,
+	session: BrowserSession,
+	capture_dir: Path,
+	captured_paths: dict[str, str],
+) -> None:
+	capture_dir.mkdir(parents=True, exist_ok=True)
+
+	@tools.action(
+		description=(
+			'Capture the current visible browser viewport as evidence for a concrete flaw. '
+			'Call this immediately while the flaw is visible, before navigating or changing the UI. '
+			'Capture each distinct UI state only once. '
+			'Pass a short description of exactly what is visible. Returns an evidence ID to include in LiteResult.flaw_evidence.'
+		),
+	)
+	async def capture_flaw_evidence(description: str) -> ActionResult:
+		if len(captured_paths) >= MAX_LITE_EVIDENCE_CAPTURES:
+			return ActionResult(
+				extracted_content=(
+					f'Evidence capture limit reached ({MAX_LITE_EVIDENCE_CAPTURES}). '
+					'Do not capture more screenshots. Finish the objective or return the LiteResult.'
+				),
+				long_term_memory='Evidence capture limit reached. Do not capture more screenshots.',
+			)
+		evidence_id = f'evidence_{len(captured_paths) + 1:02d}'
+		path = capture_dir / f'{evidence_id}.png'
+		try:
+			await session.take_screenshot(path=str(path))
+		except Exception as exc:
+			return ActionResult(
+				extracted_content='Evidence screenshot capture failed.',
+				error=f'{type(exc).__name__}: {exc}',
+			)
+		captured_paths[evidence_id] = str(path)
+		return ActionResult(
+			extracted_content=f'Captured {evidence_id}: {description}',
+			long_term_memory=f'Visual evidence {evidence_id}: {description}',
+		)

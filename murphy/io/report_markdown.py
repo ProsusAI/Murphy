@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from murphy.io.report_helpers import (
@@ -22,6 +23,60 @@ def _append_bullets(title: str, items: list[str], lines: list[str]) -> None:
 	lines.append('')
 
 
+def _screenshot_href(raw_path: str) -> str:
+	path = Path(raw_path)
+	parts = path.parts
+	try:
+		screenshots_index = parts.index('screenshots')
+		return Path(*parts[screenshots_index:]).as_posix()
+	except ValueError:
+		return path.as_posix()
+
+
+def _screenshot_step_paths(paths: list[str | None]) -> dict[int, str]:
+	step_paths: dict[int, str] = {}
+	for raw_path in paths:
+		if not raw_path:
+			continue
+		match = re.fullmatch(r'step_(\d+)\.[^.]+', Path(raw_path).name)
+		if match:
+			step_paths[int(match.group(1))] = _screenshot_href(raw_path)
+	return step_paths
+
+
+def _render_lite_flaws(r: TestResult, lines: list[str]) -> None:
+	lite = r.lite_result
+	if not lite or not lite.flaws:
+		return
+
+	evidence_by_flaw = {item.flaw_index: item for item in lite.flaw_evidence}
+	step_paths = _screenshot_step_paths(r.screenshot_paths)
+	lines.append('**Flaws:**')
+	for flaw_index, flaw in enumerate(lite.flaws, 1):
+		lines.append(f'- {flaw}')
+		evidence = evidence_by_flaw.get(flaw_index)
+		if not evidence:
+			lines.append('  - Evidence: No captured visual evidence.')
+			continue
+		links = [
+			f'[Captured evidence]({_screenshot_href(r.lite_evidence_paths[evidence_id])})'
+			for evidence_id in evidence.evidence_ids
+			if evidence_id in r.lite_evidence_paths
+		]
+		if not evidence.evidence_ids:
+			links.extend(
+				f'[Step {step_number} screenshot]({step_paths[step_number]})'
+				for step_number in evidence.screenshot_step_numbers
+				if step_number in step_paths
+			)
+		if not links:
+			lines.append('  - Evidence: No captured visual evidence.')
+			continue
+		explanation = f' — {evidence.explanation}' if evidence.explanation else ''
+		lines.append(f'  - Evidence: {", ".join(links)}{explanation}')
+	lines.append('')
+
+
 def _render_lite_result(r: TestResult, lines: list[str]) -> None:
 	"""Append Murphy lite structured evaluation details for one result."""
 	if not r.lite_result:
@@ -34,7 +89,7 @@ def _render_lite_result(r: TestResult, lines: list[str]) -> None:
 		f'**Grade:** {lite.grade}/10',
 		'',
 	]
-	_append_bullets('Flaws', lite.flaws, lines)
+	_render_lite_flaws(r, lines)
 	_append_bullets('Improvements', lite.improvements, lines)
 	_append_bullets('Fixes', lite.fixes, lines)
 	_append_bullets('Other feedback', lite.other_feedback, lines)

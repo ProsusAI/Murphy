@@ -1,10 +1,10 @@
 """Tests for auth helpers with mocked LLM and browser session."""
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from murphy.api.auth import _llm_classify_page
+from murphy.api.auth import _llm_classify_page, _wait_for_detected_login
 
 
 def _make_mock_llm(answer: str) -> AsyncMock:
@@ -65,3 +65,30 @@ async def test_classify_page_non_string_completion():
 
 	result = await _llm_classify_page(llm, 'https://example.com', 'Page', 'Body', mode='auth_detect')
 	assert result is False
+
+
+@pytest.mark.asyncio
+async def test_classify_page_rejects_not_authenticated_text():
+	llm = _make_mock_llm('NOT_AUTHENTICATED')
+
+	result = await _llm_classify_page(llm, 'https://example.com', 'Home', 'Public content', mode='login_poll')
+
+	assert result is False
+
+
+@pytest.mark.asyncio
+async def test_wait_for_detected_login_requires_two_consecutive_matches():
+	llm = _make_mock_llm('LOGIN')
+	llm.ainvoke.side_effect = [
+		MagicMock(completion='LOGIN'),
+		MagicMock(completion='AUTHENTICATED'),
+		MagicMock(completion='AUTHENTICATED'),
+	]
+
+	with patch(
+		'murphy.api.auth._get_page_text',
+		new=AsyncMock(return_value=('https://example.com/account', 'Account', 'Signed in as user')),
+	) as get_page_text:
+		await _wait_for_detected_login(MagicMock(), llm, timeout_seconds=1, poll_seconds=0)
+
+	assert get_page_text.await_count == 3

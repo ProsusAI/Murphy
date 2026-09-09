@@ -1,0 +1,22 @@
+url: https://www.just-eat.co.uk
+scenarios:
+- name: Baseline urban add to basket
+  description: Add one vegan meal to the basket from an urban postcode.
+  priority: critical
+  feature_category: ecommerce
+  target_feature: Restaurant discovery and basket
+  test_persona: habitual_fast_completer
+  steps_description: 'Stay on just-eat.co.uk.
+
+    Enter postcode EC1A 1BB.
+
+    Find a restaurant with a clearly labeled vegan meal.
+
+    Add one vegan meal to the basket.
+
+    Verify that the basket shows the same item.
+
+    Stop before checkout or payment.
+
+    '
+  success_criteria: The basket shows one clearly labeled vegan item.

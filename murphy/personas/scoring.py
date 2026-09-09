@@ -75,11 +75,7 @@ async def score_session(
 		output_format=SessionScore,
 	)
 	score: SessionScore = response.completion
-	if not score.session_id:
-		score.session_id = session_id
-	if not score.user_id:
-		score.user_id = user_id
-	return score
+	return score.model_copy(update={'session_id': session_id, 'user_id': user_id})
 
 
 # ── Orchestrator ─────────────────────────────────────────────────────────────

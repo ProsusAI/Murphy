@@ -1,0 +1,19 @@
+url: https://www.just-eat.co.uk
+scenarios:
+- name: Peanut allergy information before basket
+  description: Determine whether the allergen UI gives a cautious customer clear limitations and a safe next action.
+  priority: critical
+  feature_category: ecommerce
+  target_feature: Allergy information and basket
+  test_persona: methodical_health_seeker
+  steps_description: |
+    Stay on just-eat.co.uk.
+    Enter postcode EC1A 1BB.
+    Find a meal and inspect the visible allergen guidance before adding it.
+    Evaluate whether the UI clearly explains what information is and is not available.
+    A generic disclaimer can be sufficient when it clearly states the limitation and gives a safe, actionable next step, such as contacting the restaurant.
+    Do not infer medical safety or require item-specific peanut data when the UI clearly communicates its limitation.
+    If the guidance is hidden, contradictory, or unclear, inspect one second plausible item or restaurant.
+    Do not add an item when the guidance leaves the safe next action unclear.
+    Stop before checkout or payment.
+  success_criteria: Before adding an item, the UI clearly communicates its allergen-information limitations and gives an understandable, safe next action. A clear generic disclaimer can pass.

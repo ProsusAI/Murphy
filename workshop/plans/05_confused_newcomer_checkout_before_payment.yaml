@@ -1,0 +1,23 @@
+url: https://www.just-eat.co.uk
+scenarios:
+- name: Confused newcomer address-entry boundary
+  description: Add two available items and continue through checkout notices until the address-entry page appears.
+  priority: critical
+  feature_category: ecommerce
+  target_feature: Basket and checkout
+  test_persona: confused_newcomer
+  steps_description: |
+    Stay on just-eat.co.uk.
+    Enter postcode EC1A 1BB.
+    Act as a first-time visitor and rely only on visible labels and guidance.
+    If the basket already contains items, remove every item and verify that the basket is empty.
+    Find one available food item, add it, and verify that the basket shows it before continuing.
+    Find a second distinct item, add it, and verify that the basket shows both selected items.
+    Attempt to click the checkout button.
+    Acknowledge informational checkout notices using only a clearly labeled non-transactional continuation control, such as "Continue with order".
+    Treat a checkout page showing "Delivery address", "Full address required", or an address edit/selection control as the address-entry boundary.
+    Stop immediately when any of those address indicators is visible. Do not search for another continuation control.
+    Do not enter, select, change, or submit an address.
+    Do not interact with payment or order controls.
+    If checkout is disabled, unclickable, or blocked before address entry, capture the visible state, report the blocker, and stop.
+  success_criteria: The basket contains both selected items and the user reaches a visible delivery-address entry or selection page without entering address or payment information. A disabled, unclickable, or blocked checkout path is a failed product outcome.

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -80,9 +81,10 @@ async def _llm_classify_page(llm: BaseChatModel, url: str, title: str, body: str
 		)
 	else:  # mode == "login_poll"
 		prompt += (
-			'Question: Has the user successfully logged in? Is this authenticated content '
-			'(dashboard, app UI, user profile, main application) or is it still a login form, '
-			'sign-in page, SSO flow, 2FA prompt, or pre-login screen?\n\n'
+			'Question: Does this page contain clear evidence that the user is signed in, such as '
+			'an account name, profile controls, order history, or a logout action? Public content '
+			'without account-specific evidence is not authenticated. A login form, SSO flow, 2FA '
+			'prompt, or pre-login screen is also not authenticated.\n\n'
 			'Reply with exactly one word: AUTHENTICATED or LOGIN'
 		)
 
@@ -90,9 +92,32 @@ async def _llm_classify_page(llm: BaseChatModel, url: str, title: str, body: str
 	answer = response.completion.strip().upper() if isinstance(response.completion, str) else ''
 
 	if mode == 'auth_detect':
-		return 'CONTENT' in answer
+		return answer == 'CONTENT'
 	else:
-		return 'AUTHENTICATED' in answer
+		return answer == 'AUTHENTICATED'
+
+
+async def _wait_for_detected_login(
+	browser_session: BrowserSession,
+	llm: BaseChatModel,
+	*,
+	timeout_seconds: float,
+	poll_seconds: float = 5,
+) -> None:
+	loop = asyncio.get_running_loop()
+	deadline = loop.time() + timeout_seconds
+	consecutive_authenticated = 0
+
+	while loop.time() < deadline:
+		current_url, title, body = await _get_page_text(browser_session)
+		is_authenticated = await _llm_classify_page(llm, current_url, title, body, mode='login_poll')
+		consecutive_authenticated = consecutive_authenticated + 1 if is_authenticated else 0
+		if consecutive_authenticated >= 2:
+			logger.info('Authenticated page detected. Continuing automatically.')
+			return
+		await asyncio.sleep(poll_seconds)
+
+	raise TimeoutError(f'Authentication was not detected within {timeout_seconds:.0f} seconds.')
 
 
 async def wait_for_manual_login(
@@ -111,6 +136,16 @@ async def wait_for_manual_login(
 		await browser_session.navigate_to(url)
 
 	print('>>> Log in manually in the browser window.')
+	if os.getenv('MURPHY_AUTO_AUTH', '').lower()[:1] in 'ty1':
+		timeout_seconds = float(os.getenv('MURPHY_AUTH_TIMEOUT_SECONDS', '300'))
+		print('>>> Murphy will continue automatically after it detects the signed-in state.\n')
+		await _wait_for_detected_login(
+			browser_session,
+			llm,
+			timeout_seconds=timeout_seconds,
+		)
+		return
+
 	print(">>> When you're done, press Enter or type 'continue' to proceed.\n")
 
 	# Block on user input — run in executor so asyncio loop isn't blocked

@@ -87,6 +87,18 @@ def test_classify_failure_failed_lite_result_is_plain_failure():
 	assert classify_failure(r) is None
 
 
+def test_classify_failure_lite_browser_corruption_is_test_limitation():
+	lite_result = LiteResult(grade=2, flaws=['The browser stopped responding.'])
+	r = _make_result(
+		success=False,
+		judgement=None,
+		lite_result=lite_result,
+		errors=['Cannot execute click: browser session is corrupted (target_id=None).'],
+	)
+
+	assert classify_failure(r) == 'test_limitation'
+
+
 # ─── build_summary ────────────────────────────────────────────────────────────
 
 

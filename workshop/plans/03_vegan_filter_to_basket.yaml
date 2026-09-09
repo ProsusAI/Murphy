@@ -1,0 +1,25 @@
+url: https://www.just-eat.co.uk
+scenarios:
+- name: Vegan filter to basket
+  description: Use dietary controls to add a clearly labeled vegan item.
+  priority: critical
+  feature_category: filtering_sorting
+  target_feature: Dietary filters and basket
+  test_persona: focused_diet_sprinter
+  steps_description: 'Stay on just-eat.co.uk.
+
+    Enter postcode EC1A 1BB.
+
+    Use the available dietary filter or search control for vegan food.
+
+    Do not inspect restaurants that lack a visible vegan signal.
+
+    Add one clearly labeled vegan item to the basket.
+
+    Verify that the basket shows the same item.
+
+    Stop before checkout or payment.
+
+    '
+  success_criteria: The filter leads to a clearly labeled vegan item, and the basket
+    shows that item.

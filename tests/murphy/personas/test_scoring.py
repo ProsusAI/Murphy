@@ -101,6 +101,19 @@ async def test_score_session_returns_score():
 
 
 @pytest.mark.asyncio
+async def test_score_session_uses_trusted_session_identifiers():
+	llm = _mock_llm()
+	llm.ainvoke.return_value.completion = MOCK_SCORE.model_copy(
+		update={'session_id': 'hallucinated-session', 'user_id': 'hallucinated-user'}
+	)
+
+	result = await score_session(llm, SCHEMA, 'timeline text', 'trusted-session', 'trusted-user')
+
+	assert result.session_id == 'trusted-session'
+	assert result.user_id == 'trusted-user'
+
+
+@pytest.mark.asyncio
 async def test_score_session_includes_schema_in_prompt():
 	llm = _mock_llm()
 	await score_session(llm, SCHEMA, 'timeline', 'sess-1', 'user-a')

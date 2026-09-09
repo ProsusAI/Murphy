@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import re
+import tempfile
 import traceback
 from collections.abc import Callable
 from pathlib import Path
@@ -48,6 +49,58 @@ def _parse_structured_output(history: AgentHistoryList, model_cls: type[Any]) ->
 			return model_cls.model_validate(data)
 		except Exception:
 			return None
+
+
+def _parse_lite_result(history: AgentHistoryList, captured_paths: dict[str, str] | None = None) -> LiteResult | None:
+	available_evidence_ids = set(captured_paths or {})
+	available_steps: set[int] = set()
+	for screenshot_path in history.screenshot_paths():
+		if not screenshot_path:
+			continue
+		match = re.fullmatch(r'step_(\d+)\.[^.]+', Path(screenshot_path).name)
+		if match:
+			available_steps.add(int(match.group(1)))
+
+	candidates: list[LiteResult] = []
+	for action in history.model_actions():
+		done = action.get('done')
+		data = done.get('data') if isinstance(done, dict) else None
+		if not isinstance(data, dict):
+			continue
+		try:
+			candidates.append(LiteResult.model_validate(data))
+		except Exception:
+			continue
+
+	final_result = _parse_structured_output(history, LiteResult)
+	if final_result is not None:
+		candidates.append(final_result)
+	if not candidates:
+		return None
+
+	def valid_evidence_count(result: LiteResult) -> int:
+		return sum(
+			1
+			for evidence in result.flaw_evidence
+			for is_valid in [
+				*(evidence_id in available_evidence_ids for evidence_id in evidence.evidence_ids),
+				*(step_number in available_steps for step_number in evidence.screenshot_step_numbers),
+			]
+			if evidence.flaw_index <= len(result.flaws) and is_valid
+		)
+
+	best_result = max(enumerate(candidates), key=lambda item: (valid_evidence_count(item[1]), item[0]))[1]
+	valid_evidence = []
+	for evidence in best_result.flaw_evidence:
+		if evidence.flaw_index > len(best_result.flaws):
+			continue
+		evidence_ids = [evidence_id for evidence_id in evidence.evidence_ids if evidence_id in available_evidence_ids]
+		step_numbers = [step_number for step_number in evidence.screenshot_step_numbers if step_number in available_steps]
+		if evidence_ids or step_numbers:
+			valid_evidence.append(
+				evidence.model_copy(update={'evidence_ids': evidence_ids, 'screenshot_step_numbers': step_numbers})
+			)
+	return best_result.model_copy(update={'flaw_evidence': valid_evidence})
 
 
 def _extract_form_fills(actions: list[dict[str, Any]]) -> list[dict]:
@@ -237,7 +290,11 @@ async def _execute_single_test(
 
 	Shared by both sequential and parallel execution paths.
 	"""
-	from murphy.browser.actions import register_domain_access_action, register_refresh_dom_action
+	from murphy.browser.actions import (
+		register_domain_access_action,
+		register_lite_evidence_action,
+		register_refresh_dom_action,
+	)
 	from murphy.browser.session_utils import prepare_session_for_task
 
 	logger.info('\n--- Test %d/%d: %s ---', index, total, scenario.name)
@@ -249,6 +306,11 @@ async def _execute_single_test(
 		file_paths_str = [str(p) for p in fixture_paths] if fixture_paths else []
 
 		if use_lite:
+			captured_evidence_paths: dict[str, str] = {}
+			if output_dir is not None:
+				capture_dir = output_dir / '.lite_evidence' / f'test_{index:02d}_{_slugify(scenario.name)}'
+			else:
+				capture_dir = Path(tempfile.mkdtemp(prefix='murphy_lite_evidence_'))
 			task_prompt = build_lite_prompt(
 				scenario,
 				url,
@@ -269,6 +331,7 @@ async def _execute_single_test(
 				_disable_unused_murphy_actions(agent)
 				register_domain_access_action(agent.tools, browser_session)
 				register_refresh_dom_action(agent.tools, browser_session)
+				register_lite_evidence_action(agent.tools, browser_session, capture_dir, captured_evidence_paths)
 				return await agent.run(max_steps=max_steps)
 
 			history = await _run_lite_agent(task_prompt)
@@ -278,7 +341,7 @@ async def _execute_single_test(
 				history = await _run_lite_agent(_build_lite_retry_prompt(task_prompt))
 
 			_save_agent_history(history, scenario, index, output_dir)
-			lite_result = _parse_structured_output(history, LiteResult)
+			lite_result = _parse_lite_result(history, captured_evidence_paths)
 			if lite_result is None:
 				lite_result = LiteResult(
 					grade=5,
@@ -302,6 +365,8 @@ async def _execute_single_test(
 
 			success = lite_result.grade >= 5
 			logger.info('  Lite result: grade=%d (%.1fs)', lite_result.grade, history.total_duration_seconds())
+			screenshot_paths = [p for p in history.screenshot_paths() if p]
+			screenshot_paths.extend(captured_evidence_paths.values())
 			test_result = TestResult(
 				scenario=scenario,
 				success=success,
@@ -310,7 +375,8 @@ async def _execute_single_test(
 				errors=errors,
 				duration=history.total_duration_seconds(),
 				pages_visited=unique_pages,
-				screenshot_paths=[p for p in history.screenshot_paths() if p],
+				screenshot_paths=screenshot_paths,
+				lite_evidence_paths=captured_evidence_paths,
 				form_fills=_extract_form_fills(all_actions),
 				reason=f'Lite mode grade: {lite_result.grade}',
 				lite_result=lite_result,
