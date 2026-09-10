@@ -53,13 +53,14 @@ Run these checks in order:
    - `OPENROUTER_API_KEY`
 5. If no provider key is configured, stop and report `Needs API key`. Do not invent, write, or modify secrets.
 6. Run `uv sync`.
-7. Run `uv run playwright install chromium`.
-8. Run a tiny Murphy Lite smoke test on a public page with a visible browser.
-9. Confirm that `evaluation_report.md` was written in the smoke-test output directory.
+7. Check for `BROWSER_USE_EXECUTABLE_PATH` or an installed Chrome, Chromium, Brave, or Edge browser.
+8. If no supported browser is installed, run `uvx playwright install chromium`. Do not add Playwright as a project dependency.
+9. Run a tiny Murphy Lite smoke test on a public page with a visible browser.
+10. Confirm that `evaluation_report.md` was written in the smoke-test output directory.
 
 ## Smoke test command
 
-Use a unique output directory under `../murphy_workshop/output/setup-check/`.
+Use a unique output directory under `workshop/output/setup-check/`.
 
 Run:
 
@@ -80,7 +81,7 @@ Use a different public URL only if the user requests one.
 
 - If `uv` is missing, explain that Murphy uses `uv` for dependency management and stop.
 - If the dependency install fails, report `Needs dependency install` with the failing command.
-- If the browser install fails, report `Needs browser install` with the failing command.
+- If no supported browser is available and the fallback browser install fails, report `Needs browser install` with the failing command.
 - If the smoke test cannot produce a report, report `Smoke test failed`.
 - If a public target introduces bot protection, retry once on `https://example.com` and then stop.
 
@@ -93,7 +94,7 @@ Return:
 - Whether `.env` was created from `.env.example`
 - Whether an API key was detected
 - Whether dependencies were installed successfully
-- Whether Chromium installed successfully
+- Whether an existing supported browser was detected or Chromium was installed successfully
 - Whether the smoke test browser opened
 - Whether `evaluation_report.md` was created
 - Smoke-test report path when available

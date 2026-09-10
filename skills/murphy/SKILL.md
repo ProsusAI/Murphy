@@ -43,7 +43,7 @@ If the request says JET UK, use the JET UK defaults. Ask one focused question on
 
 ## Persona resolution
 
-Read `../murphy_workshop/output/personas.json` when it exists. Use the current persona names because generated names can change between discovery runs.
+Read `workshop/output/personas.json` when it exists. Use the current persona names because generated names can change between discovery runs.
 
 Known workshop persona themes include:
 
@@ -58,7 +58,7 @@ If the persona file does not exist, run:
 
 ```bash
 uv run python workshop/generate_synthetic_posthog.py
-uv run python workshop/discover_personas_from_csv.py --output-dir ../murphy_workshop/output
+uv run python workshop/discover_personas_from_csv.py
 uv run python workshop/build_workshop_personas.py
 ```
 
@@ -68,7 +68,7 @@ Tell the user that persona discovery uses synthetic data when this path is used.
 
 Prefer an existing single-scenario plan in `workshop/plans/` when its persona and goal match the request.
 
-Otherwise, create a temporary YAML plan under `../murphy_workshop/output/skill-plans/`. Include:
+Otherwise, create a temporary YAML plan under `workshop/output/skill-plans/`. Include:
 
 - `url`
 - One scenario only
@@ -90,7 +90,7 @@ Use `--max-steps 25` for this workflow so basket cleanup and informational notic
 
 ## Run Murphy
 
-Create a unique output directory under `../murphy_workshop/output/skill-runs/`.
+Create a unique output directory under `workshop/output/skill-runs/`.
 
 For a public site, run:
 
@@ -98,7 +98,7 @@ For a public site, run:
 BROWSER_USE_HEADLESS=false uv run murphy \
   --url "<target-url>" \
   --plan "<plan-path>" \
-  --personas ../murphy_workshop/output/personas.json \
+  --personas workshop/output/personas.json \
   --lite \
   --no-auth \
   --parallel 1 \

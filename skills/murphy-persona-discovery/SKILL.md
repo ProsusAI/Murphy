@@ -18,7 +18,7 @@ Use these values unless the user supplies alternatives:
 - Murphy repo: current workspace
 - Input CSV: `workshop/synthetic_posthog_events.csv`
 - Discovery script: `workshop/discover_personas_from_csv.py`
-- Output directory: `../murphy_workshop/output`
+- Output directory: `workshop/output`
 - Provider: `openai`
 - Model: `gpt-5-mini`
 
@@ -79,7 +79,7 @@ If no provider key is configured, stop and explain that persona discovery needs 
 Use:
 
 ```bash
-uv run python workshop/discover_personas_from_csv.py --output-dir ../murphy_workshop/output
+uv run python workshop/discover_personas_from_csv.py
 ```
 
 If the user supplied a different input, script, output directory, provider, or model, pass the corresponding flags.
@@ -90,7 +90,7 @@ Use the script defaults unless the user explicitly asks to change them.
 
 After the command finishes:
 
-1. Read the generated persona output in `../murphy_workshop/output/personas.json` unless the user supplied a different output directory.
+1. Read the generated persona output in `workshop/output/personas.json` unless the user supplied a different output directory.
 2. Summarize each persona with:
    - name
    - short description

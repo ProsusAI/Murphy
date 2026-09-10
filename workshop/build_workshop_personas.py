@@ -32,9 +32,8 @@ def newcomer_score(trait_name: str) -> float:
 
 def main() -> None:
 	repo = Path(__file__).resolve().parents[1]
-	workshop_root = repo.parent / 'murphy_workshop'
-	base_path = workshop_root / 'output' / 'personas.json'
-	output_dir = workshop_root / 'output'
+	output_dir = repo / 'workshop' / 'output'
+	base_path = output_dir / 'personas.json'
 	schema, result = load_personas(base_path)
 
 	familiarity = TraitDimension(
